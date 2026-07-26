@@ -1,0 +1,636 @@
+from __future__ import annotations
+
+import argparse
+import math
+import re
+from collections import Counter
+from pathlib import Path
+from typing import Any
+
+from _common import SkillError, import_fitz, sha256_file, utc_now, write_json
+
+
+FURNITURE_DIGIT_RE = re.compile(r"\d+")
+SPACE_RE = re.compile(r"\s+")
+
+
+def _clean_text(text: str) -> str:
+    return SPACE_RE.sub(" ", text or "").strip()
+
+
+def _furniture_key(text: str) -> str:
+    compact = _clean_text(text).lower()
+    compact = FURNITURE_DIGIT_RE.sub("#", compact)
+    return compact[:180]
+
+
+def _bbox(block: dict[str, Any]) -> list[float]:
+    return [round(float(value), 3) for value in block["bbox"]]
+
+
+def _block_text(block: dict[str, Any]) -> str:
+    return "\n".join(
+        "".join(span.get("text", "") for span in line.get("spans", []))
+        for line in block.get("lines", [])
+    ).strip()
+
+
+def _block_font_summary(block: dict[str, Any]) -> dict[str, Any]:
+    spans = [
+        span
+        for line in block.get("lines", [])
+        for span in line.get("spans", [])
+        if _clean_text(span.get("text", ""))
+    ]
+    if not spans:
+        return {
+            "median_size": 0.0,
+            "max_size": 0.0,
+            "bold_signal": False,
+            "font_names": [],
+        }
+    sizes = sorted(float(span.get("size", 0.0)) for span in spans)
+    middle = len(sizes) // 2
+    median = (
+        sizes[middle]
+        if len(sizes) % 2
+        else (sizes[middle - 1] + sizes[middle]) / 2
+    )
+    names = sorted(
+        {
+            str(span.get("font") or "")
+            for span in spans
+            if str(span.get("font") or "")
+        }
+    )
+    bold_signal = any(
+        "bold" in str(span.get("font") or "").lower()
+        or int(span.get("flags", 0)) & 16
+        for span in spans
+    )
+    return {
+        "median_size": round(median, 3),
+        "max_size": round(max(sizes), 3),
+        "bold_signal": bold_signal,
+        "font_names": names,
+    }
+
+
+def _line_rows(block: dict[str, Any]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for index, line in enumerate(block.get("lines", [])):
+        spans = [
+            span
+            for span in line.get("spans", [])
+            if _clean_text(span.get("text", ""))
+        ]
+        text = "".join(span.get("text", "") for span in line.get("spans", []))
+        if not _clean_text(text):
+            continue
+        font_weights: Counter[str] = Counter()
+        for span in spans:
+            font = str(span.get("font") or "")
+            if font:
+                font_weights[font] += max(len(_clean_text(span.get("text", ""))), 1)
+        rows.append(
+            {
+                "index": index,
+                "text": text.strip(),
+                "bbox": [
+                    round(float(value), 3)
+                    for value in line.get("bbox", block["bbox"])
+                ],
+                "font": _block_font_summary({"lines": [line]}),
+                "dominant_font": (
+                    font_weights.most_common(1)[0][0] if font_weights else ""
+                ),
+            }
+        )
+    return rows
+
+
+def _joined_bbox(lines: list[dict[str, Any]]) -> list[float]:
+    return [
+        round(min(float(line["bbox"][0]) for line in lines), 3),
+        round(min(float(line["bbox"][1]) for line in lines), 3),
+        round(max(float(line["bbox"][2]) for line in lines), 3),
+        round(max(float(line["bbox"][3]) for line in lines), 3),
+    ]
+
+
+def _line_is_heading(
+    line: dict[str, Any],
+    *,
+    body_size: float,
+    body_font_name: str,
+) -> bool:
+    text = _clean_text(str(line.get("text") or ""))
+    if (
+        not text
+        or len(text) > 120
+        or text.endswith((".", ";", ",", "。", "；", "，"))
+    ):
+        return False
+    font = line.get("font", {})
+    dominant_font = str(line.get("dominant_font") or "")
+    style_changed = bool(
+        dominant_font
+        and body_font_name
+        and dominant_font != body_font_name
+    )
+    size_changed = abs(float(font.get("max_size") or 0.0) - body_size) >= 0.35
+    return style_changed or size_changed
+
+
+def _block_segments(
+    block: dict[str, Any],
+    *,
+    body_size: float,
+    body_font_name: str,
+) -> list[dict[str, Any]]:
+    lines = list(block.get("lines") or [])
+    if len(lines) < 2:
+        return [
+            {
+                "index": 0,
+                "role": "heading" if block.get("likely_heading") else "body",
+                "heading_level": (
+                    1 if block.get("likely_heading") else None
+                ),
+                "text": str(block.get("text") or ""),
+                "bbox": list(block.get("bbox") or []),
+            }
+        ]
+
+    local_font_weights: Counter[str] = Counter()
+    local_sizes: list[float] = []
+    for line in lines:
+        font_name = str(line.get("dominant_font") or "")
+        if font_name:
+            local_font_weights[font_name] += max(
+                len(_clean_text(str(line.get("text") or ""))),
+                1,
+            )
+        size = float(line.get("font", {}).get("max_size") or 0.0)
+        if size:
+            local_sizes.append(size)
+    local_body_font = (
+        local_font_weights.most_common(1)[0][0]
+        if local_font_weights
+        else body_font_name
+    )
+    local_sizes.sort()
+    local_body_size = (
+        local_sizes[len(local_sizes) // 2]
+        if local_sizes
+        else body_size
+    )
+
+    heading_lines: list[dict[str, Any]] = []
+    for line in lines:
+        if not _line_is_heading(
+            line,
+            body_size=local_body_size,
+            body_font_name=local_body_font,
+        ):
+            break
+        heading_lines.append(line)
+
+    if not heading_lines or len(heading_lines) == len(lines):
+        return [
+            {
+                "index": 0,
+                "role": "heading" if block.get("likely_heading") else "body",
+                "heading_level": (
+                    1 if block.get("likely_heading") else None
+                ),
+                "text": str(block.get("text") or ""),
+                "bbox": list(block.get("bbox") or []),
+            }
+        ]
+
+    segments: list[dict[str, Any]] = []
+    for line in heading_lines:
+        max_size = float(line.get("font", {}).get("max_size") or 0.0)
+        segments.append(
+            {
+                "index": len(segments),
+                "role": "heading",
+                "heading_level": (
+                    1 if max_size >= local_body_size + 0.2 else 2
+                ),
+                "text": str(line.get("text") or ""),
+                "bbox": list(line.get("bbox") or []),
+            }
+        )
+    body_lines = lines[len(heading_lines) :]
+    segments.append(
+        {
+            "index": len(segments),
+            "role": "body",
+            "heading_level": None,
+            "text": "\n".join(str(line.get("text") or "") for line in body_lines),
+            "bbox": _joined_bbox(body_lines),
+        }
+    )
+    return segments
+
+
+def _inversion_ratio(first: list[int], second: list[int]) -> float:
+    shared = [value for value in first if value in set(second)]
+    if len(shared) < 2:
+        return 0.0
+    rank = {value: index for index, value in enumerate(second)}
+    inversions = 0
+    pairs = 0
+    for left in range(len(shared)):
+        for right in range(left + 1, len(shared)):
+            pairs += 1
+            if rank[shared[left]] > rank[shared[right]]:
+                inversions += 1
+    return round(inversions / max(pairs, 1), 4)
+
+
+def _column_signal(
+    blocks: list[dict[str, Any]],
+    page_width: float,
+) -> tuple[bool, dict[int, str]]:
+    labels: dict[int, str] = {}
+    left_chars = 0
+    right_chars = 0
+    wide_chars = 0
+    center = page_width / 2
+    gutter = page_width * 0.035
+    for block in blocks:
+        x0, _, x1, _ = map(float, block["bbox"])
+        width = x1 - x0
+        chars = len(_clean_text(block["text"]))
+        if width >= page_width * 0.62 or (x0 < center - gutter and x1 > center + gutter):
+            label = "wide"
+            wide_chars += chars
+        elif x1 <= center + gutter:
+            label = "left"
+            left_chars += chars
+        elif x0 >= center - gutter:
+            label = "right"
+            right_chars += chars
+        else:
+            label = "ambiguous"
+            wide_chars += chars
+        labels[int(block["id"])] = label
+    total = left_chars + right_chars + wide_chars
+    two_column = (
+        total >= 240
+        and left_chars >= total * 0.2
+        and right_chars >= total * 0.2
+        and wide_chars <= total * 0.5
+    )
+    return two_column, labels
+
+
+def _layout_order(
+    blocks: list[dict[str, Any]],
+    labels: dict[int, str],
+    two_column: bool,
+    page_height: float,
+) -> list[int]:
+    if not two_column:
+        return [
+            int(block["id"])
+            for block in sorted(
+                blocks,
+                key=lambda item: (
+                    round(float(item["bbox"][1]), 1),
+                    round(float(item["bbox"][0]), 1),
+                ),
+            )
+        ]
+
+    wide_blocks = sorted(
+        [block for block in blocks if labels[int(block["id"])] == "wide"],
+        key=lambda item: (float(item["bbox"][1]), float(item["bbox"][0])),
+    )
+    boundaries = [0.0]
+    boundaries.extend(float(block["bbox"][1]) for block in wide_blocks)
+    boundaries.append(page_height + 1)
+
+    order: list[int] = []
+    used: set[int] = set()
+    for zone_index in range(len(boundaries) - 1):
+        top = boundaries[zone_index]
+        bottom = boundaries[zone_index + 1]
+        zone = [
+            block
+            for block in blocks
+            if int(block["id"]) not in used
+            and top <= (float(block["bbox"][1]) + float(block["bbox"][3])) / 2 < bottom
+            and labels[int(block["id"])] != "wide"
+        ]
+        for label in ("left", "right", "ambiguous"):
+            ordered = sorted(
+                [
+                    block
+                    for block in zone
+                    if labels[int(block["id"])] == label
+                ],
+                key=lambda item: (
+                    float(item["bbox"][1]),
+                    float(item["bbox"][0]),
+                ),
+            )
+            order.extend(int(block["id"]) for block in ordered)
+            used.update(int(block["id"]) for block in ordered)
+        if zone_index < len(wide_blocks):
+            anchor = wide_blocks[zone_index]
+            anchor_id = int(anchor["id"])
+            order.append(anchor_id)
+            used.add(anchor_id)
+
+    remaining = sorted(
+        [block for block in blocks if int(block["id"]) not in used],
+        key=lambda item: (float(item["bbox"][1]), float(item["bbox"][0])),
+    )
+    order.extend(int(block["id"]) for block in remaining)
+    return order
+
+
+def _drawing_bbox(drawing: dict[str, Any]) -> list[float] | None:
+    rect = drawing.get("rect")
+    if rect is None:
+        return None
+    return [round(float(rect.x0), 3), round(float(rect.y0), 3), round(float(rect.x1), 3), round(float(rect.y1), 3)]
+
+
+def _likely_heading(
+    text: str,
+    font: dict[str, Any],
+    body_size: float,
+) -> bool:
+    compact = _clean_text(text)
+    if not compact or len(compact) > 120 or compact.endswith((".", ";", ",")):
+        return False
+    return bool(
+        font["bold_signal"]
+        or font["max_size"] >= max(body_size * 1.12, body_size + 0.8)
+    )
+
+
+def _page_data(
+    page: Any,
+    page_number: int,
+    furniture_keys: set[str],
+) -> dict[str, Any]:
+    text_dict = page.get_text("dict")
+    raw_text_blocks = [
+        block for block in text_dict.get("blocks", []) if block.get("type") == 0
+    ]
+    block_rows: list[dict[str, Any]] = []
+    all_sizes: list[float] = []
+    page_font_weights: Counter[str] = Counter()
+    for index, block in enumerate(raw_text_blocks):
+        text = _block_text(block)
+        if not _clean_text(text):
+            continue
+        font = _block_font_summary(block)
+        lines = _line_rows(block)
+        if font["median_size"]:
+            all_sizes.append(float(font["median_size"]))
+        for line in block.get("lines", []):
+            for span in line.get("spans", []):
+                font_name = str(span.get("font") or "")
+                if font_name:
+                    page_font_weights[font_name] += max(
+                        len(_clean_text(span.get("text", ""))),
+                        1,
+                    )
+        x0, y0, x1, y1 = map(float, block["bbox"])
+        top_or_bottom = y1 <= float(page.rect.height) * 0.1 or y0 >= float(page.rect.height) * 0.9
+        furniture = top_or_bottom and _furniture_key(text) in furniture_keys
+        block_rows.append(
+            {
+                "id": index,
+                "bbox": _bbox(block),
+                "text": text,
+                "line_count": len(block.get("lines", [])),
+                "font": font,
+                "lines": lines,
+                "page_furniture": furniture,
+            }
+        )
+
+    content_blocks = [block for block in block_rows if not block["page_furniture"]]
+    sizes = sorted(all_sizes)
+    body_size = sizes[len(sizes) // 2] if sizes else 0.0
+    body_font_name = (
+        page_font_weights.most_common(1)[0][0] if page_font_weights else ""
+    )
+    for block in block_rows:
+        block["likely_heading"] = _likely_heading(
+            str(block["text"]),
+            dict(block["font"]),
+            body_size,
+        )
+        block["segments"] = _block_segments(
+            block,
+            body_size=body_size,
+            body_font_name=body_font_name,
+        )
+        block["contains_heading"] = any(
+            segment.get("role") == "heading"
+            for segment in block["segments"]
+        )
+
+    two_column, labels = _column_signal(content_blocks, float(page.rect.width))
+    for block in block_rows:
+        block["column"] = labels.get(int(block["id"]), "furniture")
+    native_order = [int(block["id"]) for block in content_blocks]
+    layout_order = _layout_order(
+        content_blocks,
+        labels,
+        two_column,
+        float(page.rect.height),
+    )
+    disagreement = _inversion_ratio(native_order, layout_order)
+
+    images = []
+    for index, info in enumerate(page.get_image_info(xrefs=True), 1):
+        bbox = info.get("bbox")
+        if bbox:
+            images.append(
+                {
+                    "id": index,
+                    "bbox": [round(float(value), 3) for value in bbox],
+                    "xref": int(info.get("xref", 0) or 0),
+                }
+            )
+    drawings = page.get_drawings()
+    drawing_boxes = [
+        bbox for drawing in drawings if (bbox := _drawing_bbox(drawing)) is not None
+    ]
+    source_text = page.get_text("text")
+    text_chars = len(_clean_text(source_text))
+    page_area = max(float(page.rect.width * page.rect.height), 1.0)
+    image_area = sum(
+        max(0.0, item["bbox"][2] - item["bbox"][0])
+        * max(0.0, item["bbox"][3] - item["bbox"][1])
+        for item in images
+    )
+    image_ratio = min(image_area / page_area, 1.0)
+    scan_risk = text_chars < 80 and image_ratio >= 0.35
+    vector_dense = len(drawings) >= 60
+    table_signal = bool(
+        re.search(r"(?im)^\s*(table|tab\.|表)\s*\d+", source_text)
+        or (len(drawings) >= 25 and len(content_blocks) >= 12)
+    )
+    figure_signal = bool(
+        re.search(r"(?im)^\s*(fig(?:ure)?\.?|图)\s*\d+", source_text)
+        or vector_dense
+        or images
+    )
+    reasons: list[str] = []
+    if scan_risk:
+        reasons.append("missing-reliable-text-layer")
+    if two_column and disagreement >= 0.18:
+        reasons.append("reading-order-disagreement")
+    if vector_dense:
+        reasons.append("dense-vector-content")
+    if table_signal:
+        reasons.append("table-or-grid-signal")
+    if images:
+        reasons.append("image-content")
+    if len(content_blocks) >= 45:
+        reasons.append("many-text-blocks")
+
+    by_id = {int(block["id"]): block for block in content_blocks}
+    native_text = "\n\n".join(str(by_id[item]["text"]) for item in native_order)
+    layout_text = "\n\n".join(str(by_id[item]["text"]) for item in layout_order)
+    selected_order = "native"
+    if two_column and disagreement >= 0.18:
+        selected_order = "visual-confirmation-required"
+    elif not two_column:
+        selected_order = "layout"
+
+    return {
+        "page": page_number,
+        "width": round(float(page.rect.width), 3),
+        "height": round(float(page.rect.height), 3),
+        "rotation": int(page.rotation),
+        "text_layer": {
+            "text_chars": text_chars,
+            "scan_risk": scan_risk,
+            "native_text": native_text,
+            "layout_text": layout_text,
+        },
+        "layout": {
+            "two_column": two_column,
+            "native_order": native_order,
+            "layout_order": layout_order,
+            "order_disagreement_ratio": disagreement,
+            "selected_order": selected_order,
+        },
+        "blocks": block_rows,
+        "images": images,
+        "image_area_ratio": round(image_ratio, 4),
+        "drawing_count": len(drawings),
+        "drawing_bboxes": drawing_boxes,
+        "signals": {
+            "table": table_signal,
+            "figure": figure_signal,
+            "vector_dense": vector_dense,
+            "complex": bool(reasons),
+            "reasons": reasons,
+        },
+    }
+
+
+def _repeated_furniture_keys(document: Any) -> set[str]:
+    counts: Counter[str] = Counter()
+    for page in document:
+        height = float(page.rect.height)
+        seen: set[str] = set()
+        for block in page.get_text("blocks"):
+            text = _clean_text(str(block[4]))
+            if not text:
+                continue
+            y0, y1 = float(block[1]), float(block[3])
+            if y1 > height * 0.1 and y0 < height * 0.9:
+                continue
+            key = _furniture_key(text)
+            if len(key) >= 8:
+                seen.add(key)
+        counts.update(seen)
+    minimum = max(2, math.ceil(document.page_count * 0.35))
+    return {key for key, count in counts.items() if count >= minimum}
+
+
+def extract_source_structure(source_pdf: Path) -> dict[str, Any]:
+    source_pdf = source_pdf.resolve()
+    if not source_pdf.is_file():
+        raise SkillError(f"PDF 不存在: {source_pdf}")
+    fitz = import_fitz()
+    try:
+        document = fitz.open(source_pdf)
+    except Exception as exc:
+        raise SkillError(f"无法打开 PDF: {source_pdf}: {exc}") from exc
+    furniture_keys = _repeated_furniture_keys(document)
+    pages = [
+        _page_data(page, page_number, furniture_keys)
+        for page_number, page in enumerate(document, 1)
+    ]
+    document.close()
+    visual_pages = [
+        page["page"]
+        for page in pages
+        if page["layout"]["selected_order"] == "visual-confirmation-required"
+        or page["text_layer"]["scan_risk"]
+        or page["signals"]["table"]
+        or page["signals"]["figure"]
+    ]
+    return {
+        "schema_version": "1.0",
+        "generated_at": utc_now(),
+        "source": str(source_pdf),
+        "source_sha256": sha256_file(source_pdf),
+        "page_count": len(pages),
+        "repeated_page_furniture_patterns": sorted(furniture_keys),
+        "visual_confirmation_pages": visual_pages,
+        "pages": pages,
+        "interpretation": (
+            "native_text 是 PDF 内部对象顺序；layout_text 是按坐标和栏位推断的顺序。"
+            "两者冲突或页面含图表、扫描内容时，不自动宣称阅读顺序正确。"
+        ),
+    }
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="提取 PDF 文字块、坐标、栏位、阅读顺序与复杂视觉信号"
+    )
+    parser.add_argument("input", type=Path, help="作业目录或源 PDF")
+    parser.add_argument("--output", type=Path)
+    args = parser.parse_args()
+    try:
+        source = args.input.resolve()
+        if source.is_dir():
+            source = source / "source.pdf"
+            output = args.output or source.parent / "source_structure.json"
+        else:
+            output = args.output or source.with_suffix(".structure.json")
+        report = extract_source_structure(source)
+        write_json(output.resolve(), report)
+        print(f"原文结构已写入: {output.resolve()}")
+        print(
+            "需看图确认页: "
+            + (
+                ", ".join(map(str, report["visual_confirmation_pages"]))
+                or "无"
+            )
+        )
+        return 0
+    except SkillError as exc:
+        print(f"错误: {exc}")
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

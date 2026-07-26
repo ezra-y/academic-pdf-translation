@@ -1,0 +1,77 @@
+{
+  "schema_version": "1.0",
+  "renderer": "academic-pdf-unified-flow",
+  "renderer_version": "85",
+  "renderer_build_id": "8772d30ceef5ae9c70f7803902657d897020a842a13d3d6c7be153eae76913f2",
+  "target_language": "zh-Hans",
+  "review_mode": "independent",
+  "workers": 1,
+  "case_count": 5,
+  "automatic_first_pass_count": 5,
+  "automatic_first_pass_rate": 1.0,
+  "median_total_seconds": 3.741,
+  "benchmark_wall_seconds": 20.888,
+  "cases": [
+    {
+      "id": "127",
+      "tags": ["mixed-references", "multi-column-continuation"],
+      "source_pages": 14,
+      "candidate_pages": 17,
+      "status": "READY_TO_REGISTER",
+      "total_seconds": 3.627
+    },
+    {
+      "id": "133",
+      "tags": ["long-references"],
+      "source_pages": 13,
+      "candidate_pages": 17,
+      "status": "READY_TO_REGISTER",
+      "total_seconds": 3.741
+    },
+    {
+      "id": "134",
+      "tags": ["structured-table", "localized-screenshots"],
+      "source_pages": 14,
+      "candidate_pages": 21,
+      "status": "READY_TO_REGISTER",
+      "total_seconds": 6.009
+    },
+    {
+      "id": "138",
+      "tags": ["quadrant-model"],
+      "source_pages": 12,
+      "candidate_pages": 15,
+      "status": "READY_TO_REGISTER",
+      "total_seconds": 3.263
+    },
+    {
+      "id": "152",
+      "tags": ["dense-prose"],
+      "source_pages": 12,
+      "candidate_pages": 17,
+      "status": "READY_TO_REGISTER",
+      "total_seconds": 4.162
+    }
+  ],
+  "visual_review": {
+    "status": "PASS",
+    "sampled_candidate_pages": {
+      "127": [7],
+      "134": [8, 9, 11, 12, 13],
+      "138": [4]
+    },
+    "checks": [
+      "no-clipping-or-overlap",
+      "heading-kept-with-following-content",
+      "structured-table-readable",
+      "localized-screenshot-readable",
+      "quadrant-model-labels-and-arrows-readable"
+    ]
+  },
+  "limitations": [
+    "The benchmark uses five prepared Simplified Chinese jobs from one project corpus.",
+    "It measures deterministic candidate generation and preflight, not translation-model semantic accuracy.",
+    "Fast, precise, and non-Simplified-Chinese modes do not yet have comparable benchmark samples.",
+    "No translation or review token usage was available for these prepared jobs."
+  ]
+}

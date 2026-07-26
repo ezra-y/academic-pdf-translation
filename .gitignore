@@ -1,0 +1,8 @@
+.DS_Store
+.venv/
+__pycache__/
+*.py[cod]
+
+Workspace/*
+!Workspace/.gitignore
+!Workspace/README.md
