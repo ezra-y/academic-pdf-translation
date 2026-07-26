@@ -1,16 +1,17 @@
 {
   "schema_version": "1.0",
-  "renderer": "academic-pdf-unified-flow",
-  "renderer_version": "85",
-  "renderer_build_id": "8772d30ceef5ae9c70f7803902657d897020a842a13d3d6c7be153eae76913f2",
+  "generated_at": "2026-07-26T15:24:15+00:00",
+  "renderer": "academic-pdf-layout",
+  "renderer_version": "1.0",
+  "renderer_build_id": "2323605ace4dea00184eea3de474f80e8d129dc223f55e143515fe2a91c3d055",
   "target_language": "zh-Hans",
   "review_mode": "independent",
   "workers": 1,
   "case_count": 5,
   "automatic_first_pass_count": 5,
   "automatic_first_pass_rate": 1.0,
-  "median_total_seconds": 3.741,
-  "benchmark_wall_seconds": 20.888,
+  "median_total_seconds": 4.452,
+  "benchmark_wall_seconds": 24.828,
   "cases": [
     {
       "id": "127",
@@ -18,7 +19,7 @@
       "source_pages": 14,
       "candidate_pages": 17,
       "status": "READY_TO_REGISTER",
-      "total_seconds": 3.627
+      "total_seconds": 4.23
     },
     {
       "id": "133",
@@ -26,7 +27,7 @@
       "source_pages": 13,
       "candidate_pages": 17,
       "status": "READY_TO_REGISTER",
-      "total_seconds": 3.741
+      "total_seconds": 5.456
     },
     {
       "id": "134",
@@ -34,7 +35,7 @@
       "source_pages": 14,
       "candidate_pages": 21,
       "status": "READY_TO_REGISTER",
-      "total_seconds": 6.009
+      "total_seconds": 6.51
     },
     {
       "id": "138",
@@ -42,7 +43,7 @@
       "source_pages": 12,
       "candidate_pages": 15,
       "status": "READY_TO_REGISTER",
-      "total_seconds": 3.263
+      "total_seconds": 4.088
     },
     {
       "id": "152",
@@ -50,7 +51,7 @@
       "source_pages": 12,
       "candidate_pages": 17,
       "status": "READY_TO_REGISTER",
-      "total_seconds": 4.162
+      "total_seconds": 4.452
     }
   ],
   "visual_review": {

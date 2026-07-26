@@ -271,7 +271,7 @@ def register_candidate(
         raise SkillError(f"候选 PDF 不存在: {generated_pdf}")
     if not renderer.strip():
         raise SkillError("--renderer 不能为空")
-    if renderer.strip() == "academic-pdf-unified-flow":
+    if renderer.strip() == "academic-pdf-layout":
         expected_build_id = current_renderer_build_id()
         if (
             isinstance(renderer_build_id, str)

@@ -1919,7 +1919,7 @@ def validate_job(
             renderer = provenance.get("renderer")
             if not isinstance(renderer, str) or not renderer.strip():
                 errors.append("candidate_provenance.renderer 尚未记录")
-            elif renderer == "academic-pdf-unified-flow" and not re.fullmatch(
+            elif renderer == "academic-pdf-layout" and not re.fullmatch(
                 r"[a-f0-9]{64}",
                 str(provenance.get("renderer_build_id") or ""),
             ):

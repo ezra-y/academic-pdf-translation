@@ -62,8 +62,8 @@ from retained_source import (
 from renderer_identity import renderer_build_id
 
 
-RENDERER_NAME = "academic-pdf-unified-flow"
-RENDERER_VERSION = "85"
+RENDERER_NAME = "academic-pdf-layout"
+RENDERER_VERSION = "1.0"
 REFERENCE_KINDS = {
     "reference",
     "references",

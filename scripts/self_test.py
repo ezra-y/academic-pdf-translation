@@ -383,8 +383,8 @@ def _test_workflow_contracts() -> None:
         _, ledger, cycle, attempt, _ = _preflight_cycle(
             job_dir,
             job,
-            "academic-pdf-unified-flow",
-            "82",
+            "academic-pdf-layout",
+            "1.0.0",
             build_id,
             "1" * 64,
             "f1",
@@ -402,8 +402,8 @@ def _test_workflow_contracts() -> None:
         _, ledger, cycle, attempt, _ = _preflight_cycle(
             job_dir,
             job,
-            "academic-pdf-unified-flow",
-            "999",
+            "academic-pdf-layout",
+            "1.0.1",
             build_id,
             "2" * 64,
             "f2",
@@ -421,8 +421,8 @@ def _test_workflow_contracts() -> None:
         _, _, _, attempt, _ = _preflight_cycle(
             job_dir,
             job,
-            "academic-pdf-unified-flow",
-            "1000",
+            "academic-pdf-layout",
+            "2.0.0",
             build_id,
             "3" * 64,
             "f3",
@@ -432,8 +432,8 @@ def _test_workflow_contracts() -> None:
         _, _, _, attempt, _ = _preflight_cycle(
             job_dir,
             job,
-            "academic-pdf-unified-flow",
-            "1000",
+            "academic-pdf-layout",
+            "2.0.0",
             "b" * 64,
             "4" * 64,
             "f4",

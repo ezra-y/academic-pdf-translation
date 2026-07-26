@@ -330,7 +330,7 @@ def preflight_candidate(
         raise SkillError(
             "预检必须提供显示版本；统一生成器的次数按代码构建哈希计算"
         )
-    if renderer.strip() == "academic-pdf-unified-flow":
+    if renderer.strip() == "academic-pdf-layout":
         expected_build_id = current_renderer_build_id()
         if (
             isinstance(renderer_build_id, str)

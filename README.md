@@ -19,24 +19,40 @@
 
 ## 效果示例
 
-下面三组都来自当前 v85 生成器的真实复杂样本。点击图片可以查看大图。中文版
-以阅读和信息完整为优先，页码不要求与原文一一相同。
+下面三组都来自当前生成器的真实复杂样本。原文在上，中文译文在下；图片按
+README 全宽显示，也可以点击查看原始尺寸。中文版以阅读和信息完整为优先，
+页码不要求与原文一一相同。
 
 ### 四象限模型
 
-[![四象限模型翻译前后对比](assets/examples/comparison-quadrant-model.png)](assets/examples/comparison-quadrant-model.png)
+<p align="center">
+  <a href="assets/examples/comparison-quadrant-model.png">
+    <img src="assets/examples/comparison-quadrant-model.png" alt="四象限模型翻译前后对比" width="100%">
+  </a>
+</p>
+<p align="center"><em>图 1　四象限模型的原文与中文重建对照。</em></p>
 
 保留横纵轴、方向箭头、四个象限和每个象限的解释文字。
 
 ### 结构化表格
 
-[![结构化表格翻译前后对比](assets/examples/comparison-structured-table.png)](assets/examples/comparison-structured-table.png)
+<p align="center">
+  <a href="assets/examples/comparison-structured-table.png">
+    <img src="assets/examples/comparison-structured-table.png" alt="结构化表格翻译前后对比" width="100%">
+  </a>
+</p>
+<p align="center"><em>图 2　结构化表格的原文与中文重建对照。</em></p>
 
 重新建立表头、行列关系、百分比、样本量和表注，不把表格压成几句说明。
 
 ### 带文字的界面截图
 
-[![界面截图翻译前后对比](assets/examples/comparison-localized-screenshot.png)](assets/examples/comparison-localized-screenshot.png)
+<p align="center">
+  <a href="assets/examples/comparison-localized-screenshot.png">
+    <img src="assets/examples/comparison-localized-screenshot.png" alt="界面截图翻译前后对比" width="100%">
+  </a>
+</p>
+<p align="center"><em>图 3　原始界面截图与逐项中文文字键对照。</em></p>
 
 保留原始截图以避免伪造界面，同时增加逐项中文文字键。
 

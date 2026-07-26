@@ -38,7 +38,7 @@ def build_first_candidate(
         output_pdf = (
             job_dir
             / "staging"
-            / f"candidate-unified-v{RENDERER_VERSION}-{label}.pdf"
+            / f"candidate-{label}.pdf"
         )
     else:
         output_pdf = output_pdf.resolve()
@@ -57,7 +57,7 @@ def build_first_candidate(
     readiness_path = (
         job_dir
         / "staging"
-        / f"render-readiness-v{RENDERER_VERSION}-{label}.json"
+        / f"render-readiness-{label}.json"
     )
     write_json(readiness_path, readiness)
     if readiness["status"] != "READY_TO_RENDER":
@@ -104,14 +104,14 @@ def build_first_candidate(
     preflight_path = (
         job_dir
         / "staging"
-        / f"preflight-unified-v{RENDERER_VERSION}-{label}.json"
+        / f"preflight-{label}.json"
     )
     write_json(preflight_path, preflight)
     if preflight["status"] == "NEEDS_REPAIR":
         write_json(
             job_dir
             / "staging"
-            / f"repair-plan-unified-v{RENDERER_VERSION}-{label}.json",
+            / f"repair-plan-{label}.json",
             preflight["repair_plan"],
         )
     total_seconds = time.monotonic() - pipeline_started

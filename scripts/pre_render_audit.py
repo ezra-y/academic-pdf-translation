@@ -193,7 +193,7 @@ def _layout_contract_issues(
     selected_fonts: Any,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     issues: list[dict[str, Any]] = []
-    if layout_log.get("renderer") == "academic-pdf-unified-flow":
+    if layout_log.get("renderer") == "academic-pdf-layout":
         recorded_build = str(
             layout_log.get("renderer_build_id") or ""
         )

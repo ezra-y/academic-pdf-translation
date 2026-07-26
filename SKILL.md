@@ -246,7 +246,7 @@ python3 scripts/build_first_candidate.py /path/to/job
 
 入口先完成候选试排和排版合同，再刷新一次总检查，最后运行唯一一次注册前
 预检。中途失败不会注册候选。默认输出到
-`staging/candidate-unified-v<版本>-first.pdf`；集中返修时使用：
+`staging/candidate-first.pdf`；集中返修时使用：
 
 ```bash
 python3 scripts/build_first_candidate.py /path/to/job \
@@ -277,7 +277,7 @@ python3 scripts/build_first_candidate.py /path/to/job \
 python3 scripts/register_candidate.py \
   /path/to/job \
   /path/to/generated.pdf \
-  --renderer academic-pdf-unified-flow \
+  --renderer academic-pdf-layout \
   --renderer-version <build-report-version> \
   --renderer-build-id <build-report-hash> \
   --notes "首版；复杂页已专用重建"
@@ -395,8 +395,8 @@ python3 scripts/check_bundle.py
 python3 scripts/self_test.py
 ```
 
-改变候选页面组成时递增显示版本；预检身份以代码构建哈希为准。批量启用新版本
-前，至少选择 5 篇覆盖
+改变候选页面组成时更新稳定发布号；预检身份以代码构建哈希为准。批量发布前，
+至少选择 5 篇覆盖
 普通正文、结构化表格或模型图、照片、混合正文与参考文献的代表样本；每篇都
 必须在该版本第一次预检时返回 `READY_TO_REGISTER`。失败时修复共性输入或
 生成逻辑，不通过降低门槛或增加单篇例外放行。

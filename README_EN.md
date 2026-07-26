@@ -26,11 +26,17 @@ to PDF first.
 
 ### Japanese source to English output
 
-[![Japanese source and English output comparison](assets/examples/comparison-japanese-to-english-jglue.png)](assets/examples/comparison-japanese-to-english-jglue.png)
+<p align="center">
+  <a href="assets/examples/comparison-japanese-to-english-jglue.png">
+    <img src="assets/examples/comparison-japanese-to-english-jglue.png" alt="Japanese source and English output comparison" width="100%">
+  </a>
+</p>
+<p align="center"><em>Figure 1. Japanese source and searchable English reconstruction of a dense benchmark table and QA example.</em></p>
 
-This real example was generated with the current v85 renderer. It rebuilds an
-11-column benchmark table and a boxed QA example as searchable English text
-without dropping any model, split, metric, or value.
+This real example was generated with the current renderer. The source appears
+above the English translation at full README width. It rebuilds an 11-column
+benchmark table and a boxed QA example as searchable English text without
+dropping any model, split, metric, or value.
 
 Source: Kurihara, Kawahara, and Shibata, “JGLUE: Japanese General Language
 Understanding Evaluation,” p. 76,
