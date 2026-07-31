@@ -88,6 +88,30 @@ def _check_interface_metadata(root: Path) -> None:
         )
 
 
+def _check_reviewer_agent(root: Path) -> None:
+    path = root / "agents" / "independent-reviewer.md"
+    content = path.read_text(encoding="utf-8")
+    match = re.match(r"^---\n(.*?)\n---(?:\n|$)", content, re.DOTALL)
+    if not match:
+        raise BundleCheckError(
+            "agents/independent-reviewer.md 缺少有效 frontmatter"
+        )
+    values: dict[str, str] = {}
+    for line in match.group(1).splitlines():
+        key, separator, value = line.partition(":")
+        if separator and not line[:1].isspace():
+            values[key.strip()] = value.strip().strip("\"'")
+    if values.get("name") != "independent-pdf-reviewer":
+        raise BundleCheckError("独立审查 Agent 名称不一致")
+    if not values.get("description"):
+        raise BundleCheckError("独立审查 Agent description 不能为空")
+    if "reviews/independent.json" not in content:
+        raise BundleCheckError("独立审查 Agent 缺少输出合同")
+    skill_content = (root / "SKILL.md").read_text(encoding="utf-8")
+    if "agents/independent-reviewer.md" not in skill_content:
+        raise BundleCheckError("SKILL.md 尚未接入独立审查 Agent")
+
+
 def _check_json_assets(root: Path) -> None:
     assets = sorted((root / "assets").glob("*.json"))
     if not assets:
@@ -182,6 +206,7 @@ def check_bundle(root: Path | None = None) -> dict[str, int | str]:
         skill_root / "README.md",
         skill_root / "README_EN.md",
         skill_root / "SKILL.md",
+        skill_root / "agents" / "independent-reviewer.md",
         skill_root / "agents" / "openai.yaml",
         skill_root / "assets" / "job.schema.json",
         skill_root / "assets" / "language-profiles.json",
@@ -213,6 +238,7 @@ def check_bundle(root: Path | None = None) -> dict[str, int | str]:
 
     _check_skill_metadata(skill_root)
     _check_interface_metadata(skill_root)
+    _check_reviewer_agent(skill_root)
     _check_json_assets(skill_root)
     _check_python_sources(skill_root)
     _check_requirements(skill_root)

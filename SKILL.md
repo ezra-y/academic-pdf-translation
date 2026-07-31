@@ -13,8 +13,11 @@ license: MIT
 3. 一次生成并注册首版 PDF；
 4. 按用户档位一次审查、集中返修并收尾。
 
-不要把自动检查、风险报告和制作人自检拆成多轮人工审查。自动脚本负责找技术
-问题；审查智能体只完整读取一次源译对照图，汇总问题后一次性交给制作智能体。
+与用户交流的当前智能体是制作智能体，负责翻译、排版、返修和交付；基础流程
+不另设翻译智能体。平衡和精细档调用一次
+[独立审查智能体](agents/independent-reviewer.md)，快速档不调用。自动脚本
+负责找技术问题；独立审查智能体只完整读取一次源译对照图，汇总问题后一次性
+交给制作智能体。
 
 ## 开始前
 
@@ -319,19 +322,14 @@ python3 scripts/make_review_sheet.py /path/to/job
 默认每张审查图包含两组左右对照页，并按 PDF 顺序覆盖全文。脚本只生成审查
 图包、索引和一份对照 PDF；原文和候选哈希不变时直接复用缓存。
 
-审查智能体一次完成：
+随后启动一个独立审查智能体，并让它完整执行
+[independent-reviewer.md](agents/independent-reviewer.md)。派发时只提供 Skill
+根目录、作业目录、稳定的 `reviewer_id` 和质量档位，不提供制作过程的推理或
+预设结论。审查智能体按需生成疑点页高清对照，并一次性写入
+`reviews/independent.json`。
 
-1. 依次读取 `comparisons/sheets/` 的全部审查图；
-2. 对照原文和译文检查信息、遗漏、数字、图表、阅读顺序和可读性；
-3. 把全部问题一次性写入 `reviews/independent.json`；
-4. 不发现一个问题就退回，不重复生成对照材料。
-
-只有疑点页需要放大时才生成高清图：
-
-```bash
-python3 scripts/make_review_sheet.py /path/to/job \
-  --detail-pages "3,7-9"
-```
+运行环境不能启动独立智能体时，不得用制作智能体自审冒充审校版；保留当前
+候选，并请用户改选快速档或换到支持独立智能体的环境。
 
 复审完成后立即记录：
 
@@ -341,7 +339,8 @@ python3 scripts/record_review_round.py /path/to/job
 
 若结果为 PASS，直接进入 accepted。若结果为 FAIL，制作智能体按完整问题清单
 集中返修一次并注册第二版，随后运行全篇自动回归、重新生成对照图，只目视
-检查改动页、相邻页和同类受影响页。确认通过后记录：
+检查改动页、相邻页和同类受影响页。该定向确认仍由同一 `reviewer_id` 的独立
+审查智能体完成；确认通过后记录：
 
 ```bash
 python3 scripts/record_post_repair_confirmation.py /path/to/job \
