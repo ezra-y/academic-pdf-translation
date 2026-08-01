@@ -169,3 +169,5 @@ Workspace/
 - 工作区和输出：[references/workspace.md](references/workspace.md)
 - 已验证范围：[references/validation.md](references/validation.md)
 - 开源协议：[MIT License](LICENSE)
+- 隐私说明：[PRIVACY.md](PRIVACY.md)
+- 使用条款：[TERMS.md](TERMS.md)

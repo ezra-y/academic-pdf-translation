@@ -153,3 +153,5 @@ path for every translated PDF.
 ## License
 
 Released under the [MIT License](LICENSE).
+
+Also see the [Privacy Notice](PRIVACY.md) and [Terms](TERMS.md).

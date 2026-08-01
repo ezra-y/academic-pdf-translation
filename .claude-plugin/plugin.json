@@ -1,0 +1,20 @@
+{
+  "name": "academic-pdf-translation",
+  "version": "1.0.0",
+  "description": "Translate academic PDFs into readable, searchable PDFs while preserving document structure and research meaning.",
+  "author": {
+    "name": "Ezra-Y",
+    "url": "https://github.com/Ezra-Y"
+  },
+  "homepage": "https://github.com/Ezra-Y/academic-pdf-translation",
+  "repository": "https://github.com/Ezra-Y/academic-pdf-translation",
+  "license": "MIT",
+  "keywords": [
+    "academic",
+    "pdf",
+    "translation",
+    "research",
+    "tables",
+    "figures"
+  ]
+}
