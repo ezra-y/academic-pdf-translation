@@ -1,0 +1,3 @@
+check_bundle=0
+pytest=0
+self_test=0

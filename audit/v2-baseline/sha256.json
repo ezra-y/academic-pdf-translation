@@ -1,0 +1,13 @@
+{
+  "audit/v2-baseline/baseline.json": "8b1c368a4b7f4cd93cb156af307e6705cab05b3dc8fad267bf96375f922ad68d",
+  "audit/v2-baseline/check-bundle.txt": "c9a2526c33269d00cf8aea77e25b70160e816440c4021690223468e7d9d94805",
+  "audit/v2-baseline/exit-codes.txt": "b95351d6954710998c904a9b8705446197275a79d6192f0207fedea3a1c7874a",
+  "audit/v2-baseline/git-head.txt": "084203a6966a431dfa3321455bbc576c8a4f547d72affa82e368af32698509de",
+  "audit/v2-baseline/line-counts.txt": "58798025b361c72e9e9fd30efe13fdcb3a1a3f06928731a7f0d6fe7f592a2718",
+  "audit/v2-baseline/perf-baseline.json": "08ef6362b036f42d46f9941df07fd9e648442e5fe5da77a58236f08642ae71b0",
+  "audit/v2-baseline/perf-optimized.json": "6d1670d7ba5691c50665ce39eda466a777ba9288d6d914b8101d1666e73c3a6b",
+  "audit/v2-baseline/pytest.txt": "de5ed02b7eb2c58616268293e1e23fe49a434ec9baf60d149ab9c45753a22730",
+  "audit/v2-baseline/renderer-build-id.txt": "39c4e770890eb8c1b8e8edd542fd2ec30ba81b3adcf4ac26f4876a725ada6821",
+  "audit/v2-baseline/self-test.txt": "fb8bd294b861cc7a021384ceaf3fd25566a9d015d4ccefac07c19df07765f33f",
+  "audit/v2-baseline/unet-independent-review.json": "c3f1d715b6ac442223244f0d60b315f1a9d91f3d6d7815006a76bc6c5ad59486"
+}
