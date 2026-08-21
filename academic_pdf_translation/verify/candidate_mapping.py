@@ -1,0 +1,550 @@
+"""候选元素映射：每个源元素到底落在候选的哪一页。
+
+排版计划里写着"图 1 放在第 2 页"，这只是**打算**。这里回答的是另一个问题：
+打开产出的 PDF，图 1 真的在里面吗，在第几页？
+
+两者会不一样，而且不一样的时候恰恰是最要命的时候——真实样本里，
+排版计划把结构图安排在候选第 2 页，产出的 PDF 那一页却只有 1 个绘图对象，
+原文那 213 个一个都没搬过来。计划没错，产出错了。只看计划就看不见。
+
+所以这里的每一条定位都必须来自候选 PDF 本身：
+- 位图按图像字节的哈希认，一一对上；
+- 矢量元素按它区域内的文字锚点认（通道数、尺寸标注这些数字），
+  再用绘图对象数量做一次下界检查；
+- 文字元素按译文（或按策略保留的原文）在页面文字里查。
+
+绘图对象数量这件事要说清楚：它只能证明"不在"，不能证明"在"。
+一页有 300 个绘图对象，不代表其中就有你要的那 213 个。所以它单独用时
+只降级成一个下界判据，置信度写低，不假装是定位。
+"""
+
+from __future__ import annotations
+
+import hashlib
+import re
+from dataclasses import asdict, dataclass, field
+from typing import Any
+
+from academic_pdf_translation.contracts.enums import VISUAL_ELEMENT_TYPES
+from academic_pdf_translation.contracts.models import normalize_bbox
+
+SCHEMA_VERSION = "1.0"
+
+METHOD_IMAGE_DIGEST = "image-digest"
+METHOD_TEXT_ANCHOR = "text-anchor"
+METHOD_TEXT_SEARCH = "text-search"
+METHOD_DRAWING_BOUND = "drawing-count-lower-bound"
+METHOD_NOT_FOUND = "not-found"
+METHOD_NO_EVIDENCE = "no-locatable-evidence"
+
+#: 文字定位用的探针长度（去掉空白后的字符数）。
+TEXT_PROBE_CHARS = 24
+#: 文字探针的最短长度。「1 引言」这样的章节标题只有三个字，
+#: 门槛定高了它们就会被当成"找不到"。短探针照查，命中多页时如实报不唯一。
+MIN_TEXT_PROBE_CHARS = 2
+#: 矢量元素至少要认出这么多个文字锚点，才算定位成功。
+MIN_ANCHOR_HITS = 2
+#: 只靠绘图对象数量下界时的置信度。它证明不了"在"。
+DRAWING_BOUND_CONFIDENCE = 0.30
+#: 文字锚点定位的置信度。
+ANCHOR_CONFIDENCE = 0.75
+#: 精确匹配（图像哈希、文字全串）的置信度。
+EXACT_CONFIDENCE = 1.0
+
+WHITESPACE_RE = re.compile(r"\s+")
+#: 控制字符。数学字体的抽取残渣里常带着它们，拿去查页面文字永远查不到。
+CONTROL_RE = re.compile(r"[\x00-\x1f\x7f]")
+#: 图内文字锚点：数字、带 x 的尺寸、纯字母词都算。
+ANCHOR_RE = re.compile(r"[0-9]+(?:\s*[x×]\s*[0-9]+)?|[A-Za-z]{3,}")
+
+
+class CandidateMappingError(RuntimeError):
+    """候选映射失败。"""
+
+
+@dataclass
+class ElementLocation:
+    """一个源元素在候选里的落点与证据。"""
+
+    element_id: str
+    element_type: str
+    source_page: int
+    required: bool
+    candidate_pages: list[int] = field(default_factory=list)
+    candidate_bbox: list[float] | None = None
+    method: str = METHOD_NOT_FOUND
+    confidence: float = 0.0
+    evidence: str = ""
+    #: 元素在原文里的绘图对象数量。0 表示它本来就没有几何结构。
+    source_drawing_count: int = 0
+    #: 命中页里最多的绘图对象数量。几何有没有跟过来，看这个。
+    candidate_drawing_count: int = 0
+
+    @property
+    def geometry_ok(self) -> bool | None:
+        """几何结构有没有跟着搬过来。
+
+        元素本身没有绘图对象时返回 None——没有几何可谈，不是通过也不是失败。
+        """
+
+        if self.source_drawing_count <= 0:
+            return None
+        return self.candidate_drawing_count >= self.source_drawing_count
+
+    @property
+    def located(self) -> bool:
+        return bool(self.candidate_pages)
+
+    @property
+    def ambiguous(self) -> bool:
+        return len(self.candidate_pages) > 1
+
+    def as_dict(self) -> dict[str, Any]:
+        data = asdict(self)
+        data["located"] = self.located
+        data["ambiguous"] = self.ambiguous
+        data["geometry_ok"] = self.geometry_ok
+        return data
+
+
+@dataclass
+class CandidateMapping:
+    """一次映射的完整结果。"""
+
+    schema_version: str = SCHEMA_VERSION
+    source_pages: int = 0
+    candidate_pages: int = 0
+    locations: list[ElementLocation] = field(default_factory=list)
+
+    @property
+    def located(self) -> list[ElementLocation]:
+        return [item for item in self.locations if item.located]
+
+    @property
+    def missing(self) -> list[ElementLocation]:
+        return [item for item in self.locations if not item.located]
+
+    @property
+    def missing_required(self) -> list[ElementLocation]:
+        return [item for item in self.missing if item.required]
+
+    @property
+    def complete(self) -> bool:
+        """完整与否是**数出来的**，不是谁写上去的。"""
+
+        return not self.missing_required
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "schema_version": self.schema_version,
+            "source_pages": self.source_pages,
+            "candidate_pages": self.candidate_pages,
+            "element_count": len(self.locations),
+            "located_count": len(self.located),
+            "missing_count": len(self.missing),
+            "missing_required_count": len(self.missing_required),
+            "complete": self.complete,
+            "locations": [item.as_dict() for item in self.locations],
+        }
+
+
+def normalize_text(text: str) -> str:
+    """去掉全部空白和控制字符。
+
+    折行、对齐插入的空格都不该影响"这段文字在不在"。控制字符则是数学字体
+    抽取出来的残渣，拿它去查页面文字永远查不到，留着只会制造假的"缺失"。
+    """
+
+    return WHITESPACE_RE.sub("", CONTROL_RE.sub("", str(text or "")))
+
+
+def image_digests(document: Any) -> dict[str, list[tuple[int, list[float]]]]:
+    """候选里每张图的字节哈希到落点。
+
+    用图像字节，不用 xref——图被搬进新文档时 xref 会变，字节不会。
+    """
+
+    found: dict[str, list[tuple[int, list[float]]]] = {}
+    for index in range(document.page_count):
+        page = document[index]
+        for info in page.get_images(full=True):
+            xref = info[0]
+            try:
+                data = document.extract_image(xref)
+            except Exception:  # noqa: BLE001 - 取不到就当这张认不出来
+                continue
+            digest = hashlib.sha256(data.get("image") or b"").hexdigest()
+            rects = page.get_image_rects(xref)
+            bbox = (
+                [rects[0].x0, rects[0].y0, rects[0].x1, rects[0].y1]
+                if rects
+                else None
+            )
+            found.setdefault(digest, []).append((index + 1, bbox or []))
+    return found
+
+
+def source_image_digest(document: Any, element: dict[str, Any]) -> str | None:
+    xref = (element.get("detail") or {}).get("xref")
+    if not xref:
+        return None
+    try:
+        data = document.extract_image(int(xref))
+    except Exception:  # noqa: BLE001 - 原图取不到就没法按哈希认
+        return None
+    return hashlib.sha256(data.get("image") or b"").hexdigest()
+
+
+def text_anchors(
+    document: Any, element: dict[str, Any], *, limit: int = 12
+) -> list[str]:
+    """一个矢量元素区域内的文字锚点。
+
+    结构图里的通道数、特征图尺寸都是文字。它们是几何检查看不见、
+    却最能证明"这张图真的搬过来了"的东西。
+    """
+
+    import fitz
+
+    box = normalize_bbox(element.get("bbox"))
+    page_number = int(element.get("page") or 0)
+    if box is None or not 1 <= page_number <= document.page_count:
+        return []
+    text = document[page_number - 1].get_text("text", clip=fitz.Rect(*box))
+    seen: list[str] = []
+    for token in ANCHOR_RE.findall(text):
+        cleaned = normalize_text(token)
+        if len(cleaned) < 2 or cleaned in seen:
+            continue
+        seen.append(cleaned)
+        if len(seen) >= limit:
+            break
+    return seen
+
+
+def _page_texts(document: Any) -> list[str]:
+    return [
+        normalize_text(document[index].get_text("text"))
+        for index in range(document.page_count)
+    ]
+
+
+def locate_by_text(
+    page_texts: list[str], probe: str
+) -> list[int]:
+    """一段文字出现在候选的哪些页。"""
+
+    cleaned = normalize_text(probe)
+    if len(cleaned) < MIN_TEXT_PROBE_CHARS:
+        return []
+    return [
+        index + 1
+        for index, text in enumerate(page_texts)
+        if cleaned in text
+    ]
+
+
+def locate_by_anchors(
+    page_texts: list[str], anchors: list[str]
+) -> tuple[list[int], int]:
+    """按文字锚点定位，返回命中页和最高命中数。"""
+
+    if not anchors:
+        return ([], 0)
+    best = 0
+    pages: list[int] = []
+    for index, text in enumerate(page_texts):
+        hits = sum(1 for anchor in anchors if anchor in text)
+        if hits < MIN_ANCHOR_HITS:
+            continue
+        if hits > best:
+            best = hits
+            pages = [index + 1]
+        elif hits == best:
+            pages.append(index + 1)
+    return (pages, best)
+
+
+def _drawing_counts(document: Any) -> list[int]:
+    return [
+        len(document[index].get_drawings())
+        for index in range(document.page_count)
+    ]
+
+
+def _bbox_in_candidate(
+    candidate_document: Any, page_number: int, probe: str
+) -> list[float] | None:
+    """在候选页里量出这段文字的坐标。量不到就留空，不猜。"""
+
+    if not 1 <= page_number <= candidate_document.page_count:
+        return None
+    needle = str(probe or "").strip()[:40]
+    if not needle:
+        return None
+    rects = candidate_document[page_number - 1].search_for(needle)
+    if not rects:
+        return None
+    rect = rects[0]
+    return [rect.x0, rect.y0, rect.x1, rect.y1]
+
+
+def locate_element(
+    source_document: Any,
+    candidate_document: Any,
+    element: dict[str, Any],
+    *,
+    page_texts: list[str],
+    digests: dict[str, list[tuple[int, list[float]]]],
+    drawing_counts: list[int],
+    element_texts: dict[str, str] | None = None,
+) -> ElementLocation:
+    """定位一个源元素。逐个判据往下试，用上哪个就记哪个。"""
+
+    element_id = str(element.get("id") or "")
+    element_type = str(element.get("type") or "")
+    needed = int((element.get("detail") or {}).get("drawing_count") or 0)
+    location = ElementLocation(
+        element_id=element_id,
+        element_type=element_type,
+        source_page=int(element.get("page") or 0),
+        required=bool(element.get("required")),
+        source_drawing_count=needed,
+    )
+
+    def finish(result: ElementLocation) -> ElementLocation:
+        """收尾：把命中页里的绘图对象数量记下来，供几何检查用。"""
+
+        if result.candidate_pages:
+            result.candidate_drawing_count = max(
+                drawing_counts[page - 1]
+                for page in result.candidate_pages
+                if 1 <= page <= len(drawing_counts)
+            )
+        return result
+
+    # 1. 位图：按图像字节哈希一一对上，最硬的证据。
+    digest = source_image_digest(source_document, element)
+    if digest:
+        hits = digests.get(digest, [])
+        if hits:
+            location.candidate_pages = sorted({page for page, _ in hits})
+            location.candidate_bbox = next(
+                (bbox for _, bbox in hits if bbox), None
+            )
+            location.method = METHOD_IMAGE_DIGEST
+            location.confidence = EXACT_CONFIDENCE
+            location.evidence = f"图像字节哈希 {digest[:12]} 命中"
+            return finish(location)
+        location.method = METHOD_NOT_FOUND
+        location.confidence = 0.0
+        location.evidence = f"图像字节哈希 {digest[:12]} 在候选里找不到"
+        return finish(location)
+
+    # 2. 文字元素：按译文（或按策略保留的原文）查。
+    probe = normalize_text((element_texts or {}).get(element_id, ""))
+    if probe:
+        pages = locate_by_text(page_texts, probe[:TEXT_PROBE_CHARS])
+        if pages:
+            location.candidate_pages = pages
+            location.candidate_bbox = _bbox_in_candidate(
+                candidate_document, pages[0], probe[:TEXT_PROBE_CHARS]
+            )
+            location.method = METHOD_TEXT_SEARCH
+            location.confidence = (
+                EXACT_CONFIDENCE if len(pages) == 1 else round(1 / len(pages), 2)
+            )
+            location.evidence = (
+                f"文字探针 {probe[:TEXT_PROBE_CHARS]!r} 命中 {len(pages)} 页"
+            )
+            return finish(location)
+
+    # 3. 矢量元素：按区域内的文字锚点认。
+    anchors = text_anchors(source_document, element)
+    pages, hits = locate_by_anchors(page_texts, anchors)
+    if pages:
+        location.candidate_pages = pages
+        location.method = METHOD_TEXT_ANCHOR
+        location.confidence = ANCHOR_CONFIDENCE if len(pages) == 1 else 0.45
+        location.evidence = (
+            f"{len(anchors)} 个文字锚点里命中 {hits} 个"
+        )
+        return finish(location)
+
+    # 4. 只剩绘图对象数量。它只能证明"不在"。
+    if needed > 0:
+        enough = [
+            index + 1
+            for index, count in enumerate(drawing_counts)
+            if count >= needed
+        ]
+        if not enough:
+            location.method = METHOD_NOT_FOUND
+            location.evidence = (
+                f"原文该元素有 {needed} 个绘图对象，候选里最多的一页只有 "
+                f"{max(drawing_counts or [0])} 个，几何结构没有搬过来"
+            )
+            return finish(location)
+        location.candidate_pages = enough
+        location.method = METHOD_DRAWING_BOUND
+        location.confidence = DRAWING_BOUND_CONFIDENCE
+        location.evidence = (
+            f"只有绘图对象数量下界可用（需要 {needed} 个），"
+            "不能证明这一页上的就是它"
+        )
+        return finish(location)
+
+    usable_probe = len(probe) >= MIN_TEXT_PROBE_CHARS
+    if usable_probe or anchors:
+        location.method = METHOD_NOT_FOUND
+        location.evidence = "文字探针与锚点都没有命中任何一页"
+    elif probe:
+        # 只剩一两个字符的探针多半是数学字体的抽取残渣，查不到不等于丢了。
+        location.method = METHOD_NO_EVIDENCE
+        location.evidence = (
+            f"可用文字只有 {len(probe)} 个字符（{probe!r}），"
+            f"不足 {MIN_TEXT_PROBE_CHARS} 个，无法定位"
+        )
+    else:
+        location.method = METHOD_NO_EVIDENCE
+        location.evidence = "这个元素没有可用来定位的文字、图像或几何证据"
+    return finish(location)
+
+
+def build_mapping(
+    source_document: Any,
+    candidate_document: Any,
+    elements: list[dict[str, Any]],
+    *,
+    element_texts: dict[str, str] | None = None,
+) -> CandidateMapping:
+    """把整份文档的元素逐个映射到候选。"""
+
+    if not elements:
+        raise CandidateMappingError("元素清单为空，无法建立候选映射")
+
+    page_texts = _page_texts(candidate_document)
+    digests = image_digests(candidate_document)
+    drawing_counts = _drawing_counts(candidate_document)
+
+    locations = [
+        locate_element(
+            source_document,
+            candidate_document,
+            element,
+            page_texts=page_texts,
+            digests=digests,
+            drawing_counts=drawing_counts,
+            element_texts=element_texts,
+        )
+        for element in elements
+    ]
+    return CandidateMapping(
+        source_pages=source_document.page_count,
+        candidate_pages=candidate_document.page_count,
+        locations=locations,
+    )
+
+
+def element_texts_from_units(
+    elements: list[dict[str, Any]],
+    units: list[dict[str, Any]],
+    *,
+    bindings: list[dict[str, Any]] | None = None,
+) -> dict[str, str]:
+    """把翻译单元的文字按元素归拢，供文字定位使用。
+
+    单元归属优先取 ``unit_bindings.json`` 里的绑定表。元素清单自己的
+    ``translation_unit_ids`` 常常是空的——绑定是另一个阶段算出来的，
+    没回填进清单。拿空字段当归属，结果就是每个文字元素都"找不到"。
+
+    文字优先用译文；按策略保留原文的单元用原文。两者都没有就不给探针——
+    宁可报"没有可用证据"，也不要拿一段无关文字去碰运气。
+    """
+
+    by_unit = {str(unit.get("id") or ""): unit for unit in units}
+    unit_ids_by_element: dict[str, list[str]] = {}
+
+    for binding in bindings or []:
+        element_id = str(binding.get("element_id") or "")
+        unit_id = str(binding.get("unit_id") or "")
+        if element_id and unit_id:
+            unit_ids_by_element.setdefault(element_id, []).append(unit_id)
+
+    for element in elements:
+        element_id = str(element.get("id") or "")
+        if element_id in unit_ids_by_element:
+            continue
+        listed = [
+            str(unit_id) for unit_id in element.get("translation_unit_ids") or []
+        ]
+        if listed:
+            unit_ids_by_element[element_id] = listed
+
+    texts: dict[str, str] = {}
+    for element_id, unit_ids in unit_ids_by_element.items():
+        parts: list[str] = []
+        for unit_id in unit_ids:
+            unit = by_unit.get(unit_id)
+            if unit is None:
+                continue
+            value = str(
+                unit.get("translation") or unit.get("source") or ""
+            ).strip()
+            if value:
+                parts.append(value)
+        if parts:
+            texts[element_id] = " ".join(parts)
+    return texts
+
+
+def verify_mapping(mapping: CandidateMapping) -> list[str]:
+    """核对映射结果，把说不清楚的地方全摆出来。"""
+
+    problems: list[str] = []
+
+    for item in mapping.missing_required:
+        problems.append(
+            f"{item.element_id}（{item.element_type}，原文第 "
+            f"{item.source_page} 页）在候选里找不到: {item.evidence}"
+        )
+
+    for item in mapping.locations:
+        if item.ambiguous:
+            problems.append(
+                f"{item.element_id}: 在候选第 {item.candidate_pages} 页都疑似命中，"
+                "定位不唯一"
+            )
+        if (
+            item.located
+            and item.required
+            and item.method == METHOD_DRAWING_BOUND
+        ):
+            problems.append(
+                f"{item.element_id}: 只有绘图对象数量下界，"
+                "证明不了它真的在候选里"
+            )
+        if item.located and item.geometry_ok is False:
+            problems.append(
+                f"{item.element_id}: 文字锚点在候选第 {item.candidate_pages} 页"
+                f"找得到，但那些页最多只有 {item.candidate_drawing_count} 个绘图"
+                f"对象，少于原文的 {item.source_drawing_count} 个——"
+                "图里的文字漏进了正文，几何结构没跟过来"
+            )
+        if item.method == METHOD_NO_EVIDENCE and item.required:
+            problems.append(
+                f"{item.element_id}: 必需元素却没有任何可定位的证据"
+            )
+
+    visual = [
+        item
+        for item in mapping.locations
+        if item.element_type in {value.value for value in VISUAL_ELEMENT_TYPES}
+    ]
+    missing_visual = [item for item in visual if not item.located]
+    if missing_visual:
+        problems.append(
+            f"{len(missing_visual)}/{len(visual)} 个视觉元素在候选里找不到: "
+            + "、".join(item.element_id for item in missing_visual[:8])
+        )
+    return problems
