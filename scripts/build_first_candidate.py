@@ -11,6 +11,7 @@ from build_candidate import (
     RENDERER_VERSION,
     build_candidate,
 )
+from font_preparation import prepare_job_fonts
 from pre_render_audit import (
     build_input_readiness_audit,
     build_pre_render_audit,
@@ -47,7 +48,10 @@ def build_first_candidate(
         output_pdf = output_pdf.resolve()
 
     input_started = time.monotonic()
+    # 先解析字体，再做输入就绪检查。顺序反过来，全新作业永远进不来。
+    font_report = prepare_job_fonts(job_dir)
     input_readiness = build_input_readiness_audit(job_dir)
+    input_readiness["font_preparation"] = font_report
     input_seconds = time.monotonic() - input_started
     input_readiness_path = (
         job_dir

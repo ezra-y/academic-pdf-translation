@@ -20,12 +20,6 @@ from _common import (
     utc_now,
     write_json,
 )
-from cjk_markup import (
-    install_reportlab_cjk_nobr_patch,
-    reportlab_cjk_markup,
-)
-from check_bundle import check_bundle
-from corpus_audit import audit_corpus
 from audit_translation_completeness import (
     _candidate_stage_has_current_pdf,
     _coordinate_filtered_source_text,
@@ -42,11 +36,10 @@ from build_candidate import (
     _bounded_float,
     _column_widths,
     _complex_flowables,
-    _is_cross_page_continuation,
     _edge_label_lines,
-    _font_request_match_score,
     _image_clip_bbox,
     _image_flowables,
+    _is_cross_page_continuation,
     _is_reference_heading_unit,
     _join_target_fragments,
     _localized_image_label_flowables,
@@ -59,17 +52,31 @@ from build_candidate import (
     _source_ends_paragraph,
     _styles,
     _table_flowables,
-    _unit_fully_covered_by_retained,
     _unit_flowables,
+    _unit_fully_covered_by_retained,
     _unit_text_blocks,
+)
+from check_bundle import check_bundle
+from cjk_markup import (
+    install_reportlab_cjk_nobr_patch,
+    reportlab_cjk_markup,
 )
 from content_anchors import (
     anchors_present,
     present_acronyms,
     required_anchors,
+)
+from content_anchors import (
     statistics as content_statistics,
 )
+from corpus_audit import audit_corpus
 from extract_source_structure import extract_source_structure
+from font_preparation import (
+    _font_request_match_score,
+    fonts_are_current,
+    prepare_job_fonts,
+)
+from i18n import message
 from init_job import (
     _existing_job_dirs,
     _existing_workspace_job,
@@ -84,20 +91,21 @@ from preflight_candidate import (
     preflight_candidate,
 )
 from qa_pdf import (
-    _allowed_latin_corpus,
+    SOURCE_MAPPING_LABEL_PATTERN,
     _all_complex_candidate_pages,
+    _allowed_latin_corpus,
     _body_width_collapsed,
     _bottom_whitespace_is_unbalanced,
     _column_blank_ratio,
-    _compressed_page_requires_repair,
     _complex_localized_source_labels,
+    _compressed_page_requires_repair,
     _document_typography_locked,
     _excessive_unused_space_unjustified,
     _expected_literal_placeholder_tokens,
     _font_name_token,
     _horizontal_width_change_justified,
-    _inventory_accounts_for_missing_image,
     _interline_gap_outliers,
+    _inventory_accounts_for_missing_image,
     _low_table_spans,
     _mapped_entry_has_visible_retained_content,
     _meaningful_image_bbox,
@@ -105,40 +113,38 @@ from qa_pdf import (
     _paragraph_gap_inflation_justified,
     _placeholder_token,
     _pre_complex_break_pages,
-    _residual_source_prose,
     _regions_for_page,
+    _residual_source_prose,
     _structured_complex_candidate_pages,
     _unit_is_substantive_body_prose,
-    SOURCE_MAPPING_LABEL_PATTERN,
     run_qa,
 )
-from register_candidate import register_candidate
 from record_review_round import record_review_round
 from record_work_checkpoint import record_work_checkpoint
+from register_candidate import register_candidate
 from reportlab_layout import FlowItem, layout_flow, make_cjk_style
 from retained_source import (
     _clean_block_text,
     _is_page_furniture,
-    _reference_entries,
     _records_have_reference_signal,
+    _reference_entries,
     _trim_reference_tail,
     extract_retained_regions,
     retained_regions_by_page,
+)
+from review_policy import (
+    PRECISE_KEY_CHECKS,
+    validate_post_repair_confirmation,
 )
 from review_risk_report import (
     _running_values,
     _year_present,
     build_review_risk_report,
 )
-from review_policy import (
-    PRECISE_KEY_CHECKS,
-    validate_post_repair_confirmation,
-)
 from semantic_markers import infer_review_flags, validate_terminology
-from i18n import message
-from set_review_mode import set_review_mode
 from set_complex_content import set_complex_content
 from set_complex_payload import validate_complex_payload_item
+from set_review_mode import set_review_mode
 from translation_truthfulness import refresh_coverage
 from typography_fit import (
     PageFitMeasurement,
@@ -151,14 +157,14 @@ from validate_job import (
     _has_reference_heading,
     _has_source_citation_block,
     _is_nonsemantic_divider_source,
-    _replace_page_unit_pages,
-    _source_bbox_fuzzy_match,
     _normalize_source_text,
+    _replace_page_unit_pages,
+    _requires_exact_candidate_presence,
+    _source_bbox_fuzzy_match,
     _validate_candidate_text_presence,
     _validate_complex_content_policy,
     _validate_source_text_coverage,
     _validate_translation,
-    _requires_exact_candidate_presence,
     validate_job,
 )
 from workspace import (

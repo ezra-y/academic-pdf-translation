@@ -37,12 +37,6 @@ from reportlab.platypus import (
 )
 
 import perf_trace
-from i18n import message
-from reportlab_layout import make_cjk_style
-from typography_fit import (
-    candidate_groups,
-    search_first_acceptable,
-)
 from _common import (
     SkillError,
     _complex_item_source_pages,
@@ -58,15 +52,25 @@ from _common import (
     write_json,
 )
 from cjk_markup import install_reportlab_cjk_nobr_patch, reportlab_cjk_markup
-from set_complex_payload import validate_complex_payload_item
+from font_preparation import (
+    _resolve_fonts,
+    _resolve_reference_font,
+    font_evidence,
+)
+from i18n import message
+from renderer_identity import renderer_build_id
+from reportlab_layout import make_cjk_style
 from retained_source import (
     REFERENCE_CATEGORIES,
     extract_retained_regions,
     retained_region_ids,
     retained_regions_by_page,
 )
-from renderer_identity import renderer_build_id
-
+from set_complex_payload import validate_complex_payload_item
+from typography_fit import (
+    candidate_groups,
+    search_first_acceptable,
+)
 
 RENDERER_NAME = "academic-pdf-layout"
 RENDERER_VERSION = "1.0"
@@ -76,12 +80,6 @@ REFERENCE_KINDS = {
     "bibliography",
 }
 HEADING_KINDS = {"title", "subtitle", "heading", "section-heading"}
-FONT_DIRS = (
-    Path("/System/Library/Fonts"),
-    Path("/System/Library/Fonts/Supplemental"),
-    Path("/Library/Fonts"),
-    Path.home() / "Library/Fonts",
-)
 SUPERSCRIPT_DIGITS = "⁰¹²³⁴⁵⁶⁷⁸⁹"
 
 
@@ -192,163 +190,6 @@ def _edge_label_lines(label: str) -> list[str]:
         for line in str(label or "").splitlines()
         if line.strip()
     ]
-
-
-def _normalized_font_token(value: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "", value.casefold())
-
-
-FONT_STYLE_SUFFIXES = {
-    "",
-    "regular",
-    "book",
-    "roman",
-    "medium",
-    "light",
-    "bold",
-    "semibold",
-    "demibold",
-    "heavy",
-    "italic",
-    "oblique",
-    "bolditalic",
-    "boldoblique",
-    "semibolditalic",
-}
-
-
-def _font_request_match_score(requested: str, stem: str) -> int:
-    requested_token = _normalized_font_token(requested)
-    stem_token = _normalized_font_token(stem)
-    if not requested_token or not stem_token.startswith(requested_token):
-        return 0
-    suffix = stem_token[len(requested_token) :]
-    if suffix not in FONT_STYLE_SUFFIXES:
-        return 0
-    if not suffix:
-        return 100
-    if suffix in {"regular", "book", "roman", "medium"}:
-        return 90
-    return 70
-
-
-def _font_family_token(path: Path) -> str:
-    token = _normalized_font_token(path.stem)
-    for suffix in sorted(
-        FONT_STYLE_SUFFIXES - {""},
-        key=len,
-        reverse=True,
-    ):
-        if token.endswith(suffix):
-            return token[: -len(suffix)]
-    return token
-
-
-def _font_files() -> list[Path]:
-    files: list[Path] = []
-    for directory in FONT_DIRS:
-        if not directory.is_dir():
-            continue
-        files.extend(
-            path
-            for path in directory.rglob("*")
-            if path.suffix.casefold() in {".ttf", ".ttc", ".otf"}
-        )
-    return files
-
-
-def _resolve_fonts(job: dict[str, Any]) -> tuple[Path, Path]:
-    selected = job.get("quality", {}).get("selected_fonts", [])
-    explicit = [
-        Path(value).expanduser().resolve()
-        for value in selected
-        if isinstance(value, str) and Path(value).expanduser().is_file()
-    ]
-    if explicit:
-        return explicit[0], explicit[1] if len(explicit) > 1 else explicit[0]
-
-    requested = [
-        str(value)
-        for value in selected
-        if isinstance(value, str) and value.strip()
-    ]
-    requested.extend(
-        str(value)
-        for value in job.get("quality", {}).get("font_candidates", [])
-        if isinstance(value, str) and value.strip()
-    )
-    aliases = {
-        "microsoftyahei": ("msyh", "yahei"),
-        "sourcehansanssc": ("sourcehansans", "sourcesans"),
-        "notosanscjksc": ("notosanscjk",),
-        "pingfangsc": ("pingfang",),
-        "stheiti": ("stheiti",),
-        "arialunicodems": ("arialunicode",),
-    }
-    available = _font_files()
-    normalized = [
-        (_normalized_font_token(path.stem), path)
-        for path in available
-    ]
-    matches: list[Path] = []
-    for name in requested:
-        token = _normalized_font_token(name)
-        candidates = (token,) + aliases.get(token, ())
-        scored = [
-            (
-                _font_request_match_score(candidate, stem)
-                - alias_index,
-                path,
-            )
-            for stem, path in normalized
-            for alias_index, candidate in enumerate(candidates)
-            if _font_request_match_score(candidate, stem)
-        ]
-        match = (
-            max(scored, key=lambda item: (item[0], str(item[1])))[1]
-            if scored
-            else None
-        )
-        if match and match not in matches:
-            matches.append(match)
-    if not matches:
-        fallback = Path("/System/Library/Fonts/STHeiti Medium.ttc")
-        if fallback.is_file():
-            matches.append(fallback)
-    if not matches:
-        raise SkillError(
-            "无法解析目标语言字体。请在 job.json.quality.selected_fonts "
-            "中写入可读取的字体文件路径。"
-        )
-    regular = matches[0]
-    family = _font_family_token(regular)
-    bold_names = {
-        f"{family}bold",
-        f"{family}semibold",
-        f"{family}demibold",
-        f"{family}heavy",
-    }
-    bold = next(
-        (
-            path
-            for path in matches[1:] + available
-            if _normalized_font_token(path.stem) in bold_names
-        ),
-        regular,
-    )
-    return regular, bold
-
-
-def _resolve_reference_font(regular_font: Path) -> Path:
-    candidates = (
-        Path("/System/Library/Fonts/Supplemental/Arial.ttf"),
-        Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
-        Path("/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf"),
-    )
-    return next(
-        (path.resolve() for path in candidates if path.is_file()),
-        regular_font,
-    )
 
 
 def _register_font(name: str, path: Path) -> None:
@@ -6009,6 +5850,7 @@ def build_candidate(
             "复杂页载荷不完整: " + "；".join(invalid_complex[:30])
         )
     source_path = internal_job_path(job_dir, job["source"]["job_path"])
+    # 字体正常在初始化或统一入口就已冻结；这里只兜底，并保持证据同步。
     regular_path, bold_path = _resolve_fonts(job)
     reference_path = _resolve_reference_font(regular_path)
     resolved_font_paths = [
@@ -6017,7 +5859,11 @@ def build_candidate(
         str(reference_path),
     ]
     if job.get("quality", {}).get("selected_fonts") != resolved_font_paths:
-        job.setdefault("quality", {})["selected_fonts"] = resolved_font_paths
+        quality = job.setdefault("quality", {})
+        quality["selected_fonts"] = resolved_font_paths
+        quality["selected_font_evidence"] = font_evidence(
+            [regular_path, bold_path, reference_path]
+        )
         write_json(job_dir / "job.json", job)
     regular_font = "AcademicUnifiedRegular"
     bold_font = "AcademicUnifiedBold"

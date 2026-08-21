@@ -14,8 +14,8 @@ from _common import (
     write_json,
 )
 from extract_source_structure import extract_source_structure
+from font_preparation import prepare_job_fonts
 from pdf_profile import profile_pdf
-from source_analysis import analysis_record, analyze_source
 from prepare_translation_units import (
     build_source_units,
     build_translation_skeleton,
@@ -24,6 +24,7 @@ from review_policy import (
     post_repair_confirmation_template,
     review_choice_config,
 )
+from source_analysis import analysis_record, analyze_source
 from workspace import (
     TranslationWorkspace,
     open_workspace,
@@ -441,6 +442,14 @@ def initialize_job(
             },
         },
     )
+    # 字体在这里就解析：输入就绪检查跑在排版之前，如果留到排版时才选，
+    # 全新作业会永远卡在 SELECTED_FONTS_MISSING。
+    font_report = prepare_job_fonts(job_dir)
+    job = load_json(job_dir / "job.json")
+    job["quality"]["selected_fonts"] = font_report["selected_fonts"]
+    job["quality"]["selected_font_evidence"] = font_report[
+        "selected_font_evidence"
+    ]
     return job
 
 

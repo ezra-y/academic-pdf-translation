@@ -10,7 +10,6 @@ from typing import Any
 from reportlab.pdfbase.ttfonts import TTFont
 
 import perf_trace
-
 from _common import (
     SkillError,
     internal_job_path,
@@ -21,10 +20,9 @@ from _common import (
     write_json,
 )
 from audit_translation_completeness import build_completeness_audit
-from validate_job import validate_job
-from retained_source import retained_region_ids
 from renderer_identity import renderer_build_id
-
+from retained_source import retained_region_ids
+from validate_job import validate_job
 
 VISIBLE_MARKUP_RE = re.compile(
     r"<\s*/?\s*(?:br|p|div|span|font|table|tr|td|th)\b",
@@ -176,6 +174,47 @@ def _font_file_issues(
             }
         )
     return issues, evidence, normalized
+
+
+def _stale_font_evidence_issues(
+    quality: dict[str, Any],
+    observed: list[dict[str, str]],
+) -> list[dict[str, Any]]:
+    """冻结时记下的字体哈希与当前磁盘内容是否一致。
+
+    字体被替换或升级后哈希会变；此时必须重新解析，不能继续用旧记录。
+    """
+
+    recorded = quality.get("selected_font_evidence")
+    if not isinstance(recorded, list) or len(recorded) != len(observed):
+        return [
+            {
+                "code": "SELECTED_FONT_EVIDENCE_MISSING",
+                "message": (
+                    "job.quality.selected_font_evidence 缺失或与冻结字体数量"
+                    "不一致；请运行 font_preparation.py 重新冻结字体。"
+                ),
+            }
+        ]
+    changed = [
+        entry["path"]
+        for entry, record in zip(observed, recorded, strict=True)
+        if not isinstance(record, dict)
+        or record.get("path") != entry["path"]
+        or record.get("sha256") != entry["sha256"]
+    ]
+    if changed:
+        return [
+            {
+                "code": "SELECTED_FONT_FILE_CHANGED",
+                "message": (
+                    "字体文件内容与冻结记录不一致；请运行 font_preparation.py "
+                    "--force 重新解析。"
+                ),
+                "paths": changed,
+            }
+        ]
+    return []
 
 
 def _font_contract_issues(
@@ -560,9 +599,12 @@ def build_input_readiness_audit(job_dir: Path) -> dict[str, Any]:
     job_dir = job_dir.resolve()
     context = _audit_context(job_dir)
     paths = context["paths"]
+    quality = context["job"].get("quality", {})
     font_issues, font_evidence, _ = _font_file_issues(
-        context["job"].get("quality", {}).get("selected_fonts")
+        quality.get("selected_fonts")
     )
+    if not font_issues:
+        font_issues.extend(_stale_font_evidence_issues(quality, font_evidence))
 
     issues: list[dict[str, Any]] = [
         *context["validation_issues"],
