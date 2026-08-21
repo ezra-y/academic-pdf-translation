@@ -4,6 +4,7 @@ import argparse
 import io
 from pathlib import Path
 
+import perf_trace
 from _common import (
     SkillError,
     import_fitz,
@@ -189,7 +190,7 @@ def _cache_matches(
     )
 
 
-def make_review_sheet(
+def _timed_make_review_sheet(
     job_dir: Path,
     dpi: int = 110,
     pages_per_sheet: int = 2,
@@ -424,6 +425,13 @@ def make_review_sheet(
         "cache_hit": cache_hit,
     }
 
+
+
+def make_review_sheet(*args, **kwargs):
+    """计时包装：阶段耗时进入性能基线，行为与实现完全一致。"""
+
+    with perf_trace.stage("review_sheet"):
+        return _timed_make_review_sheet(*args, **kwargs)
 
 def main() -> int:
     parser = argparse.ArgumentParser(

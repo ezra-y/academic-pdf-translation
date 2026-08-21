@@ -6,6 +6,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
+import perf_trace
 from _common import SkillError, import_fitz
 
 
@@ -635,7 +636,7 @@ def _records_covered_by_source(
     )
 
 
-def extract_retained_regions(
+def _timed_extract_retained_regions(
     source: Path | Any,
     retained: dict[str, Any],
     translation: dict[str, Any] | None = None,
@@ -866,3 +867,10 @@ def retained_region_covers_page(
     width_ratio = max(0.0, x1 - x0) / max(page_width, 1.0)
     height_ratio = max(0.0, y1 - y0) / max(page_height, 1.0)
     return width_ratio >= 0.82 and height_ratio >= 0.78
+
+
+def extract_retained_regions(*args, **kwargs):
+    """计时包装：阶段耗时进入性能基线，行为与实现完全一致。"""
+
+    with perf_trace.stage("retained_region_extract"):
+        return _timed_extract_retained_regions(*args, **kwargs)

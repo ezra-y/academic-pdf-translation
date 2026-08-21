@@ -5,6 +5,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+import perf_trace
 from _common import SkillError, load_json, sha256_file, write_json
 from content_anchors import required_anchors
 from semantic_markers import infer_review_flags
@@ -61,7 +62,7 @@ def _split_text(text: str, max_chars: int) -> list[str]:
     return chunks
 
 
-def build_source_units(
+def _timed_build_source_units(
     structure: dict[str, Any],
     *,
     max_chars: int = 900,
@@ -240,6 +241,13 @@ def prepare_translation_units(
     write_json(translation_path, translation)
     return source_units, translation
 
+
+
+def build_source_units(*args, **kwargs):
+    """计时包装：阶段耗时进入性能基线，行为与实现完全一致。"""
+
+    with perf_trace.stage("prepare_translation_units"):
+        return _timed_build_source_units(*args, **kwargs)
 
 def main() -> int:
     parser = argparse.ArgumentParser(

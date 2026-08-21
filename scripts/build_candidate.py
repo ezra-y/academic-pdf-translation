@@ -38,6 +38,10 @@ from reportlab.platypus import (
 
 import perf_trace
 from i18n import message
+from typography_fit import (
+    candidate_groups,
+    search_first_acceptable,
+)
 from _common import (
     SkillError,
     _complex_item_source_pages,
@@ -5764,16 +5768,15 @@ def _render_attempt(
     return tracker, page_count
 
 
-def _descending(upper: float, lower: float, step: float) -> list[float]:
-    values = []
-    current = upper
-    while current >= lower - 1e-6:
-        values.append(round(current, 2))
-        current -= step
-    return values
+def _typography_candidate_groups(
+    job: dict[str, Any],
+) -> list[list[tuple[float, float]]]:
+    """把作业里的质量配置翻译成候选搜索空间。
 
+    这里只做作业数据到参数的适配；网格本身由 `typography_fit.candidate_groups`
+    唯一定义，排版器不再自带一套。
+    """
 
-def _typography_candidates(job: dict[str, Any]) -> list[tuple[float, float]]:
     quality = job.get("quality", {})
     search = quality.get("typography_search") or {}
     font_range = search.get("body_font_range_pt") or quality.get(
@@ -5786,43 +5789,23 @@ def _typography_candidates(job: dict[str, Any]) -> list[tuple[float, float]]:
     )
     lower_font, upper_font = map(float, font_range)
     lower_leading, upper_leading = map(float, leading_range)
-    font_step = max(float(search.get("body_font_step_pt") or 0.5), 0.5)
-    leading_step = max(float(search.get("leading_step") or 0.05), 0.05)
-    preferred_font = float(
-        quality.get("body_font_preferred_pt")
-        or (lower_font + upper_font) / 2
-    )
-    upper_font = min(upper_font, preferred_font + 1.0)
-    preferred_leading = float(
-        quality.get("leading_preferred")
-        or (lower_leading + upper_leading) / 2
-    )
-    leading_values = sorted(
-        set(
-            [preferred_leading]
-            + _descending(upper_leading, lower_leading, leading_step)
+    return candidate_groups(
+        body_font_range_pt=(lower_font, upper_font),
+        body_font_step_pt=max(
+            float(search.get("body_font_step_pt") or 0.5),
+            0.5,
         ),
-        reverse=True,
+        leading_range=(lower_leading, upper_leading),
+        leading_step=max(float(search.get("leading_step") or 0.05), 0.05),
+        preferred_body_font_pt=float(
+            quality.get("body_font_preferred_pt")
+            or (lower_font + upper_font) / 2
+        ),
+        preferred_leading=float(
+            quality.get("leading_preferred")
+            or (lower_leading + upper_leading) / 2
+        ),
     )
-    return [
-        (font_size, leading)
-        for leading in leading_values
-        for font_size in _descending(upper_font, lower_font, font_step)
-    ]
-
-
-def _grouped_typography_candidates(
-    job: dict[str, Any],
-) -> list[list[tuple[float, float]]]:
-    """把候选按行距分组：组间行距降序，组内字号降序。"""
-
-    groups: list[list[tuple[float, float]]] = []
-    for body_font, leading in _typography_candidates(job):
-        if groups and abs(groups[-1][0][1] - leading) < 1e-9:
-            groups[-1].append((body_font, leading))
-        else:
-            groups.append([(body_font, leading)])
-    return groups
 
 
 def _estimated_page_count(
@@ -5847,128 +5830,6 @@ def _estimated_page_count(
     text_lines = translated_chars / chars_per_line
     spacing_lines = paragraph_count * 0.9 + heading_count * 1.6
     return max(1, math.ceil((text_lines + spacing_lines) / lines_per_page))
-
-
-def _search_typography(
-    *,
-    groups: list[list[tuple[float, float]]],
-    evaluate,
-) -> tuple[tuple[int, int] | None, str, str]:
-    """在候选表中找出第一个页数达标的组合。
-
-    依据两条单调性：同一行距下字号变小页数不增；行距变小时该行距下最紧凑
-    组合的页数也不增。因此可以先在组之间二分，再在组内二分，用对数次完整
-    试排得到与线性扫描相同的结果。
-
-    每次试排都记入单调性审计：同组内字号更小却页数更多，或行距更小的组
-    最紧凑组合页数反而更多，都判定为单调性不成立，立即回退到完整线性扫描
-    并记录原因。选定后还要确认它在原顺序中的前一个组合确实不达标。
-
-    已知局限：审计只能判定实际试排过的组合。若两个都没有被试排到的组合之间
-    存在单调性破坏，本搜索可能选到比穷举扫描更小的字号；它仍然满足页数上限
-    且经过完整试排，不会产生不可读或未验证的版式。
-
-    “没有任何组合达标”这一结论不由二分给出。二分只探测每组最紧凑的组合，
-    据此断定无解会把本可排版的论文误报为失败，因此这种情况一律回退到完整
-    线性扫描确认。
-    """
-
-    observed: dict[tuple[int, int], int] = {}
-    violation = ""
-    if not groups:
-        return None, "linear-fallback", "no-typography-candidates"
-
-    def probe(group_index: int, item_index: int) -> dict[str, Any] | None:
-        nonlocal violation
-        result = evaluate(group_index, item_index)
-        if result is None:
-            return None
-        pages = result.get("page_count")
-        if not isinstance(pages, int):
-            return result
-        observed[(group_index, item_index)] = pages
-        for (other_group, other_item), other_pages in observed.items():
-            if other_group == group_index:
-                if other_item < item_index and other_pages < pages:
-                    violation = "page-count-not-monotonic-within-leading"
-                elif other_item > item_index and other_pages > pages:
-                    violation = "page-count-not-monotonic-within-leading"
-                continue
-            last_item = len(groups[group_index]) - 1
-            other_last = len(groups[other_group]) - 1
-            if item_index != last_item or other_item != other_last:
-                continue
-            if other_group < group_index and other_pages < pages:
-                violation = "page-count-not-monotonic-across-leading"
-            elif other_group > group_index and other_pages > pages:
-                violation = "page-count-not-monotonic-across-leading"
-        return result
-
-    # 先试排原顺序中的第一个候选。它一旦达标就是答案本身，无需再探测，
-    # 这样“首次试排即通过”的论文仍然只排一次，不会比线性扫描慢。
-    first = probe(0, 0)
-    if first is None:
-        return None, "linear-fallback", "render-failed-during-search"
-    if first["fits"]:
-        return (0, 0), "bounded-binary", ""
-
-    # 再看第一组最紧凑的组合。行距最大的一组能装下时答案必然在组内，
-    # 直接转入组内二分，不必在组之间试探；这让容易排版的论文少排一次。
-    target_group: int | None = None
-    leading_group = probe(0, len(groups[0]) - 1)
-    if leading_group is None:
-        return None, "linear-fallback", "render-failed-during-search"
-    if leading_group["fits"]:
-        target_group = 0
-
-    low = 1
-    high = len(groups) - 1 if target_group is None else 0
-    while low <= high:
-        middle = (low + high) // 2
-        result = probe(middle, len(groups[middle]) - 1)
-        if result is None:
-            return None, "linear-fallback", "render-failed-during-search"
-        if result["fits"]:
-            target_group = middle
-            high = middle - 1
-        else:
-            low = middle + 1
-    if violation:
-        return None, "linear-fallback", violation
-    if target_group is None:
-        # 二分只探测每组最紧凑的组合。若据此断定“没有任何组合达标”，
-        # 一旦单调性在未探测点上不成立，就会把本可排版的论文误报为无解。
-        # 这个代价远高于多排几次，因此改为完整线性扫描确认。
-        return None, "linear-fallback", "no-feasible-group-verify-exhaustively"
-
-    low = 0
-    high = len(groups[target_group]) - 1
-    target_item = high
-    while low <= high:
-        middle = (low + high) // 2
-        result = probe(target_group, middle)
-        if result is None:
-            return None, "linear-fallback", "render-failed-during-search"
-        if result["fits"]:
-            target_item = middle
-            high = middle - 1
-        else:
-            low = middle + 1
-
-    if violation:
-        return None, "linear-fallback", violation
-
-    if target_item > 0:
-        previous = probe(target_group, target_item - 1)
-    elif target_group > 0:
-        previous = probe(target_group - 1, len(groups[target_group - 1]) - 1)
-    else:
-        previous = None
-    if violation:
-        return None, "linear-fallback", violation
-    if previous is not None and previous["fits"]:
-        return None, "linear-fallback", "earlier-candidate-also-fits"
-    return (target_group, target_item), "bounded-binary", ""
 
 
 def _add_outline(
@@ -6200,7 +6061,7 @@ def build_candidate(
     attempts: list[dict[str, Any]] = []
     selected: tuple[Path, MappingTracker, int, float, float, float] | None = None
     output_pdf.parent.mkdir(parents=True, exist_ok=True)
-    typography_groups = _grouped_typography_candidates(job)
+    typography_groups = _typography_candidate_groups(job)
     translated_chars = sum(
         len(str(unit.get("translation") or unit.get("source") or ""))
         for unit in translation.get("units", [])
@@ -6315,7 +6176,7 @@ def build_candidate(
             }
             return probe_cache[key]
 
-        position, search_method, search_note = _search_typography(
+        position, search_method, search_note = search_first_acceptable(
             groups=typography_groups,
             evaluate=_evaluate_candidate,
         )

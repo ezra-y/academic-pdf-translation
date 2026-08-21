@@ -8,6 +8,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 
+import perf_trace
 from _common import (
     SkillError,
     complex_payload_replaced_unit_ids,
@@ -569,7 +570,7 @@ def _repair_tasks(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return tasks
 
 
-def build_completeness_audit(
+def _timed_build_completeness_audit(
     job_dir: Path,
     *,
     include_candidate: bool = True,
@@ -1185,6 +1186,13 @@ def _markdown(report: dict[str, Any]) -> str:
     lines.extend(["", report["interpretation"], ""])
     return "\n".join(lines)
 
+
+
+def build_completeness_audit(*args, **kwargs):
+    """计时包装：阶段耗时进入性能基线，行为与实现完全一致。"""
+
+    with perf_trace.stage("completeness_audit"):
+        return _timed_build_completeness_audit(*args, **kwargs)
 
 def main() -> int:
     parser = argparse.ArgumentParser(

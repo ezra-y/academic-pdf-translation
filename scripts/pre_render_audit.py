@@ -379,7 +379,12 @@ def _content_audit_without_candidate(job_dir: Path) -> dict[str, Any]:
 
 
 def _audit_context(job_dir: Path) -> dict[str, Any]:
-    """加载两类检查共用的作业输入，只读一次。"""
+    """加载两类检查共用的作业输入，只读一次。
+
+    不缓存跨调用结果：`build_candidate` 会把冻结字体解析成实际字体文件后
+    写回 `job.json`，因此渲染前后的输入审计读到的是不同输入，重跑是必要的，
+    不是冗余。
+    """
 
     job = load_json(job_dir / "job.json")
     files = job.get("files", {})
@@ -441,7 +446,7 @@ def _audit_context(job_dir: Path) -> dict[str, Any]:
             }
         )
 
-    return {
+    context = {
         "job": job,
         "files": files,
         "paths": {
@@ -462,6 +467,7 @@ def _audit_context(job_dir: Path) -> dict[str, Any]:
         "inventory_issues": inventory_issues,
         "completeness_issues": completeness_issues,
     }
+    return context
 
 
 def _completeness_warnings(completeness: dict[str, Any]) -> list[dict[str, Any]]:

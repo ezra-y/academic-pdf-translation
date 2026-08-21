@@ -8,6 +8,7 @@ import shutil
 import tempfile
 from pathlib import Path
 
+import perf_trace
 from _common import (
     SkillError,
     import_fitz,
@@ -160,7 +161,7 @@ def _jsonable(value):
     return str(value)
 
 
-def _candidate_content_fingerprint(path: Path) -> str:
+def _timed__candidate_content_fingerprint(path: Path) -> str:
     fitz = import_fitz()
     document = fitz.open(path)
     pages = []
@@ -622,6 +623,13 @@ def preflight_candidate(
             "staging_ledger_updated": True,
         }
 
+
+
+def _candidate_content_fingerprint(*args, **kwargs):
+    """计时包装：阶段耗时进入性能基线，行为与实现完全一致。"""
+
+    with perf_trace.stage("candidate_fingerprint"):
+        return _timed__candidate_content_fingerprint(*args, **kwargs)
 
 def main() -> int:
     parser = argparse.ArgumentParser(

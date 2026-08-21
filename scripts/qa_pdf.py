@@ -8,6 +8,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 
+import perf_trace
 from _common import (
     SkillError,
     center_in_bbox,
@@ -1504,7 +1505,7 @@ def _page_metrics(
     }
 
 
-def run_qa(job_dir: Path) -> dict:
+def _timed_run_qa(job_dir: Path) -> dict:
     job_dir = job_dir.resolve()
     job = load_json(job_dir / "job.json")
     files = job["files"]
@@ -2587,6 +2588,13 @@ def run_qa(job_dir: Path) -> dict:
     write_json(output, report)
     return report
 
+
+
+def run_qa(*args, **kwargs):
+    """计时包装：阶段耗时进入性能基线，行为与实现完全一致。"""
+
+    with perf_trace.stage("qa_candidate"):
+        return _timed_run_qa(*args, **kwargs)
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="对学术 PDF 译制候选执行确定性 QA")

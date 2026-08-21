@@ -2445,7 +2445,7 @@ def _test_retained_region_reconciliation() -> None:
 def _test_typography_search_matches_linear_scan() -> None:
     """两级二分必须与线性扫描选出同一个组合，并在单调性失效时回退。"""
 
-    from build_candidate import _search_typography
+    from typography_fit import search_first_acceptable
 
     def make_evaluator(page_counts, limit, probes):
         def evaluate(group_index, item_index):
@@ -2473,7 +2473,7 @@ def _test_typography_search_matches_linear_scan() -> None:
     groups = [[(0.0, 0.0)] * len(row) for row in monotonic]
     for limit in range(17, 26):
         probes: list[tuple[int, int]] = []
-        position, method, note = _search_typography(
+        position, method, note = search_first_acceptable(
             groups=groups,
             evaluate=make_evaluator(monotonic, limit, probes),
         )
@@ -2505,7 +2505,7 @@ def _test_typography_search_matches_linear_scan() -> None:
         [30, 20, 22],
     ]
     fallback_groups = [[(0.0, 0.0)] * len(row) for row in non_monotonic]
-    position, method, note = _search_typography(
+    position, method, note = search_first_acceptable(
         groups=fallback_groups,
         evaluate=make_evaluator(non_monotonic, 22, []),
     )
@@ -2522,7 +2522,7 @@ def _test_typography_search_matches_linear_scan() -> None:
         [40, 35, 28],
         [40, 35, 25],
     ]
-    position, method, note = _search_typography(
+    position, method, note = search_first_acceptable(
         groups=[[(0.0, 0.0)] * len(row) for row in across_groups],
         evaluate=make_evaluator(across_groups, 26, []),
     )
@@ -2534,7 +2534,7 @@ def _test_typography_search_matches_linear_scan() -> None:
     def failing_evaluate(group_index, item_index):
         return None
 
-    position, method, note = _search_typography(
+    position, method, note = search_first_acceptable(
         groups=fallback_groups,
         evaluate=failing_evaluate,
     )

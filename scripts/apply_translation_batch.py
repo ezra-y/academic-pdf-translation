@@ -17,6 +17,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+import perf_trace
 from _common import SkillError, load_json, sha256_file, utc_now, write_json
 from content_anchors import anchors_present
 from plan_translation_batches import PLAN_FILE_NAME, load_plan
@@ -181,6 +182,7 @@ def apply_translation_batch(
         raise SkillError(f"翻译计划中没有批次 {batch_id}")
     batch = load_json(job_dir / entry["file"])
 
+    perf_trace.count(perf_trace.COUNTER_TRANSLATION_BATCH)
     normalized = _normalize_results(results)
     accepted = _validate_against_batch(batch, normalized)
 
