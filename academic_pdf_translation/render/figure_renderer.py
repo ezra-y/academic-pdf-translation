@@ -311,11 +311,15 @@ def verify_figure_output(
             + ", ".join(missing[:10])
         )
 
-    if rendered.mode == MODE_LEGEND and rendered.labels:
-        if len(rendered.legend_lines) != len(
-            [item for item in rendered.labels if item.translation.strip()]
-        ):
-            problems.append(
-                f"{rendered.element_id}: 编号图例条数与图内标签数量对不上"
-            )
+    translated_labels = [
+        item for item in rendered.labels if item.translation.strip()
+    ]
+    if (
+        rendered.mode == MODE_LEGEND
+        and rendered.labels
+        and len(rendered.legend_lines) != len(translated_labels)
+    ):
+        problems.append(
+            f"{rendered.element_id}: 编号图例条数与图内标签数量对不上"
+        )
     return problems
