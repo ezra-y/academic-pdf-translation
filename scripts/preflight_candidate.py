@@ -11,7 +11,6 @@ from pathlib import Path
 import perf_trace
 from _common import (
     SkillError,
-    import_fitz,
     internal_job_path,
     load_json,
     sha256_file,
@@ -19,11 +18,14 @@ from _common import (
     write_json,
 )
 from audit_translation_completeness import build_completeness_audit
+from candidate_analysis import (
+    open_candidate_analysis,
+    shared_candidate_analysis,
+)
 from qa_pdf import run_qa
 from register_candidate import register_candidate
 from renderer_identity import renderer_build_id as current_renderer_build_id
 from validate_job import validate_job
-
 
 IGNORED_SHADOW_PATHS = (
     "history",
@@ -162,8 +164,8 @@ def _jsonable(value):
 
 
 def _timed__candidate_content_fingerprint(path: Path) -> str:
-    fitz = import_fitz()
-    document = fitz.open(path)
+    analysis = open_candidate_analysis(path)
+    document = analysis.document
     pages = []
     for page in document:
         text_blocks = []
@@ -212,7 +214,7 @@ def _timed__candidate_content_fingerprint(path: Path) -> str:
                 "images": _jsonable(page.get_image_info(hashes=True)),
             }
         )
-    document.close()
+    analysis.release()
     payload = json.dumps(
         pages,
         ensure_ascii=False,
@@ -330,6 +332,27 @@ def _preflight_cycle(
 
 
 def preflight_candidate(
+    job_dir: Path,
+    generated_pdf: Path,
+    renderer: str,
+    renderer_version: str | None = None,
+    renderer_build_id: str | None = None,
+) -> dict:
+    """预检期间全程持有待检 PDF 的分析，指纹与注册共用同一次打开。"""
+
+    if not Path(generated_pdf).resolve().is_file():
+        raise SkillError(f"待预检 PDF 不存在: {generated_pdf}")
+    with shared_candidate_analysis(Path(generated_pdf).resolve()):
+        return _preflight_candidate(
+            job_dir,
+            generated_pdf,
+            renderer,
+            renderer_version,
+            renderer_build_id,
+        )
+
+
+def _preflight_candidate(
     job_dir: Path,
     generated_pdf: Path,
     renderer: str,
@@ -479,15 +502,23 @@ def preflight_candidate(
             renderer_build_id=renderer_build_id,
             allow_additional_iteration=True,
         )
-        qa = run_qa(shadow)
-        validation = validate_job(
+        # QA、作业校验和完整性审查读的是同一份影子候选。这里先把它打开一次，
+        # 三步各自的 open 都会命中同一个分析对象，不再重复完整解析。
+        shadow_candidate = internal_job_path(
             shadow,
-            "candidate",
-            advance=True,
-            # QA 刚在本进程对同一份候选跑完，直接复用；哈希绑定检查照旧执行。
-            qa_report=qa,
+            load_json(shadow / "job.json")["files"]["candidate"],
         )
-        completeness = build_completeness_audit(shadow)
+        with shared_candidate_analysis(shadow_candidate):
+            qa = run_qa(shadow)
+            validation = validate_job(
+                shadow,
+                "candidate",
+                advance=True,
+                # QA 刚在本进程对同一份候选跑完，直接复用；
+                # 哈希绑定检查照旧执行。
+                qa_report=qa,
+            )
+            completeness = build_completeness_audit(shadow)
         completeness_needs_repair = (
             completeness["decision"] == "NEEDS_REPAIR"
         )

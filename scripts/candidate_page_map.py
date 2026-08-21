@@ -10,6 +10,7 @@ from _common import (
     load_json,
     sha256_file,
 )
+from candidate_analysis import open_candidate_analysis
 
 
 def candidate_page_map_path(job_dir: Path, job: dict[str, Any]) -> Path:
@@ -191,11 +192,11 @@ def load_candidate_page_map(
     candidate_page_count = int(mapping.get("candidate_page_count") or 0)
     candidate_hash = None
     if candidate_path is not None and candidate_path.is_file():
-        from _common import import_fitz
 
-        document = import_fitz().open(candidate_path)
+        analysis = open_candidate_analysis(candidate_path)
+        document = analysis.document
         candidate_page_count = document.page_count
-        document.close()
+        analysis.release()
         candidate_hash = sha256_file(candidate_path)
     unit_ids = None
     if translation is not None:

@@ -15,11 +15,11 @@ from _common import (
     utc_now,
     write_json,
 )
+from candidate_analysis import open_candidate_analysis
 from candidate_page_map import (
     candidate_pages_for_source,
     load_candidate_page_map,
 )
-
 
 #: 单页缓存必须放在 comparisons/ 之外：注册新候选时会把 comparisons/ 归档
 #: 并清空，而缓存的价值恰恰在于跨候选版本复用原文页。
@@ -276,8 +276,10 @@ def _timed_make_review_sheet(
         raise SkillError("生成对照图前必须同时存在 source.pdf 和 candidate.pdf")
 
     fitz = import_fitz()
-    source = fitz.open(source_path)
-    candidate = fitz.open(candidate_path)
+    source_handle = open_candidate_analysis(source_path, role="source")
+    candidate_handle = open_candidate_analysis(candidate_path)
+    source = source_handle.document
+    candidate = candidate_handle.document
     translation = load_json(
         internal_job_path(job_dir, files["translation"])
     )
@@ -296,8 +298,8 @@ def _timed_make_review_sheet(
         else None
     )
     if candidate_mapping is None and source.page_count != candidate.page_count:
-        source.close()
-        candidate.close()
+        source_handle.release()
+        candidate_handle.release()
         raise SkillError(
             f"页数不一致，无法生成逐页对照: {source.page_count} vs "
             f"{candidate.page_count}"
@@ -562,8 +564,8 @@ def _timed_make_review_sheet(
         if used_page_fingerprints
         else 0
     )
-    source.close()
-    candidate.close()
+    source_handle.release()
+    candidate_handle.release()
     return {
         "page_cache_entries": len(used_page_fingerprints),
         "page_cache_pruned": pruned,

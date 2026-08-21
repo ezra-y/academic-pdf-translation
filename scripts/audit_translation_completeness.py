@@ -12,11 +12,11 @@ import perf_trace
 from _common import (
     SkillError,
     complex_payload_replaced_unit_ids,
-    import_fitz,
     internal_job_path,
     load_json,
     write_json,
 )
+from candidate_analysis import open_candidate_analysis
 from candidate_page_map import (
     candidate_pages_for_source,
     load_candidate_page_map,
@@ -618,7 +618,8 @@ def _timed_build_completeness_audit(
         structure = load_json(structure_path)
     else:
         structure = extract_source_structure(source_path)
-    source_doc = import_fitz().open(source_path)
+    source_analysis = open_candidate_analysis(source_path, role="source")
+    source_doc = source_analysis.document
     retained_payloads = extract_retained_regions(
         source_doc,
         retained,
@@ -633,15 +634,17 @@ def _timed_build_completeness_audit(
             units_by_page[page].append(unit)
 
     candidate_path = internal_job_path(job_dir, job["files"]["candidate"])
-    fitz = import_fitz()
     candidate_is_current_stage = (
         include_candidate
         and _candidate_stage_has_current_pdf(job.get("status"))
     )
-    candidate_doc = (
-        fitz.open(candidate_path)
+    candidate_handle = (
+        open_candidate_analysis(candidate_path)
         if candidate_is_current_stage and candidate_path.is_file()
         else None
+    )
+    candidate_doc = (
+        candidate_handle.document if candidate_handle is not None else None
     )
     candidate_mapping = (
         load_candidate_page_map(
@@ -1111,9 +1114,9 @@ def _timed_build_completeness_audit(
             }
         )
 
-    source_doc.close()
-    if candidate_doc is not None:
-        candidate_doc.close()
+    source_analysis.release()
+    if candidate_handle is not None:
+        candidate_handle.release()
     truthfulness = evaluate_translation(
         translation,
         retained_source=retained,

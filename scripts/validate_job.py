@@ -23,6 +23,7 @@ from _common import (
     sha256_file,
     write_json,
 )
+from candidate_analysis import open_candidate_analysis
 from candidate_page_map import (
     candidate_pages_for_unit,
     load_candidate_page_map,
@@ -788,9 +789,11 @@ def _validate_source_text_coverage(
     if not translation:
         return
     try:
-        from _common import import_fitz
-
-        source_doc = import_fitz().open(source_path)
+        source_handle = open_candidate_analysis(
+            source_path,
+            role="source",
+        )
+        source_doc = source_handle.document
     except Exception as exc:
         errors.append(f"无法计算原文覆盖率: {exc}")
         return
@@ -946,6 +949,7 @@ def _validate_source_text_coverage(
             + ", ".join(unmatched[:20])
             + (" ..." if len(unmatched) > 20 else "")
         )
+    source_handle.release()
 
 
 def _validate_candidate_text_presence(
@@ -961,9 +965,8 @@ def _validate_candidate_text_presence(
     if not translation or not candidate_path.is_file():
         return
     try:
-        from _common import import_fitz
-
-        candidate_doc = import_fitz().open(candidate_path)
+        candidate_handle = open_candidate_analysis(candidate_path)
+        candidate_doc = candidate_handle.document
     except Exception as exc:
         errors.append(f"无法计算候选译文覆盖率: {exc}")
         return
@@ -974,11 +977,15 @@ def _validate_candidate_text_presence(
     try:
         if source_path is None:
             raise FileNotFoundError
-        source_doc = import_fitz().open(source_path)
+        source_handle = open_candidate_analysis(
+            source_path,
+            role="source",
+        )
         source_page_sizes = {
             index: (float(page.rect.width), float(page.rect.height))
-            for index, page in enumerate(source_doc, 1)
+            for index, page in enumerate(source_handle.document, 1)
         }
+        source_handle.release()
     except Exception:
         source_page_sizes = {}
     total_chars = 0
@@ -1223,6 +1230,7 @@ def _validate_candidate_text_presence(
             + ", ".join(missing_retained[:20])
             + (" ..." if len(missing_retained) > 20 else "")
         )
+    candidate_handle.release()
 
 
 def _candidate_page_text(page: Any) -> str:
@@ -1681,13 +1689,15 @@ def _validate_retained_source(
 
     reference_start = None
     source_doc = None
+    source_handle = None
     if require_reference_boundary and source_path.is_file():
         try:
-            import re
 
-            from _common import import_fitz
-
-            source_doc = import_fitz().open(source_path)
+            source_handle = open_candidate_analysis(
+                source_path,
+                role="source",
+            )
+            source_doc = source_handle.document
             for index, page in enumerate(source_doc, 1):
                 text = page.get_text("text")
                 if _has_reference_heading(text):
@@ -1737,6 +1747,8 @@ def _validate_retained_source(
                 citation_block_confirmed = _has_source_citation_block(source_text)
             if not citation_block_confirmed:
                 errors.append(f"{label} 位于无法确认的参考文献范围之前")
+    if source_handle is not None:
+        source_handle.release()
 
 
 def validate_job(
@@ -1849,9 +1861,9 @@ def validate_job(
         if actual_hash != source.get("sha256"):
             errors.append("作业原文 SHA-256 与 job.json 不一致")
         try:
-            from _common import import_fitz
-
-            page_count = import_fitz().open(source_path).page_count
+            handle = open_candidate_analysis(source_path, role="source")
+            page_count = handle.document.page_count
+            handle.release()
             if page_count != source.get("page_count"):
                 errors.append("作业原文页数与 job.json 不一致")
         except Exception as exc:

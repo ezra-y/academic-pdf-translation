@@ -51,6 +51,7 @@ from _common import (
     utc_now,
     write_json,
 )
+from candidate_analysis import open_candidate_analysis
 from cjk_markup import install_reportlab_cjk_nobr_patch, reportlab_cjk_markup
 from font_preparation import (
     _resolve_fonts,
@@ -200,16 +201,15 @@ def _register_font(name: str, path: Path) -> None:
 
 
 def _common_page_size(source_path: Path) -> tuple[float, float]:
-    fitz = import_fitz()
-    document = fitz.open(source_path)
+    handle = open_candidate_analysis(source_path, role="source")
     counts: dict[tuple[float, float], int] = defaultdict(int)
-    for page in document:
+    for page in handle.document:
         width = round(float(page.rect.width), 1)
         height = round(float(page.rect.height), 1)
         if width > height:
             width, height = height, width
         counts[(width, height)] += 1
-    document.close()
+    handle.release()
     if not counts:
         raise SkillError("原文没有页面")
     return max(counts, key=lambda value: counts[value])
@@ -5601,10 +5601,9 @@ def _render_attempt(
     document.build(story, canvasmaker=canvas_maker)
     tracker.finalize_heading_check()
     perf_trace.count(perf_trace.COUNTER_RENDER_ATTEMPT)
-    fitz = import_fitz()
-    output = fitz.open(path)
+    output = open_candidate_analysis(path)
     page_count = output.page_count
-    output.close()
+    output.release()
     return tracker, page_count
 
 
@@ -5678,8 +5677,8 @@ def _add_outline(
     mapping: dict[str, Any],
     target_language: str,
 ) -> None:
-    fitz = import_fitz()
-    document = fitz.open(source_pdf)
+    handle = open_candidate_analysis(source_pdf, role="source")
+    document = handle.document
     toc = []
     for entry in mapping["source_pages"]:
         pages = entry["candidate_pages"]
@@ -5697,7 +5696,7 @@ def _add_outline(
             )
     document.set_toc(toc)
     document.save(destination_pdf, garbage=4, deflate=True)
-    document.close()
+    handle.release()
 
 
 def _adaptive_page_expansion_limit(
@@ -5876,7 +5875,8 @@ def build_candidate(
     page_size = _common_page_size(source_path)
     margins = (48.0, 48.0, 42.0, 38.0)
     source_page_count = int(job["source"]["page_count"])
-    source_document = import_fitz().open(source_path)
+    source_handle = open_candidate_analysis(source_path, role="source")
+    source_document = source_handle.document
     retained_payloads = extract_retained_regions(
         source_document,
         retained,
@@ -5898,7 +5898,7 @@ def build_candidate(
         and payload.get("already_present_in_translation") is not True
     ]
     if empty_retained:
-        source_document.close()
+        source_handle.release()
         raise SkillError(
             "以下保留原文区域没有提取到可排版文字: "
             + ", ".join(empty_retained[:30])
@@ -6138,7 +6138,7 @@ def build_candidate(
         finally:
             if temp_output.exists():
                 temp_output.unlink()
-    source_document.close()
+    source_handle.release()
 
     candidate_hash = sha256_file(output_pdf)
     mapping = tracker.build_map(

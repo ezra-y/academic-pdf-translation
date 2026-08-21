@@ -8,7 +8,7 @@ from typing import Any
 
 import perf_trace
 from _common import SkillError, import_fitz
-
+from candidate_analysis import open_candidate_analysis
 
 REFERENCE_CATEGORIES = {"references", "bibliography"}
 REFERENCE_HEADING_RE = re.compile(
@@ -642,7 +642,12 @@ def _timed_extract_retained_regions(
     translation: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     close_document = isinstance(source, Path)
-    document = import_fitz().open(source) if close_document else source
+    handle = (
+        open_candidate_analysis(source, role="source")
+        if close_document
+        else None
+    )
+    document = handle.document if handle is not None else source
     translated_pages = _translation_by_page(translation)
     translated_source_pages = _translated_source_by_page(translation)
     payloads: list[dict[str, Any]] = []
@@ -746,8 +751,8 @@ def _timed_extract_retained_regions(
                 }
             )
     finally:
-        if close_document:
-            document.close()
+        if handle is not None:
+            handle.release()
     return payloads
 
 

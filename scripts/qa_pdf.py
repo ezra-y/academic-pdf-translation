@@ -13,7 +13,6 @@ from _common import (
     SkillError,
     center_in_bbox,
     character_counts,
-    import_fitz,
     internal_job_path,
     load_json,
     resolve_language_profile,
@@ -22,14 +21,14 @@ from _common import (
     utc_now,
     write_json,
 )
+from candidate_analysis import open_candidate_analysis
 from candidate_page_map import (
-    candidate_pages_for_unit,
     candidate_pages_for_source,
+    candidate_pages_for_unit,
     load_candidate_page_map,
     source_pages_for_candidate,
 )
 from retained_source import extract_retained_regions
-
 
 PLACEHOLDER_PATTERN = re.compile(
     r"\{\{[^{}]+\}\}|\{v\s*\d+\}|</?style\b[^>]*>|"
@@ -1535,9 +1534,13 @@ def _timed_run_qa(job_dir: Path) -> dict:
         if complex_path.is_file()
         else {"items": []}
     )
-    fitz = import_fitz()
-    source = fitz.open(source_path)
-    candidate = fitz.open(candidate_path)
+    source_analysis = open_candidate_analysis(source_path, role="source")
+    candidate_analysis_handle = open_candidate_analysis(
+        candidate_path,
+        role="candidate",
+    )
+    source = source_analysis.document
+    candidate = candidate_analysis_handle.document
     candidate_mapping = (
         load_candidate_page_map(
             job_dir,
@@ -2586,6 +2589,8 @@ def _timed_run_qa(job_dir: Path) -> dict:
     }
     output = internal_job_path(job_dir, files["qa"])
     write_json(output, report)
+    source_analysis.release()
+    candidate_analysis_handle.release()
     return report
 
 

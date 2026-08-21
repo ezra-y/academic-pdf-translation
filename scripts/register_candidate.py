@@ -16,6 +16,7 @@ from _common import (
     utc_now,
     write_json,
 )
+from candidate_analysis import open_candidate_analysis
 from candidate_page_map import (
     candidate_page_map_path,
     validate_candidate_page_map,
@@ -292,13 +293,14 @@ def register_candidate(
 
     fitz = import_fitz()
     try:
-        candidate_document = fitz.open(generated_pdf)
+        candidate_handle = open_candidate_analysis(generated_pdf)
+        candidate_document = candidate_handle.document
     except Exception as exc:
         raise SkillError(f"候选 PDF 无法打开: {exc}") from exc
     if candidate_document.page_count < 1:
         raise SkillError("候选 PDF 没有页面")
     candidate_page_count = candidate_document.page_count
-    candidate_document.close()
+    candidate_handle.release()
 
     files = job.get("files", {})
     sidecar_map_path = generated_pdf.with_suffix(".page-map.json")
