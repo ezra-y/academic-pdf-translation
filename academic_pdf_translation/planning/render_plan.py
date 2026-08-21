@@ -28,6 +28,8 @@ from academic_pdf_translation.planning.fallback_policy import (
     build_chain,
 )
 from academic_pdf_translation.planning.mode_policy import (
+    FALLBACK_PRESERVE_ELEMENT_REGION,
+    FALLBACK_PRESERVE_FULL_PAGE,
     ModePolicy,
     policy_for,
 )
@@ -48,6 +50,10 @@ STRATEGY_CAPTION_KEEP_TOGETHER = "translate-caption-and-keep-with-figure"
 STRATEGY_FOOTNOTE = "translate-and-render-as-footnote"
 STRATEGY_REFERENCE_NORMALIZE = "preserve-and-normalize-line-breaks"
 STRATEGY_OMIT = "omit-nonsemantic"
+#: 降级链上的两级。它们也必须有渲染器——否则降级链就只是写着好看，
+#: 真降下来的时候没人能画。
+STRATEGY_PRESERVE_ELEMENT_REGION = FALLBACK_PRESERVE_ELEMENT_REGION
+STRATEGY_PRESERVE_FULL_PAGE = FALLBACK_PRESERVE_FULL_PAGE
 
 #: 渲染器名。一个策略只归一个渲染器管。
 RENDERER_TEXT = "text"
@@ -71,6 +77,8 @@ STRATEGY_RENDERERS = {
     STRATEGY_FOOTNOTE: RENDERER_FOOTNOTE,
     STRATEGY_REFERENCE_NORMALIZE: RENDERER_REFERENCE,
     STRATEGY_OMIT: RENDERER_NONE,
+    STRATEGY_PRESERVE_ELEMENT_REGION: RENDERER_PRESERVED_REGION,
+    STRATEGY_PRESERVE_FULL_PAGE: RENDERER_PRESERVED_REGION,
 }
 
 
@@ -155,8 +163,15 @@ def _vector_strategy(
 def plan_element(
     element: SourceElement,
     policy: ModePolicy,
+    *,
+    forced_strategy: str | None = None,
 ) -> PlannedElement:
-    """给一个元素定策略。"""
+    """给一个元素定策略。
+
+    ``forced_strategy`` 是内部返修用的：核查发现某个元素没搬过来，返修就把
+    它按降级链往下压一级。它**只能往下压**——往回调等于让失败过的策略再试
+    一次，那不是返修，那是重试。
+    """
 
     element_type = element.type
     risks = [risk.code for risk in element.risk_flags]
@@ -240,6 +255,10 @@ def plan_element(
     chain: FallbackChain = build_chain(
         element.id, element_type, strategy, policy
     )
+    if forced_strategy:
+        strategy, reason = _apply_forced_strategy(
+            element.id, strategy, forced_strategy, chain
+        )
     return PlannedElement(
         element_id=element.id,
         element_type=element_type.value,
@@ -252,6 +271,26 @@ def plan_element(
         status="omitted" if strategy == STRATEGY_OMIT else "ready",
         risk_flags=risks,
     )
+
+
+def _apply_forced_strategy(
+    element_id: str,
+    strategy: str,
+    forced: str,
+    chain: FallbackChain,
+) -> tuple[str, str]:
+    """把返修指定的策略套上去，并挡住"往回调"。"""
+
+    if forced not in chain.levels:
+        raise RenderPlanError(
+            f"{element_id}: 返修策略 {forced} 不在它的降级链 "
+            f"{list(chain.levels)} 里"
+        )
+    if chain.levels.index(forced) <= chain.levels.index(strategy):
+        raise RenderPlanError(
+            f"{element_id}: 返修只能降级；{forced} 不比当前的 {strategy} 更保守"
+        )
+    return (forced, f"返修降级：{strategy} -> {forced}")
 
 
 @dataclass
@@ -309,8 +348,14 @@ class RenderPlan:
 def build_render_plan(
     inventory: SourceElementInventory,
     quality_mode: QualityMode | str,
+    *,
+    forced_strategies: dict[str, str] | None = None,
 ) -> RenderPlan:
-    """从元素清单推出渲染计划。"""
+    """从元素清单推出渲染计划。
+
+    ``forced_strategies`` 是内部返修的结果：元素 id 到它该降到的策略。
+    没有这一项时，计划完全由清单和档位决定，和返修无关。
+    """
 
     policy = policy_for(quality_mode)
     plan = RenderPlan(
@@ -324,7 +369,11 @@ def build_render_plan(
             continue
         seen.add(element.id)
         try:
-            planned = plan_element(element, policy)
+            planned = plan_element(
+                element,
+                policy,
+                forced_strategy=(forced_strategies or {}).get(element.id),
+            )
         except RenderPlanError as exc:
             plan.problems.append(str(exc))
             continue

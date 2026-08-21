@@ -37,6 +37,8 @@ from academic_pdf_translation.planning.mode_policy import (  # noqa: E402
 )
 from academic_pdf_translation.planning.render_plan import (  # noqa: E402
     STRATEGY_FORMULA_PRESERVE,
+    STRATEGY_PRESERVE_ELEMENT_REGION,
+    STRATEGY_RENDERERS,
     STRATEGY_TABLE_PRESERVE,
     STRATEGY_TABLE_REBUILD,
     STRATEGY_VECTOR_LEGEND,
@@ -342,3 +344,83 @@ def test_incomplete_visual_arrangement_shows_in_inventory() -> None:
     plan.elements.remove(victim)
     figure_inventory = build_figure_inventory(inventory, plan)
     assert figure_inventory["inventory_complete"] is False
+
+
+# --- 降级链要真能走 ---------------------------------------------------------
+
+
+def test_every_strategy_on_a_fallback_chain_has_a_renderer() -> None:
+    """降级链上出现的策略必须有人能画。
+
+    否则降级链只是写着好看：真降下来的时候 STRATEGY_RENDERERS 里查不到，
+    整条安全网形同虚设。
+    """
+
+    inventory = _real_inventory()
+    for mode in (QualityMode.FAST, QualityMode.BALANCED, QualityMode.PRECISE):
+        plan = build_render_plan(inventory, mode)
+        for item in plan.elements:
+            for strategy in item.fallback_levels:
+                assert strategy in STRATEGY_RENDERERS, (
+                    f"{item.element_id} 的降级链上 {strategy} 没有渲染器"
+                )
+
+
+def test_a_forced_strategy_walks_the_chain_downward() -> None:
+    """返修把元素往降级链下面压一级。"""
+
+    inventory = _real_inventory()
+    plan = build_render_plan(inventory, QualityMode.BALANCED)
+    victim = next(item for item in plan.elements if item.fallback)
+    forced = build_render_plan(
+        inventory,
+        QualityMode.BALANCED,
+        forced_strategies={victim.element_id: victim.fallback},
+    )
+    after = next(
+        item for item in forced.elements if item.element_id == victim.element_id
+    )
+    assert after.strategy == victim.fallback
+    assert after.renderer in STRATEGY_RENDERERS.values()
+    assert "返修降级" in after.reason
+
+
+def test_a_forced_strategy_cannot_go_back_up() -> None:
+    """往回调等于让失败过的策略再试一次，那不是返修，是重试。"""
+
+    inventory = _real_inventory()
+    plan = build_render_plan(inventory, QualityMode.BALANCED)
+    victim = next(item for item in plan.elements if item.fallback)
+    forced = build_render_plan(
+        inventory,
+        QualityMode.BALANCED,
+        forced_strategies={victim.element_id: victim.strategy},
+    )
+    assert any(
+        "只能降级" in problem for problem in forced.problems
+    ), forced.problems
+
+
+def test_a_strategy_outside_the_chain_is_rejected() -> None:
+    inventory = _real_inventory()
+    plan = build_render_plan(inventory, QualityMode.BALANCED)
+    text_item = next(
+        item
+        for item in plan.elements
+        if STRATEGY_PRESERVE_ELEMENT_REGION not in item.fallback_levels
+    )
+    forced = build_render_plan(
+        inventory,
+        QualityMode.BALANCED,
+        forced_strategies={
+            text_item.element_id: STRATEGY_PRESERVE_ELEMENT_REGION
+        },
+    )
+    assert any("不在它的降级链" in problem for problem in forced.problems)
+
+
+def test_no_forced_strategies_changes_nothing() -> None:
+    inventory = _real_inventory()
+    plain = build_render_plan(inventory, QualityMode.BALANCED)
+    same = build_render_plan(inventory, QualityMode.BALANCED, forced_strategies={})
+    assert plain.plan_hash() == same.plan_hash()
