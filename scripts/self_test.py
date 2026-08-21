@@ -2442,6 +2442,97 @@ def _test_retained_region_reconciliation() -> None:
         document.close()
 
 
+def _test_expensive_audit_cache_key_ignores_only_fonts() -> None:
+    """昂贵审计缓存的前提：换掉 selected_fonts 不改变阶段校验和完整性审计。
+
+    `build_candidate` 会把冻结字体解析成实际字体文件后写回 job.json。缓存键
+    刻意排除这个字段；一旦哪天这两项检查开始依赖它，本用例必须先失败。
+    """
+
+    from audit_translation_completeness import build_completeness_audit
+    from pre_render_audit import _font_independent_key
+
+    with tempfile.TemporaryDirectory() as raw_root:
+        root = Path(raw_root)
+        source = root / "font-key-source.pdf"
+        _make_pdf(
+            source,
+            [
+                [
+                    "Adaptive cache invalidation across distributed sites.",
+                    "We report a controlled evaluation with 42 participants.",
+                ],
+            ],
+        )
+        job_dir = root / "job"
+        initialize_job(
+            source,
+            job_dir,
+            "zh-Hans",
+            "en",
+            False,
+            producer_id="self-test-producer",
+        )
+        job = load_json(job_dir / "job.json")
+        job["quality"]["selected_fonts"] = [str(_font_path())]
+        write_json(job_dir / "job.json", job)
+
+        before_key = _font_independent_key(job_dir, load_json(job_dir / "job.json"))
+        before_validation = validate_job(
+            job_dir,
+            "translated",
+            status_override="translated",
+        )
+        before_audit = build_completeness_audit(
+            job_dir,
+            include_candidate=False,
+        )
+
+        job = load_json(job_dir / "job.json")
+        job["quality"]["selected_fonts"] = [str(_font_path())] * 3
+        write_json(job_dir / "job.json", job)
+
+        after_key = _font_independent_key(job_dir, load_json(job_dir / "job.json"))
+        after_validation = validate_job(
+            job_dir,
+            "translated",
+            status_override="translated",
+        )
+        after_audit = build_completeness_audit(
+            job_dir,
+            include_candidate=False,
+        )
+
+        if before_key != after_key:
+            raise AssertionError(
+                "缓存键不应因 selected_fonts 变化而改变"
+            )
+        if before_validation["errors"] != after_validation["errors"]:
+            raise AssertionError(
+                "translated 阶段校验开始依赖 selected_fonts，缓存键必须同步收紧"
+            )
+        if before_validation["warnings"] != after_validation["warnings"]:
+            raise AssertionError(
+                "translated 阶段校验的警告开始依赖 selected_fonts，"
+                "缓存键必须同步收紧"
+            )
+        for field in ("decision", "repair_pages", "review_pages"):
+            if before_audit.get(field) != after_audit.get(field):
+                raise AssertionError(
+                    f"完整性审计的 {field} 开始依赖 selected_fonts，"
+                    "缓存键必须同步收紧"
+                )
+
+        job = load_json(job_dir / "job.json")
+        job["translation"]["target_language"] = "ja"
+        write_json(job_dir / "job.json", job)
+        if _font_independent_key(
+            job_dir,
+            load_json(job_dir / "job.json"),
+        ) == after_key:
+            raise AssertionError("除字体外的作业字段变化必须让缓存键失效")
+
+
 def _test_typography_search_matches_linear_scan() -> None:
     """两级二分必须与线性扫描选出同一个组合，并在单调性失效时回退。"""
 
@@ -3112,6 +3203,11 @@ def _test_input_readiness_blocks_before_render() -> None:
             raise AssertionError("阻断阶段必须明确指向输入就绪检查")
         if report["timing_seconds"]["build"] != 0.0:
             raise AssertionError("输入未就绪时不得计入排版耗时")
+        if report.get("build") != {}:
+            raise AssertionError(
+                "输入未就绪时 build 必须是空对象，保持字段类型稳定，"
+                "否则下游 report.get(\"build\", {}).get(...) 会拿到 None"
+            )
         produced = list((job_dir / "staging").glob("*.pdf"))
         if produced:
             raise AssertionError(
@@ -3143,6 +3239,7 @@ def run() -> None:
     _test_input_readiness_blocks_before_render()
     _test_translation_batches_keep_unit_level_checks()
     _test_typography_search_matches_linear_scan()
+    _test_expensive_audit_cache_key_ignores_only_fonts()
     if not SOURCE_MAPPING_LABEL_PATTERN.fullmatch("原文第 18 页"):
         raise AssertionError("源页映射标签必须可从正文指标中识别并排除")
 

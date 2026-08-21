@@ -36,10 +36,11 @@ Workspace/*
 **/translation-plan.json
 **/candidate-*.pdf
 
-# 基准测试：语料清单含本机路径，原论文受版权保护，均不入库
+# 基准测试
+# corpus.json 用相对路径，可以入库；papers/ 与 jobs/ 由脚本重建，不入库
 # benchmarks/results/*.json 属于报告，允许提交
-benchmarks/corpus.json
 benchmarks/papers/
+benchmarks/jobs/
 benchmarks/tmp/
 benchmarks/**/cache/
 

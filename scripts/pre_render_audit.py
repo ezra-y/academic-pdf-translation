@@ -9,6 +9,8 @@ from typing import Any
 
 from reportlab.pdfbase.ttfonts import TTFont
 
+import perf_trace
+
 from _common import (
     SkillError,
     internal_job_path,
@@ -363,6 +365,72 @@ def _layout_contract_issues(
     }
 
 
+#: 只缓存两项昂贵结果，并且只在同一进程内有效。
+#: 键刻意排除 `quality.selected_fonts`：`build_candidate` 会把冻结字体解析成
+#: 实际字体文件后写回 job.json，但 translated 阶段校验与完整性审计都不读这个
+#: 字段（由 self_test 守护）。字体本身的检查不走本缓存，每次单独执行；
+#: 排版合同检查也始终从磁盘重新读取 job.json，避免拿到解析前的旧字体。
+_EXPENSIVE_AUDIT_CACHE: dict[str, dict[str, Any]] = {}
+_EXPENSIVE_AUDIT_VERSION = "expensive-audit-2"
+
+
+def _font_independent_key(job_dir: Path, job: dict[str, Any]) -> str:
+    trimmed = json.loads(json.dumps(job))
+    quality = trimmed.get("quality")
+    if isinstance(quality, dict):
+        quality.pop("selected_fonts", None)
+    files = job.get("files", {})
+    parts = [
+        _EXPENSIVE_AUDIT_VERSION,
+        str(job_dir),
+        hashlib.sha256(
+            json.dumps(trimmed, ensure_ascii=False, sort_keys=True).encode(
+                "utf-8"
+            )
+        ).hexdigest(),
+    ]
+    for relative in (
+        job["source"]["job_path"],
+        files.get("source_units", "source_units.json"),
+        files["translation"],
+        files.get("complex_content_payload", "complex_content.json"),
+        files["retained_source"],
+        files["figure_inventory"],
+        files["layout_overrides"],
+    ):
+        path = internal_job_path(job_dir, relative)
+        parts.append(sha256_file(path) if path.is_file() else "")
+    return hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()
+
+
+def _expensive_audits(
+    job_dir: Path,
+    job: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """translated 阶段校验与无候选完整性审计，同输入只算一次。"""
+
+    key = _font_independent_key(job_dir, job)
+    cached = _EXPENSIVE_AUDIT_CACHE.get(key)
+    if cached is not None:
+        perf_trace.count("expensive_audit_cache_hit")
+        return cached["validation"], cached["completeness"]
+    validation = validate_job(
+        job_dir,
+        "translated",
+        status_override="translated",
+    )
+    completeness = build_completeness_audit(
+        job_dir,
+        include_candidate=False,
+    )
+    _EXPENSIVE_AUDIT_CACHE.clear()
+    _EXPENSIVE_AUDIT_CACHE[key] = {
+        "validation": validation,
+        "completeness": completeness,
+    }
+    return validation, completeness
+
+
 def _translated_validation(job_dir: Path) -> dict[str, Any]:
     return validate_job(
         job_dir,
@@ -402,8 +470,7 @@ def _audit_context(job_dir: Path) -> dict[str, Any]:
     retained_path = internal_job_path(job_dir, files["retained_source"])
     inventory_path = internal_job_path(job_dir, files["figure_inventory"])
 
-    validation = _translated_validation(job_dir)
-    completeness = _content_audit_without_candidate(job_dir)
+    validation, completeness = _expensive_audits(job_dir, job)
     translation = load_json(translation_path)
     complex_content = load_json(complex_path)
 
@@ -546,13 +613,14 @@ def build_render_contract_audit(job_dir: Path) -> dict[str, Any]:
     paths = context["paths"]
     layout_log = load_json(paths["layout_log"])
     retained = load_json(paths["retained_source"])
+    current_job = load_json(job_dir / "job.json")
     issues, contract_evidence = _layout_contract_issues(
         layout_log,
         context["translation"],
         context["complex_content"],
         retained,
-        str(context["job"]["translation"]["target_language"]),
-        context["job"].get("quality", {}).get("selected_fonts"),
+        str(current_job["translation"]["target_language"]),
+        current_job.get("quality", {}).get("selected_fonts"),
     )
     report = {
         "schema_version": "1.0",
@@ -584,13 +652,16 @@ def build_pre_render_audit(job_dir: Path) -> dict[str, Any]:
     retained = load_json(paths["retained_source"])
     completeness = context["completeness"]
 
+    # 字体必须从磁盘重读：build_candidate 会在渲染时把冻结字体解析成实际
+    # 字体文件写回 job.json，用上下文里的旧值会误报字体合同不一致。
+    current_job = load_json(job_dir / "job.json")
     contract_issues, contract_evidence = _layout_contract_issues(
         layout_log,
         context["translation"],
         context["complex_content"],
         retained,
-        str(context["job"]["translation"]["target_language"]),
-        context["job"].get("quality", {}).get("selected_fonts"),
+        str(current_job["translation"]["target_language"]),
+        current_job.get("quality", {}).get("selected_fonts"),
     )
     issues: list[dict[str, Any]] = [
         *context["validation_issues"],

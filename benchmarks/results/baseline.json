@@ -1,0 +1,137 @@
+{
+  "schema_version": "1.0",
+  "generated_at": "2026-08-21T12:39:04+00:00",
+  "case_count": 5,
+  "automatic_first_pass_count": 0,
+  "automatic_first_pass_rate": 0.0,
+  "median_total_seconds": 1.056,
+  "benchmark_wall_seconds": 4.655,
+  "workers": 1,
+  "renderer_build_ids": [
+    "ff036059a9f657d5b2d3dfd0343f5b6e007af25845cc4e9c2f0b3ffd7ca9a951"
+  ],
+  "single_build": true,
+  "visual_review_required": true,
+  "work_dir": null,
+  "cases": [
+    {
+      "id": "image-heavy",
+      "tags": [
+        "figure",
+        "image"
+      ],
+      "status": "NEEDS_REPAIR",
+      "renderer_version": "1.0",
+      "renderer_build_id": "ff036059a9f657d5b2d3dfd0343f5b6e007af25845cc4e9c2f0b3ffd7ca9a951",
+      "source_page_count": 8,
+      "candidate_page_count": 2,
+      "timing_seconds": {
+        "input_readiness": 0.02,
+        "build": 0.016,
+        "pre_render_audit": 0.027,
+        "preflight": 0.094,
+        "total": 0.159
+      },
+      "hard_failure_codes": [
+        "TARGET_TEXT_MISSING",
+        "NULL_CHARACTERS",
+        "TARGET_PRIMARY_SCRIPT_MISSING"
+      ]
+    },
+    {
+      "id": "reference-heavy",
+      "tags": [
+        "references"
+      ],
+      "status": "NEEDS_REPAIR",
+      "renderer_version": "1.0",
+      "renderer_build_id": "ff036059a9f657d5b2d3dfd0343f5b6e007af25845cc4e9c2f0b3ffd7ca9a951",
+      "source_page_count": 6,
+      "candidate_page_count": 9,
+      "timing_seconds": {
+        "input_readiness": 0.163,
+        "build": 0.231,
+        "pre_render_audit": 0.177,
+        "preflight": 0.484,
+        "total": 1.056
+      },
+      "hard_failure_codes": [
+        "TARGET_TEXT_MISSING",
+        "NULL_CHARACTERS",
+        "TARGET_PRIMARY_SCRIPT_MISSING"
+      ]
+    },
+    {
+      "id": "single-column-body",
+      "tags": [
+        "body",
+        "single-column"
+      ],
+      "status": "NEEDS_REPAIR",
+      "renderer_version": "1.0",
+      "renderer_build_id": "ff036059a9f657d5b2d3dfd0343f5b6e007af25845cc4e9c2f0b3ffd7ca9a951",
+      "source_page_count": 12,
+      "candidate_page_count": 17,
+      "timing_seconds": {
+        "input_readiness": 0.211,
+        "build": 0.209,
+        "pre_render_audit": 0.179,
+        "preflight": 0.909,
+        "total": 1.509
+      },
+      "hard_failure_codes": [
+        "TARGET_TEXT_MISSING",
+        "NULL_CHARACTERS",
+        "TARGET_PRIMARY_SCRIPT_MISSING"
+      ]
+    },
+    {
+      "id": "structured-table-and-model",
+      "tags": [
+        "table",
+        "diagram"
+      ],
+      "status": "NEEDS_REPAIR",
+      "renderer_version": "1.0",
+      "renderer_build_id": "ff036059a9f657d5b2d3dfd0343f5b6e007af25845cc4e9c2f0b3ffd7ca9a951",
+      "source_page_count": 8,
+      "candidate_page_count": 3,
+      "timing_seconds": {
+        "input_readiness": 0.035,
+        "build": 0.041,
+        "pre_render_audit": 0.039,
+        "preflight": 0.136,
+        "total": 0.253
+      },
+      "hard_failure_codes": [
+        "TARGET_TEXT_MISSING",
+        "NULL_CHARACTERS",
+        "TARGET_PRIMARY_SCRIPT_MISSING"
+      ]
+    },
+    {
+      "id": "two-column-body",
+      "tags": [
+        "body",
+        "two-column"
+      ],
+      "status": "NEEDS_REPAIR",
+      "renderer_version": "1.0",
+      "renderer_build_id": "ff036059a9f657d5b2d3dfd0343f5b6e007af25845cc4e9c2f0b3ffd7ca9a951",
+      "source_page_count": 12,
+      "candidate_page_count": 18,
+      "timing_seconds": {
+        "input_readiness": 0.211,
+        "build": 0.217,
+        "pre_render_audit": 0.22,
+        "preflight": 0.994,
+        "total": 1.642
+      },
+      "hard_failure_codes": [
+        "TARGET_TEXT_MISSING",
+        "NULL_CHARACTERS",
+        "TARGET_PRIMARY_SCRIPT_MISSING"
+      ]
+    }
+  ]
+}

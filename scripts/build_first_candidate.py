@@ -64,7 +64,9 @@ def build_first_candidate(
             "renderer_version": RENDERER_VERSION,
             "renderer_build_id": renderer_build_id(),
             "candidate_pdf": None,
-            "build": None,
+            # 保持字段类型稳定：这里没有发生排版，用空对象而不是 None，
+            # 否则下游 report.get("build", {}).get(...) 会拿到 None 并崩溃。
+            "build": {},
             "input_readiness": str(input_readiness_path),
             "issues": input_readiness.get("issues", []),
             "timing_seconds": {

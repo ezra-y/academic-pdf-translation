@@ -1,0 +1,236 @@
+{
+  "schema_version": "1.0",
+  "corpus": "synthetic-representative-v1",
+  "repeats": 3,
+  "cases": [
+    {
+      "id": "single-column-body",
+      "page_count": 12,
+      "frozen_unit_count": 134,
+      "status": "NEEDS_REPAIR",
+      "cold_seconds": 1.573,
+      "warm_min_seconds": 1.461,
+      "warm_median_seconds": 1.473,
+      "cold_stage_totals": {
+        "qa_candidate": {
+          "calls": 1,
+          "total_seconds": 0.5714,
+          "errors": 0
+        },
+        "completeness_audit": {
+          "calls": 3,
+          "total_seconds": 0.345051,
+          "errors": 0
+        },
+        "candidate_fingerprint": {
+          "calls": 1,
+          "total_seconds": 0.110596,
+          "errors": 0
+        },
+        "retained_region_extract": {
+          "calls": 6,
+          "total_seconds": 0.000578,
+          "errors": 0
+        }
+      },
+      "cold_counters": {
+        "render_attempt": 3,
+        "sha256_cache_hit": 35,
+        "sha256_file_read": 18
+      },
+      "warm_counters": {
+        "render_attempt": 6,
+        "sha256_cache_hit": 72,
+        "sha256_file_read": 34
+      }
+    },
+    {
+      "id": "two-column-body",
+      "page_count": 12,
+      "frozen_unit_count": 180,
+      "status": "NEEDS_REPAIR",
+      "cold_seconds": 1.635,
+      "warm_min_seconds": 1.63,
+      "warm_median_seconds": 1.631,
+      "cold_stage_totals": {
+        "qa_candidate": {
+          "calls": 1,
+          "total_seconds": 0.621884,
+          "errors": 0
+        },
+        "completeness_audit": {
+          "calls": 3,
+          "total_seconds": 0.431404,
+          "errors": 0
+        },
+        "candidate_fingerprint": {
+          "calls": 1,
+          "total_seconds": 0.109586,
+          "errors": 0
+        },
+        "retained_region_extract": {
+          "calls": 6,
+          "total_seconds": 0.000659,
+          "errors": 0
+        }
+      },
+      "cold_counters": {
+        "render_attempt": 3,
+        "sha256_cache_hit": 36,
+        "sha256_file_read": 17
+      },
+      "warm_counters": {
+        "render_attempt": 6,
+        "sha256_cache_hit": 72,
+        "sha256_file_read": 34
+      }
+    },
+    {
+      "id": "structured-table-and-model",
+      "page_count": 8,
+      "frozen_unit_count": 128,
+      "status": "NEEDS_REPAIR",
+      "cold_seconds": 0.249,
+      "warm_min_seconds": 0.243,
+      "warm_median_seconds": 0.244,
+      "cold_stage_totals": {
+        "qa_candidate": {
+          "calls": 1,
+          "total_seconds": 0.06662,
+          "errors": 0
+        },
+        "completeness_audit": {
+          "calls": 3,
+          "total_seconds": 0.065336,
+          "errors": 0
+        },
+        "candidate_fingerprint": {
+          "calls": 1,
+          "total_seconds": 0.012596,
+          "errors": 0
+        },
+        "retained_region_extract": {
+          "calls": 6,
+          "total_seconds": 0.00041,
+          "errors": 0
+        }
+      },
+      "cold_counters": {
+        "render_attempt": 1,
+        "sha256_cache_hit": 36,
+        "sha256_file_read": 17
+      },
+      "warm_counters": {
+        "render_attempt": 2,
+        "sha256_cache_hit": 72,
+        "sha256_file_read": 34
+      }
+    },
+    {
+      "id": "image-heavy",
+      "page_count": 8,
+      "frozen_unit_count": 32,
+      "status": "NEEDS_REPAIR",
+      "cold_seconds": 0.15,
+      "warm_min_seconds": 0.149,
+      "warm_median_seconds": 0.15,
+      "cold_stage_totals": {
+        "qa_candidate": {
+          "calls": 1,
+          "total_seconds": 0.049766,
+          "errors": 0
+        },
+        "completeness_audit": {
+          "calls": 3,
+          "total_seconds": 0.022923,
+          "errors": 0
+        },
+        "candidate_fingerprint": {
+          "calls": 1,
+          "total_seconds": 0.007562,
+          "errors": 0
+        },
+        "retained_region_extract": {
+          "calls": 6,
+          "total_seconds": 0.000272,
+          "errors": 0
+        }
+      },
+      "cold_counters": {
+        "render_attempt": 1,
+        "sha256_cache_hit": 36,
+        "sha256_file_read": 17
+      },
+      "warm_counters": {
+        "render_attempt": 2,
+        "sha256_cache_hit": 72,
+        "sha256_file_read": 34
+      }
+    },
+    {
+      "id": "reference-heavy",
+      "page_count": 6,
+      "frozen_unit_count": 313,
+      "status": "NEEDS_REPAIR",
+      "cold_seconds": 1.057,
+      "warm_min_seconds": 1.037,
+      "warm_median_seconds": 1.051,
+      "cold_stage_totals": {
+        "completeness_audit": {
+          "calls": 3,
+          "total_seconds": 0.384288,
+          "errors": 0
+        },
+        "qa_candidate": {
+          "calls": 1,
+          "total_seconds": 0.251517,
+          "errors": 0
+        },
+        "candidate_fingerprint": {
+          "calls": 1,
+          "total_seconds": 0.036636,
+          "errors": 0
+        },
+        "retained_region_extract": {
+          "calls": 6,
+          "total_seconds": 0.000751,
+          "errors": 0
+        }
+      },
+      "cold_counters": {
+        "render_attempt": 5,
+        "sha256_cache_hit": 36,
+        "sha256_file_read": 17
+      },
+      "warm_counters": {
+        "render_attempt": 10,
+        "sha256_cache_hit": 72,
+        "sha256_file_read": 34
+      }
+    }
+  ],
+  "stage_totals_cold": {
+    "qa_candidate": {
+      "calls": 5,
+      "total_seconds": 1.561187,
+      "share": 0.5053
+    },
+    "completeness_audit": {
+      "calls": 15,
+      "total_seconds": 1.249002,
+      "share": 0.4042
+    },
+    "candidate_fingerprint": {
+      "calls": 5,
+      "total_seconds": 0.276976,
+      "share": 0.0896
+    },
+    "retained_region_extract": {
+      "calls": 30,
+      "total_seconds": 0.00267,
+      "share": 0.0009
+    }
+  },
+  "measured_stage_seconds": 3.09,
+  "note": "合成语料只用于比较耗时与重复读取，不能替代真实论文的视觉抽查。首版通过率不在本报告口径内。"
+}

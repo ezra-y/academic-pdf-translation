@@ -91,10 +91,10 @@ def _run_case(case: dict[str, Any], work_root: Path) -> dict[str, Any]:
             "status": report.get("status"),
             "renderer_version": report.get("renderer_version"),
             "renderer_build_id": report.get("renderer_build_id"),
-            "source_page_count": report.get("build", {}).get(
+            "source_page_count": (report.get("build") or {}).get(
                 "source_page_count"
             ),
-            "candidate_page_count": report.get("build", {}).get(
+            "candidate_page_count": (report.get("build") or {}).get(
                 "candidate_page_count"
             ),
             "timing_seconds": report.get("timing_seconds", {}),
