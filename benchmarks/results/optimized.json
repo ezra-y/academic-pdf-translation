@@ -1,18 +1,18 @@
 {
   "schema_version": "2.0",
-  "label": "optimized",
+  "label": "current",
   "provenance": {
-    "renderer_build_id": "75c5ce45dcbeb9660d9ff1e477d65d9a134784bc17b0604005e62bdf2257513c",
-    "git_commit": "7962d87049096684eec2a7c6cd982ed5cbfe4d6a",
+    "renderer_build_id": "c3cda6506ce257b773c937ba7a84ec8f9d7da651a790418e5b246c0a1a02c198",
+    "git_commit": "8e5cffbe0fe1237789d2ed87d67e389d6694b98b",
     "git_branch": "refactor/element-pipeline-v2",
     "git_dirty": true,
     "python": "3.14.5",
-    "load_average_1m": 5.44,
+    "load_average_1m": 5.19,
     "cpu_count": 15,
     "corpus": "synthetic-representative-v1",
     "corpus_manifest_cases": 5
   },
-  "repeats": 5,
+  "repeats": 3,
   "model_translation": {
     "measured": false,
     "reason": "本次运行没有调用真实翻译模型；译文由确定性伪译文替代，只用于触发同一批代码路径。",
@@ -28,26 +28,24 @@
     {
       "id": "single-column-body",
       "status": "NEEDS_REPAIR",
-      "repeats": 5,
+      "repeats": 3,
       "cold": {
         "seconds": [
-          1.6806,
-          1.5841,
-          1.6047,
-          1.5997,
-          1.5818
+          1.7157,
+          1.6205,
+          1.5909
         ],
-        "median_seconds": 1.5997,
+        "median_seconds": 1.6205,
         "translation_stage_seconds": {},
         "pdf_stage_seconds": {
-          "build_candidate": 0.424,
-          "retained_region_extract": 0.0007,
-          "candidate_fingerprint": 0.0854,
-          "register_candidate": 0.0054,
-          "qa_candidate": 0.5146,
-          "validate_job": 0.1698,
-          "completeness_audit": 0.2208,
-          "preflight": 0.8246
+          "build_candidate": 0.4249,
+          "retained_region_extract": 0.0013,
+          "candidate_fingerprint": 0.0826,
+          "register_candidate": 0.0045,
+          "qa_candidate": 0.5216,
+          "validate_job": 0.1696,
+          "completeness_audit": 0.2276,
+          "preflight": 0.828
         },
         "counters": {
           "candidate_analysis_reuse": 6,
@@ -62,23 +60,21 @@
       },
       "warm": {
         "seconds": [
-          1.5798,
-          1.5872,
-          1.7196,
-          1.7785,
-          1.8097
+          1.57,
+          1.5719,
+          1.5805
         ],
-        "median_seconds": 1.7196,
+        "median_seconds": 1.5719,
         "translation_stage_seconds": {},
         "pdf_stage_seconds": {
-          "build_candidate": 0.4303,
-          "retained_region_extract": 0.0009,
-          "candidate_fingerprint": 0.0825,
-          "register_candidate": 0.0041,
-          "qa_candidate": 0.5946,
-          "validate_job": 0.1959,
-          "completeness_audit": 0.2364,
-          "preflight": 0.9481
+          "build_candidate": 0.4143,
+          "retained_region_extract": 0.0006,
+          "candidate_fingerprint": 0.0834,
+          "register_candidate": 0.0043,
+          "qa_candidate": 0.5196,
+          "validate_job": 0.1694,
+          "completeness_audit": 0.2157,
+          "preflight": 0.826
         },
         "counters": {
           "candidate_analysis_reuse": 6,
@@ -101,26 +97,24 @@
     {
       "id": "two-column-body",
       "status": "NEEDS_REPAIR",
-      "repeats": 5,
+      "repeats": 3,
       "cold": {
         "seconds": [
-          1.9681,
-          1.9911,
-          2.0435,
-          1.9382,
-          1.8735
+          1.7432,
+          1.7144,
+          1.7279
         ],
-        "median_seconds": 1.9681,
+        "median_seconds": 1.7279,
         "translation_stage_seconds": {},
         "pdf_stage_seconds": {
-          "build_candidate": 0.5341,
-          "retained_region_extract": 0.0009,
-          "candidate_fingerprint": 0.1025,
-          "register_candidate": 0.0043,
-          "qa_candidate": 0.6611,
-          "validate_job": 0.2168,
-          "completeness_audit": 0.3086,
-          "preflight": 1.0737
+          "build_candidate": 0.4285,
+          "retained_region_extract": 0.0007,
+          "candidate_fingerprint": 0.0902,
+          "register_candidate": 0.0048,
+          "qa_candidate": 0.5647,
+          "validate_job": 0.18,
+          "completeness_audit": 0.2667,
+          "preflight": 0.9119
         },
         "counters": {
           "candidate_analysis_reuse": 6,
@@ -135,23 +129,21 @@
       },
       "warm": {
         "seconds": [
-          1.8829,
-          2.217,
-          2.0851,
-          2.1087,
-          1.9995
+          1.702,
+          1.7149,
+          1.7068
         ],
-        "median_seconds": 2.0851,
+        "median_seconds": 1.7068,
         "translation_stage_seconds": {},
         "pdf_stage_seconds": {
-          "build_candidate": 0.5802,
-          "retained_region_extract": 0.0014,
-          "candidate_fingerprint": 0.1035,
-          "register_candidate": 0.0062,
-          "qa_candidate": 0.6338,
-          "validate_job": 0.2306,
-          "completeness_audit": 0.3327,
-          "preflight": 1.0635
+          "build_candidate": 0.4461,
+          "retained_region_extract": 0.0011,
+          "candidate_fingerprint": 0.0892,
+          "register_candidate": 0.0041,
+          "qa_candidate": 0.5587,
+          "validate_job": 0.1808,
+          "completeness_audit": 0.2648,
+          "preflight": 0.9039
         },
         "counters": {
           "candidate_analysis_reuse": 6,
@@ -174,26 +166,24 @@
     {
       "id": "structured-table-and-model",
       "status": "NEEDS_REPAIR",
-      "repeats": 5,
+      "repeats": 3,
       "cold": {
         "seconds": [
-          0.7651,
-          0.7026,
-          0.6302,
-          0.621,
-          0.6455
+          0.6007,
+          0.6118,
+          0.605
         ],
-        "median_seconds": 0.6455,
+        "median_seconds": 0.605,
         "translation_stage_seconds": {},
         "pdf_stage_seconds": {
-          "build_candidate": 0.2613,
-          "retained_region_extract": 0.0008,
-          "candidate_fingerprint": 0.0129,
-          "register_candidate": 0.004,
-          "qa_candidate": 0.0731,
-          "validate_job": 0.0284,
-          "completeness_audit": 0.0501,
-          "preflight": 0.1417
+          "build_candidate": 0.2733,
+          "retained_region_extract": 0.0005,
+          "candidate_fingerprint": 0.0122,
+          "register_candidate": 0.0037,
+          "qa_candidate": 0.0674,
+          "validate_job": 0.0272,
+          "completeness_audit": 0.0469,
+          "preflight": 0.1331
         },
         "counters": {
           "candidate_analysis_reuse": 6,
@@ -208,23 +198,21 @@
       },
       "warm": {
         "seconds": [
-          0.6287,
-          0.6275,
-          0.6025,
-          0.6382,
-          0.7276
+          0.588,
+          0.5903,
+          0.594
         ],
-        "median_seconds": 0.6287,
+        "median_seconds": 0.5903,
         "translation_stage_seconds": {},
         "pdf_stage_seconds": {
-          "build_candidate": 0.2559,
-          "retained_region_extract": 0.0006,
-          "candidate_fingerprint": 0.0122,
-          "register_candidate": 0.0035,
-          "qa_candidate": 0.0681,
-          "validate_job": 0.0292,
-          "completeness_audit": 0.051,
-          "preflight": 0.1377
+          "build_candidate": 0.2526,
+          "retained_region_extract": 0.0005,
+          "candidate_fingerprint": 0.0123,
+          "register_candidate": 0.0036,
+          "qa_candidate": 0.068,
+          "validate_job": 0.0277,
+          "completeness_audit": 0.0478,
+          "preflight": 0.134
         },
         "counters": {
           "candidate_analysis_reuse": 6,
@@ -247,26 +235,24 @@
     {
       "id": "image-heavy",
       "status": "NEEDS_REPAIR",
-      "repeats": 5,
+      "repeats": 3,
       "cold": {
         "seconds": [
-          0.5568,
-          0.5518,
-          0.553,
-          0.5471,
-          0.5621
+          0.5158,
+          0.5203,
+          0.5184
         ],
-        "median_seconds": 0.553,
+        "median_seconds": 0.5184,
         "translation_stage_seconds": {},
         "pdf_stage_seconds": {
-          "build_candidate": 0.2593,
-          "retained_region_extract": 0.0005,
-          "candidate_fingerprint": 0.0061,
-          "register_candidate": 0.0032,
-          "qa_candidate": 0.0487,
-          "validate_job": 0.0243,
-          "completeness_audit": 0.0173,
-          "preflight": 0.0896
+          "build_candidate": 0.2301,
+          "retained_region_extract": 0.0004,
+          "candidate_fingerprint": 0.0064,
+          "register_candidate": 0.0031,
+          "qa_candidate": 0.0467,
+          "validate_job": 0.0228,
+          "completeness_audit": 0.0164,
+          "preflight": 0.0869
         },
         "counters": {
           "candidate_analysis_reuse": 6,
@@ -281,23 +267,21 @@
       },
       "warm": {
         "seconds": [
-          0.5197,
-          0.5241,
-          0.5154,
-          0.5756,
-          0.6269
+          0.5014,
+          0.4879,
+          0.5006
         ],
-        "median_seconds": 0.5241,
+        "median_seconds": 0.5006,
         "translation_stage_seconds": {},
         "pdf_stage_seconds": {
-          "build_candidate": 0.2463,
-          "retained_region_extract": 0.0005,
-          "candidate_fingerprint": 0.0065,
-          "register_candidate": 0.0037,
-          "qa_candidate": 0.0467,
-          "validate_job": 0.0233,
-          "completeness_audit": 0.017,
-          "preflight": 0.0898
+          "build_candidate": 0.2375,
+          "retained_region_extract": 0.0004,
+          "candidate_fingerprint": 0.0061,
+          "register_candidate": 0.003,
+          "qa_candidate": 0.0464,
+          "validate_job": 0.023,
+          "completeness_audit": 0.0166,
+          "preflight": 0.0865
         },
         "counters": {
           "candidate_analysis_reuse": 6,
@@ -320,22 +304,20 @@
     {
       "id": "reference-heavy",
       "status": "ERROR: 统一生成器无法在可读字号和页数扩张上限内完成首版。最紧凑的可读试排为 11 页，扩张比 1.833；当前异常保护上限为 1.6。请优先检查重复内容、错误保留区域或异常复杂页载荷。",
-      "repeats": 5,
+      "repeats": 3,
       "cold": {
         "seconds": [
-          1.9097,
-          1.7493,
-          1.7663,
-          1.5462,
-          1.7977
+          1.4735,
+          1.4682,
+          1.4908
         ],
-        "median_seconds": 1.7663,
+        "median_seconds": 1.4735,
         "translation_stage_seconds": {},
         "pdf_stage_seconds": {
-          "build_candidate": 1.4203,
+          "build_candidate": 1.1594,
           "retained_region_extract": 0.0002,
-          "validate_job": 0.0449,
-          "completeness_audit": 0.1577
+          "validate_job": 0.0414,
+          "completeness_audit": 0.14
         },
         "counters": {
           "candidate_pdf_open": 18,
@@ -348,19 +330,17 @@
       },
       "warm": {
         "seconds": [
-          1.5855,
-          1.6236,
-          1.5677,
-          1.5959,
-          1.6453
+          1.4741,
+          1.4512,
+          1.4588
         ],
-        "median_seconds": 1.5959,
+        "median_seconds": 1.4588,
         "translation_stage_seconds": {},
         "pdf_stage_seconds": {
-          "build_candidate": 1.2528,
+          "build_candidate": 1.1534,
           "retained_region_extract": 0.0002,
-          "validate_job": 0.0444,
-          "completeness_audit": 0.1469
+          "validate_job": 0.0414,
+          "completeness_audit": 0.1386
         },
         "counters": {
           "candidate_pdf_open": 18,
@@ -379,10 +359,10 @@
     }
   ],
   "totals": {
-    "cold_median_seconds": 6.5326,
-    "warm_median_seconds": 6.5534,
-    "cold_case_median_seconds": 1.5997,
-    "warm_case_median_seconds": 1.5959
+    "cold_median_seconds": 5.9453,
+    "warm_median_seconds": 5.8284,
+    "cold_case_median_seconds": 1.4735,
+    "warm_case_median_seconds": 1.4588
   },
   "note": "合成语料只用于比较耗时与重复读取，不能替代真实论文的视觉抽查。模型翻译阶段未测量。"
 }

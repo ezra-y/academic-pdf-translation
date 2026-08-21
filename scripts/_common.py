@@ -10,6 +10,10 @@ _REPO_ROOT = _Path(__file__).resolve().parent.parent
 if str(_REPO_ROOT) not in _sys.path:
     _sys.path.insert(0, str(_REPO_ROOT))
 
+from academic_pdf_translation.contracts.models import (  # noqa: E402
+    center_in_bbox as _center_in_bbox,
+)
+
 import hashlib
 import json
 import os
@@ -773,9 +777,6 @@ def ensure_nonempty_string(value: Any, label: str) -> str:
     return value.strip()
 
 
-def center_in_bbox(span_bbox: list[float] | tuple[float, ...], bbox: list[float]) -> bool:
-    x0, y0, x1, y1 = span_bbox
-    cx = (float(x0) + float(x1)) / 2
-    cy = (float(y0) + float(y1)) / 2
-    bx0, by0, bx1, by1 = map(float, bbox)
-    return bx0 <= cx <= bx1 and by0 <= cy <= by1
+# 定义已搬进 academic_pdf_translation.contracts.models，这里保留同名再导出，
+# 所有既有调用方一个字都不用改。
+center_in_bbox = _center_in_bbox

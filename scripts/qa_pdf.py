@@ -1,17 +1,55 @@
 from __future__ import annotations
 
-import argparse
-import re
-import statistics
-import unicodedata
-from collections import Counter, defaultdict
-from pathlib import Path
-from typing import Any
+import sys
+from pathlib import Path as _Path
 
-import perf_trace
-from _common import (
+# 按 README 的写法 `python3 scripts/qa_pdf.py` 运行时 sys.path 里没有仓库根。
+sys.path.insert(0, str(_Path(__file__).resolve().parent.parent))
+
+import argparse  # noqa: E402
+import re  # noqa: E402
+import statistics  # noqa: E402
+import unicodedata  # noqa: E402
+from collections import Counter, defaultdict  # noqa: E402
+from pathlib import Path  # noqa: E402
+from typing import Any  # noqa: E402
+
+from academic_pdf_translation.qa.geometry import (
+    all_complex_candidate_pages as _all_complex_candidate_pages,
+)
+from academic_pdf_translation.qa.geometry import (
+    in_any_region as _in_any_region,
+)
+
+# 区域几何一族已搬进包里。这里按原名再导入，下面的检查逻辑一个字没改。
+from academic_pdf_translation.qa.geometry import (  # noqa: E402
+    page_selector_matches as _page_selector_matches,
+)
+from academic_pdf_translation.qa.geometry import (
+    pre_complex_break_pages as _pre_complex_break_pages,
+)
+from academic_pdf_translation.qa.geometry import (
+    reference_area_ratio as _reference_area_ratio,
+)
+from academic_pdf_translation.qa.geometry import (
+    region_covers_page as _region_covers_page,
+)
+from academic_pdf_translation.qa.geometry import (
+    regions_for_page as _regions_for_page,
+)
+from academic_pdf_translation.qa.geometry import (
+    structured_complex_candidate_pages as _structured_complex_candidate_pages,
+)
+from academic_pdf_translation.qa.geometry import (
+    structured_table_page as _structured_table_page,
+)
+from academic_pdf_translation.qa.geometry import (
+    whole_page_reference as _whole_page_reference,
+)
+
+import perf_trace  # noqa: E402
+from _common import (  # noqa: E402
     SkillError,
-    center_in_bbox,
     character_counts,
     internal_job_path,
     load_json,
@@ -21,14 +59,14 @@ from _common import (
     utc_now,
     write_json,
 )
-from candidate_analysis import open_candidate_analysis
-from candidate_page_map import (
+from candidate_analysis import open_candidate_analysis  # noqa: E402
+from candidate_page_map import (  # noqa: E402
     candidate_pages_for_source,
     candidate_pages_for_unit,
     load_candidate_page_map,
     source_pages_for_candidate,
 )
-from retained_source import extract_retained_regions
+from retained_source import extract_retained_regions  # noqa: E402
 
 PLACEHOLDER_PATTERN = re.compile(
     r"\{\{[^{}]+\}\}|\{v\s*\d+\}|</?style\b[^>]*>|"
@@ -54,151 +92,6 @@ SOURCE_MAPPING_LABEL_PATTERN = re.compile(
     r")$",
     re.IGNORECASE,
 )
-
-
-def _page_selector_matches(item: dict, page_number: int) -> bool:
-    if item.get("page") == page_number:
-        return True
-    pages = item.get("pages")
-    return isinstance(pages, list) and page_number in pages
-
-
-def _regions_for_page(items: list[dict], page_number: int) -> list[dict]:
-    return [
-        item
-        for item in items
-        if isinstance(item, dict) and _page_selector_matches(item, page_number)
-    ]
-
-
-def _region_covers_page(page: Any, region: dict) -> bool:
-    bbox = region.get("bbox")
-    if not isinstance(bbox, list) or len(bbox) != 4:
-        return False
-    x0, y0, x1, y1 = map(float, bbox)
-    area = max(0.0, x1 - x0) * max(0.0, y1 - y0)
-    for page_rect in (page.rect, page.cropbox):
-        page_area = max(float(page_rect.width * page_rect.height), 1.0)
-        if area / page_area >= 0.8:
-            return True
-    return False
-
-
-def _structured_table_page(
-    page_number: int,
-    page_overrides: list[dict],
-    non_body_regions: list[dict],
-) -> bool:
-    if any(
-        "table" in str(region.get("category", "")).lower()
-        for region in non_body_regions
-    ):
-        return True
-    for item in page_overrides:
-        if not isinstance(item, dict) or not _page_selector_matches(
-            item, page_number
-        ):
-            continue
-        layout = str(item.get("layout", "")).lower()
-        if (
-            item.get("preserve_column_structure") is True
-            or item.get("structured_table") is True
-            or "table" in layout
-        ):
-            return True
-    return False
-
-
-def _structured_complex_candidate_pages(
-    complex_content: dict,
-    candidate_mapping: dict[str, Any] | None,
-) -> set[int]:
-    if not isinstance(candidate_mapping, dict):
-        return set()
-    structured_ids = {
-        str(item.get("id") or "")
-        for item in complex_content.get("items", [])
-        if isinstance(item, dict)
-        and item.get("status") == "ready"
-        and item.get("method")
-        in {"structured-table-rebuild", "semantic-grid-rebuild"}
-        and str(item.get("id") or "")
-    }
-    pages: set[int] = set()
-    for entry in candidate_mapping.get("complex_items", []):
-        if (
-            not isinstance(entry, dict)
-            or str(entry.get("complex_item_id") or "") not in structured_ids
-        ):
-            continue
-        pages.update(
-            int(page)
-            for page in entry.get("candidate_pages", [])
-            if isinstance(page, int)
-        )
-    return pages
-
-
-def _all_complex_candidate_pages(
-    complex_content: dict[str, Any],
-    candidate_mapping: dict[str, Any] | None,
-) -> set[int]:
-    if not isinstance(candidate_mapping, dict):
-        return set()
-    ready_ids = {
-        str(item.get("id") or "")
-        for item in complex_content.get("items", [])
-        if isinstance(item, dict)
-        and item.get("status") == "ready"
-        and str(item.get("id") or "")
-    }
-    pages: set[int] = set()
-    for entry in candidate_mapping.get("complex_items", []):
-        if (
-            not isinstance(entry, dict)
-            or str(entry.get("complex_item_id") or "") not in ready_ids
-        ):
-            continue
-        pages.update(
-            int(page)
-            for page in entry.get("candidate_pages", [])
-            if isinstance(page, int)
-        )
-    return pages
-
-
-def _pre_complex_break_pages(
-    candidate_mapping: dict[str, Any] | None,
-    structured_pages: set[int],
-) -> set[int]:
-    if not isinstance(candidate_mapping, dict):
-        return set()
-    source_pages_by_candidate = {
-        int(entry["candidate_page"]): {
-            int(page)
-            for page in entry.get("source_pages", [])
-            if isinstance(page, int)
-        }
-        for entry in candidate_mapping.get("candidate_pages", [])
-        if isinstance(entry, dict)
-        and isinstance(entry.get("candidate_page"), int)
-    }
-    result: set[int] = set()
-    for page in structured_pages:
-        if page <= 1:
-            continue
-        previous_sources = source_pages_by_candidate.get(page - 1, set())
-        current_sources = source_pages_by_candidate.get(page, set())
-        if previous_sources & current_sources:
-            result.add(page - 1)
-            continue
-        if (
-            previous_sources
-            and current_sources
-            and max(previous_sources) + 1 == min(current_sources)
-        ):
-            result.add(page - 1)
-    return result
 
 
 def _placeholder_token(text: str) -> str:
@@ -297,65 +190,6 @@ def _mapped_entry_has_visible_retained_content(entry: dict[str, Any]) -> bool:
         str(region_id).strip()
         for region_id in entry.get("retained_region_ids", [])
     )
-
-
-def _in_any_region(span_bbox: Any, regions: list[dict]) -> bool:
-    return any(
-        isinstance(region.get("bbox"), list)
-        and len(region["bbox"]) == 4
-        and center_in_bbox(span_bbox, region["bbox"])
-        for region in regions
-    )
-
-
-def _region_union_area(regions: list[dict]) -> float:
-    rectangles = []
-    for region in regions:
-        bbox = region.get("bbox")
-        if not isinstance(bbox, list) or len(bbox) != 4:
-            continue
-        x0, y0, x1, y1 = map(float, bbox)
-        if x1 > x0 and y1 > y0:
-            rectangles.append((x0, y0, x1, y1))
-    if not rectangles:
-        return 0.0
-    x_values = sorted({value for rect in rectangles for value in (rect[0], rect[2])})
-    area = 0.0
-    for left, right in zip(x_values, x_values[1:]):
-        if right <= left:
-            continue
-        intervals = sorted(
-            (y0, y1)
-            for x0, y0, x1, y1 in rectangles
-            if x0 < right and x1 > left
-        )
-        if not intervals:
-            continue
-        covered = 0.0
-        start, end = intervals[0]
-        for current_start, current_end in intervals[1:]:
-            if current_start <= end:
-                end = max(end, current_end)
-            else:
-                covered += end - start
-                start, end = current_start, current_end
-        covered += end - start
-        area += (right - left) * covered
-    return area
-
-
-def _reference_area_ratio(page: Any, regions: list[dict]) -> float:
-    reference_regions = [
-        region
-        for region in regions
-        if region.get("category") in {"references", "bibliography"}
-    ]
-    page_area = max(float(page.rect.width * page.rect.height), 1.0)
-    return min(1.0, _region_union_area(reference_regions) / page_area)
-
-
-def _whole_page_reference(page: Any, regions: list[dict]) -> bool:
-    return _reference_area_ratio(page, regions) >= 0.72
 
 
 def _body_spans(

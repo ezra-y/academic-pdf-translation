@@ -58,6 +58,22 @@ def bbox_overlap(first: BBox | None, second: BBox | None) -> float:
     return max(0.0, width) * max(0.0, height)
 
 
+def center_in_bbox(
+    span_bbox: list[float] | tuple[float, ...], bbox: list[float]
+) -> bool:
+    """一个跨度的中心点在不在某个框里。
+
+    判中心点而不判整框相交：一行文字的框常常比它所属的区域宽出一点，
+    按相交算会把邻区的文字也算进来。
+    """
+
+    x0, y0, x1, y1 = span_bbox
+    cx = (float(x0) + float(x1)) / 2
+    cy = (float(y0) + float(y1)) / 2
+    bx0, by0, bx1, by1 = map(float, bbox)
+    return bx0 <= cx <= bx1 and by0 <= cy <= by1
+
+
 def bbox_distance(first: BBox | None, second: BBox | None) -> float:
     """两个框之间的最短间距；相交时为 0。"""
 
