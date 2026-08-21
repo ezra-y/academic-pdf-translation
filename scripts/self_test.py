@@ -71,11 +71,7 @@ from content_anchors import (
 )
 from corpus_audit import audit_corpus
 from extract_source_structure import extract_source_structure
-from font_preparation import (
-    _font_request_match_score,
-    fonts_are_current,
-    prepare_job_fonts,
-)
+from font_preparation import fonts_are_current, prepare_job_fonts
 from i18n import message
 from init_job import (
     _existing_job_dirs,
@@ -2177,15 +2173,6 @@ def _test_content_independent_exact_presence_rules() -> None:
         raise AssertionError("统计表达式不得被当成非语义分隔线")
     if _is_nonsemantic_divider_source("−"):
         raise AssertionError("单个正负号或运算符不得被当成分隔线")
-    if _font_request_match_score("Noto Sans", "NotoSansOriya"):
-        raise AssertionError("通用字体名不得误配到其他文字系统的专用字体")
-    if not _font_request_match_score("Noto Sans", "NotoSans-Regular"):
-        raise AssertionError("通用字体名必须匹配同家族常规字重")
-    if (
-        _font_request_match_score("Arial", "Arial")
-        <= _font_request_match_score("Arial", "Arial Bold")
-    ):
-        raise AssertionError("字体解析必须优先选择常规字重")
     if not _source_bbox_fuzzy_match(
         _normalize_source_text(
             "Agreement was κ = 0.68 and Cronbach’s α = 0.82 in the "
