@@ -36,6 +36,7 @@ from reportlab.platypus import (
     TableStyle,
 )
 
+import perf_trace
 from i18n import message
 from _common import (
     SkillError,
@@ -5705,6 +5706,13 @@ def _render_attempt(
     leading_ratio: float,
     reference_font_pt: float,
 ) -> tuple[MappingTracker, int]:
+    """完整试排一次，结果写入给定路径。
+
+    这里刻意保留落盘：实测在写时复制文件系统上，写临时文件再内存映射打开，
+    比把整份 PDF 复制成 bytes 再从内存流解析更快，也不会把每次试排的完整
+    PDF 都留在内存里。选中的候选直接复用它自己的临时文件，不重排。
+    """
+
     tracker = MappingTracker()
     styles = _styles(
         regular_font=regular_font,
@@ -5748,6 +5756,7 @@ def _render_attempt(
 
     document.build(story, canvasmaker=canvas_maker)
     tracker.finalize_heading_check()
+    perf_trace.count(perf_trace.COUNTER_RENDER_ATTEMPT)
     fitz = import_fitz()
     output = fitz.open(path)
     page_count = output.page_count
@@ -5800,6 +5809,166 @@ def _typography_candidates(job: dict[str, Any]) -> list[tuple[float, float]]:
         for leading in leading_values
         for font_size in _descending(upper_font, lower_font, font_step)
     ]
+
+
+def _grouped_typography_candidates(
+    job: dict[str, Any],
+) -> list[list[tuple[float, float]]]:
+    """把候选按行距分组：组间行距降序，组内字号降序。"""
+
+    groups: list[list[tuple[float, float]]] = []
+    for body_font, leading in _typography_candidates(job):
+        if groups and abs(groups[-1][0][1] - leading) < 1e-9:
+            groups[-1].append((body_font, leading))
+        else:
+            groups.append([(body_font, leading)])
+    return groups
+
+
+def _estimated_page_count(
+    *,
+    translated_chars: int,
+    paragraph_count: int,
+    heading_count: int,
+    available_width_pt: float,
+    available_height_pt: float,
+    body_font_pt: float,
+    leading_ratio: float,
+) -> int:
+    """不做完整试排的轻量页数估算。
+
+    只用字量、段落数、标题数和可用版心，用来记录搜索依据；它不参与选择，
+    因此估算偏差不会改变最终字号。
+    """
+
+    line_height = max(body_font_pt * leading_ratio, 1.0)
+    chars_per_line = max(available_width_pt / max(body_font_pt, 1.0), 1.0)
+    lines_per_page = max(available_height_pt / line_height, 1.0)
+    text_lines = translated_chars / chars_per_line
+    spacing_lines = paragraph_count * 0.9 + heading_count * 1.6
+    return max(1, math.ceil((text_lines + spacing_lines) / lines_per_page))
+
+
+def _search_typography(
+    *,
+    groups: list[list[tuple[float, float]]],
+    evaluate,
+) -> tuple[tuple[int, int] | None, str, str]:
+    """在候选表中找出第一个页数达标的组合。
+
+    依据两条单调性：同一行距下字号变小页数不增；行距变小时该行距下最紧凑
+    组合的页数也不增。因此可以先在组之间二分，再在组内二分，用对数次完整
+    试排得到与线性扫描相同的结果。
+
+    每次试排都记入单调性审计：同组内字号更小却页数更多，或行距更小的组
+    最紧凑组合页数反而更多，都判定为单调性不成立，立即回退到完整线性扫描
+    并记录原因。选定后还要确认它在原顺序中的前一个组合确实不达标。
+
+    已知局限：审计只能判定实际试排过的组合。若两个都没有被试排到的组合之间
+    存在单调性破坏，本搜索可能选到比穷举扫描更小的字号；它仍然满足页数上限
+    且经过完整试排，不会产生不可读或未验证的版式。
+
+    “没有任何组合达标”这一结论不由二分给出。二分只探测每组最紧凑的组合，
+    据此断定无解会把本可排版的论文误报为失败，因此这种情况一律回退到完整
+    线性扫描确认。
+    """
+
+    observed: dict[tuple[int, int], int] = {}
+    violation = ""
+    if not groups:
+        return None, "linear-fallback", "no-typography-candidates"
+
+    def probe(group_index: int, item_index: int) -> dict[str, Any] | None:
+        nonlocal violation
+        result = evaluate(group_index, item_index)
+        if result is None:
+            return None
+        pages = result.get("page_count")
+        if not isinstance(pages, int):
+            return result
+        observed[(group_index, item_index)] = pages
+        for (other_group, other_item), other_pages in observed.items():
+            if other_group == group_index:
+                if other_item < item_index and other_pages < pages:
+                    violation = "page-count-not-monotonic-within-leading"
+                elif other_item > item_index and other_pages > pages:
+                    violation = "page-count-not-monotonic-within-leading"
+                continue
+            last_item = len(groups[group_index]) - 1
+            other_last = len(groups[other_group]) - 1
+            if item_index != last_item or other_item != other_last:
+                continue
+            if other_group < group_index and other_pages < pages:
+                violation = "page-count-not-monotonic-across-leading"
+            elif other_group > group_index and other_pages > pages:
+                violation = "page-count-not-monotonic-across-leading"
+        return result
+
+    # 先试排原顺序中的第一个候选。它一旦达标就是答案本身，无需再探测，
+    # 这样“首次试排即通过”的论文仍然只排一次，不会比线性扫描慢。
+    first = probe(0, 0)
+    if first is None:
+        return None, "linear-fallback", "render-failed-during-search"
+    if first["fits"]:
+        return (0, 0), "bounded-binary", ""
+
+    # 再看第一组最紧凑的组合。行距最大的一组能装下时答案必然在组内，
+    # 直接转入组内二分，不必在组之间试探；这让容易排版的论文少排一次。
+    target_group: int | None = None
+    leading_group = probe(0, len(groups[0]) - 1)
+    if leading_group is None:
+        return None, "linear-fallback", "render-failed-during-search"
+    if leading_group["fits"]:
+        target_group = 0
+
+    low = 1
+    high = len(groups) - 1 if target_group is None else 0
+    while low <= high:
+        middle = (low + high) // 2
+        result = probe(middle, len(groups[middle]) - 1)
+        if result is None:
+            return None, "linear-fallback", "render-failed-during-search"
+        if result["fits"]:
+            target_group = middle
+            high = middle - 1
+        else:
+            low = middle + 1
+    if violation:
+        return None, "linear-fallback", violation
+    if target_group is None:
+        # 二分只探测每组最紧凑的组合。若据此断定“没有任何组合达标”，
+        # 一旦单调性在未探测点上不成立，就会把本可排版的论文误报为无解。
+        # 这个代价远高于多排几次，因此改为完整线性扫描确认。
+        return None, "linear-fallback", "no-feasible-group-verify-exhaustively"
+
+    low = 0
+    high = len(groups[target_group]) - 1
+    target_item = high
+    while low <= high:
+        middle = (low + high) // 2
+        result = probe(target_group, middle)
+        if result is None:
+            return None, "linear-fallback", "render-failed-during-search"
+        if result["fits"]:
+            target_item = middle
+            high = middle - 1
+        else:
+            low = middle + 1
+
+    if violation:
+        return None, "linear-fallback", violation
+
+    if target_item > 0:
+        previous = probe(target_group, target_item - 1)
+    elif target_group > 0:
+        previous = probe(target_group - 1, len(groups[target_group - 1]) - 1)
+    else:
+        previous = None
+    if violation:
+        return None, "linear-fallback", violation
+    if previous is not None and previous["fits"]:
+        return None, "linear-fallback", "earlier-candidate-also-fits"
+    return (target_group, target_item), "bounded-binary", ""
 
 
 def _add_outline(
@@ -6031,15 +6200,65 @@ def build_candidate(
     attempts: list[dict[str, Any]] = []
     selected: tuple[Path, MappingTracker, int, float, float, float] | None = None
     output_pdf.parent.mkdir(parents=True, exist_ok=True)
+    typography_groups = _grouped_typography_candidates(job)
+    translated_chars = sum(
+        len(str(unit.get("translation") or unit.get("source") or ""))
+        for unit in translation.get("units", [])
+        if isinstance(unit, dict)
+    )
+    heading_count = sum(
+        1
+        for unit in translation.get("units", [])
+        if isinstance(unit, dict)
+        and str(unit.get("kind") or "").lower() == "heading"
+    )
+    paragraph_count = len(
+        [unit for unit in translation.get("units", []) if isinstance(unit, dict)]
+    )
+    typography_estimate = {
+        "translated_chars": translated_chars,
+        "paragraph_count": paragraph_count,
+        "heading_count": heading_count,
+        "available_width_pt": round(page_size[0] - margins[0] - margins[1], 2),
+        "available_height_pt": round(page_size[1] - margins[2] - margins[3], 2),
+        "candidates": [
+            {
+                "body_font_pt": body_font,
+                "leading_ratio": leading,
+                "estimated_page_count": _estimated_page_count(
+                    translated_chars=translated_chars,
+                    paragraph_count=paragraph_count,
+                    heading_count=heading_count,
+                    available_width_pt=page_size[0] - margins[0] - margins[1],
+                    available_height_pt=page_size[1] - margins[2] - margins[3],
+                    body_font_pt=body_font,
+                    leading_ratio=leading,
+                ),
+            }
+            for group in typography_groups
+            for body_font, leading in group[-1:]
+        ],
+        "note": (
+            "估算只用于记录搜索依据，不参与选择；实际字号仍由完整试排决定。"
+        ),
+    }
     with tempfile.TemporaryDirectory(prefix="academic-unified-render-") as tmp:
         tmp_dir = Path(tmp)
-        for index, (body_font, leading) in enumerate(
-            _typography_candidates(job),
-            1,
-        ):
+        probe_cache: dict[tuple[int, int], dict[str, Any] | None] = {}
+
+        def _evaluate_candidate(
+            group_index: int,
+            item_index: int,
+        ) -> dict[str, Any] | None:
+            key = (group_index, item_index)
+            if key in probe_cache:
+                return probe_cache[key]
+            body_font, leading = typography_groups[group_index][item_index]
             reference_font_pt = _reference_font_size(job, body_font)
-            attempt_path = tmp_dir / f"attempt-{index:03d}.pdf"
             attempt_started = time.monotonic()
+            attempt_path = (
+                tmp_dir / f"attempt-{group_index:02d}-{item_index:02d}.pdf"
+            )
             try:
                 tracker, page_count = _render_attempt(
                     path=attempt_path,
@@ -6068,33 +6287,69 @@ def build_candidate(
                         "seconds": round(time.monotonic() - attempt_started, 3),
                     }
                 )
-                continue
+                probe_cache[key] = None
+                return None
             expansion = page_count / max(source_page_count, 1)
-            attempts.append(
-                {
-                    "body_font_pt": body_font,
-                    "leading_ratio": leading,
-                    "reference_font_pt": round(reference_font_pt, 2),
-                    "candidate_page_count": page_count,
-                    "page_count_ratio": round(expansion, 3),
-                    "status": (
-                        "selected"
-                        if expansion <= effective_page_expansion_ratio
-                        else "too-many-pages"
-                    ),
-                    "seconds": round(time.monotonic() - attempt_started, 3),
-                }
+            fits = expansion <= effective_page_expansion_ratio
+            record = {
+                "body_font_pt": body_font,
+                "leading_ratio": leading,
+                "reference_font_pt": round(reference_font_pt, 2),
+                "candidate_page_count": page_count,
+                "page_count_ratio": round(expansion, 3),
+                "status": "fits" if fits else "too-many-pages",
+                "seconds": round(time.monotonic() - attempt_started, 3),
+            }
+            attempts.append(record)
+            probe_cache[key] = {
+                "record": record,
+                # 不达标的候选不可能被选中；它的映射跟踪器立刻释放，
+                # 否则完整扫描会把每一次试排的逐单元映射都留在内存里。
+                "tracker": tracker if fits else None,
+                "page_count": page_count,
+                "path": attempt_path,
+                "body_font_pt": body_font,
+                "leading_ratio": leading,
+                "reference_font_pt": reference_font_pt,
+                "fits": fits,
+            }
+            return probe_cache[key]
+
+        position, search_method, search_note = _search_typography(
+            groups=typography_groups,
+            evaluate=_evaluate_candidate,
+        )
+        if search_method == "linear-fallback":
+            for group_index, group in enumerate(typography_groups):
+                for item_index in range(len(group)):
+                    result = _evaluate_candidate(group_index, item_index)
+                    if result is not None and result["fits"]:
+                        position = (group_index, item_index)
+                        break
+                if position is not None:
+                    break
+
+        if position is not None:
+            chosen = probe_cache[position]
+            chosen["record"]["status"] = "selected"
+            selected = (
+                chosen["path"],
+                chosen["tracker"],
+                chosen["page_count"],
+                chosen["body_font_pt"],
+                chosen["leading_ratio"],
+                chosen["reference_font_pt"],
             )
-            if expansion <= effective_page_expansion_ratio:
-                selected = (
-                    attempt_path,
-                    tracker,
-                    page_count,
-                    body_font,
-                    leading,
-                    reference_font_pt,
-                )
-                break
+        typography_search = {
+            "method": search_method,
+            "note": search_note,
+            "candidate_count": sum(
+                len(group) for group in typography_groups
+            ),
+            "leading_group_count": len(typography_groups),
+            "render_attempts": len(attempts),
+            "estimate": typography_estimate,
+        }
         if selected is None:
             rendered_attempts = [
                 attempt
@@ -6241,6 +6496,7 @@ def build_candidate(
             else "adaptive-reference-share"
         ),
         "attempts": attempts,
+        "typography_search": typography_search,
         "candidate_page_map": str(map_path),
         "render_contract": {
             "all_units_consumed": mapped_unit_ids == set(unit_ids),
