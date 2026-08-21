@@ -1,137 +1,314 @@
 {
-  "schema_version": "1.0",
-  "generated_at": "2026-08-21T12:55:22+00:00",
-  "case_count": 5,
-  "automatic_first_pass_count": 0,
-  "automatic_first_pass_rate": 0.0,
-  "median_total_seconds": 0.89,
-  "benchmark_wall_seconds": 4.057,
-  "workers": 1,
-  "renderer_build_ids": [
-    "2eb01fb6e630ce3b96187bb3e832d6c1443a16ae837ace5f983b8623d86c3a8f"
-  ],
-  "single_build": true,
-  "visual_review_required": true,
-  "work_dir": null,
+  "schema_version": "2.0",
+  "label": "baseline",
+  "provenance": {
+    "renderer_build_id": "2eb01fb6e630ce3b96187bb3e832d6c1443a16ae837ace5f983b8623d86c3a8f",
+    "git_commit": "025b7a34346a1085ac40c7abecd3628df6839280",
+    "git_branch": "HEAD",
+    "git_dirty": true,
+    "python": "3.14.5",
+    "load_average_1m": 5.38,
+    "cpu_count": 15,
+    "corpus": "synthetic-representative-v1",
+    "corpus_manifest_cases": 5
+  },
+  "repeats": 5,
+  "model_translation": {
+    "measured": false,
+    "reason": "本次运行没有调用真实翻译模型；译文由确定性伪译文替代，只用于触发同一批代码路径。",
+    "model": null,
+    "model_calls": null,
+    "batches": null,
+    "retries": null,
+    "input_tokens": null,
+    "output_tokens": null,
+    "seconds": null
+  },
   "cases": [
     {
-      "id": "image-heavy",
-      "tags": [
-        "figure",
-        "image"
-      ],
-      "status": "NEEDS_REPAIR",
-      "renderer_version": "1.0",
-      "renderer_build_id": "2eb01fb6e630ce3b96187bb3e832d6c1443a16ae837ace5f983b8623d86c3a8f",
-      "source_page_count": 8,
-      "candidate_page_count": 2,
-      "timing_seconds": {
-        "input_readiness": 0.02,
-        "build": 0.015,
-        "pre_render_audit": 0.009,
-        "preflight": 0.092,
-        "total": 0.138
-      },
-      "hard_failure_codes": [
-        "TARGET_TEXT_MISSING",
-        "NULL_CHARACTERS",
-        "TARGET_PRIMARY_SCRIPT_MISSING"
-      ]
-    },
-    {
-      "id": "reference-heavy",
-      "tags": [
-        "references"
-      ],
-      "status": "NEEDS_REPAIR",
-      "renderer_version": "1.0",
-      "renderer_build_id": "2eb01fb6e630ce3b96187bb3e832d6c1443a16ae837ace5f983b8623d86c3a8f",
-      "source_page_count": 6,
-      "candidate_page_count": 9,
-      "timing_seconds": {
-        "input_readiness": 0.164,
-        "build": 0.22,
-        "pre_render_audit": 0.011,
-        "preflight": 0.495,
-        "total": 0.89
-      },
-      "hard_failure_codes": [
-        "TARGET_TEXT_MISSING",
-        "NULL_CHARACTERS",
-        "TARGET_PRIMARY_SCRIPT_MISSING"
-      ]
-    },
-    {
       "id": "single-column-body",
+      "status": "NEEDS_REPAIR",
+      "repeats": 5,
+      "cold": {
+        "seconds": [
+          1.5296,
+          1.4662,
+          1.3877,
+          1.4865,
+          1.4918
+        ],
+        "median_seconds": 1.4865,
+        "translation_stage_seconds": {},
+        "pdf_stage_seconds": {
+          "retained_region_extract": 0.0006,
+          "candidate_fingerprint": 0.0907,
+          "qa_candidate": 0.5538,
+          "completeness_audit": 0.2189
+        },
+        "counters": {
+          "expensive_audit_cache_hit": 1,
+          "render_attempt": 3,
+          "sha256_cache_hit": 48,
+          "sha256_file_read": 19
+        }
+      },
+      "warm": {
+        "seconds": [
+          1.4495,
+          1.4572,
+          1.4824,
+          1.5157,
+          1.3693
+        ],
+        "median_seconds": 1.4572,
+        "translation_stage_seconds": {},
+        "pdf_stage_seconds": {
+          "retained_region_extract": 0.0006,
+          "candidate_fingerprint": 0.0945,
+          "qa_candidate": 0.5935,
+          "completeness_audit": 0.2238
+        },
+        "counters": {
+          "expensive_audit_cache_hit": 1,
+          "render_attempt": 3,
+          "sha256_cache_hit": 50,
+          "sha256_file_read": 17
+        }
+      },
+      "page_count": 12,
+      "frozen_unit_count": 134,
       "tags": [
         "body",
         "single-column"
-      ],
-      "status": "NEEDS_REPAIR",
-      "renderer_version": "1.0",
-      "renderer_build_id": "2eb01fb6e630ce3b96187bb3e832d6c1443a16ae837ace5f983b8623d86c3a8f",
-      "source_page_count": 12,
-      "candidate_page_count": 17,
-      "timing_seconds": {
-        "input_readiness": 0.209,
-        "build": 0.2,
-        "pre_render_audit": 0.01,
-        "preflight": 0.91,
-        "total": 1.331
-      },
-      "hard_failure_codes": [
-        "TARGET_TEXT_MISSING",
-        "NULL_CHARACTERS",
-        "TARGET_PRIMARY_SCRIPT_MISSING"
-      ]
-    },
-    {
-      "id": "structured-table-and-model",
-      "tags": [
-        "table",
-        "diagram"
-      ],
-      "status": "NEEDS_REPAIR",
-      "renderer_version": "1.0",
-      "renderer_build_id": "2eb01fb6e630ce3b96187bb3e832d6c1443a16ae837ace5f983b8623d86c3a8f",
-      "source_page_count": 8,
-      "candidate_page_count": 3,
-      "timing_seconds": {
-        "input_readiness": 0.034,
-        "build": 0.04,
-        "pre_render_audit": 0.01,
-        "preflight": 0.132,
-        "total": 0.217
-      },
-      "hard_failure_codes": [
-        "TARGET_TEXT_MISSING",
-        "NULL_CHARACTERS",
-        "TARGET_PRIMARY_SCRIPT_MISSING"
       ]
     },
     {
       "id": "two-column-body",
+      "status": "NEEDS_REPAIR",
+      "repeats": 5,
+      "cold": {
+        "seconds": [
+          1.6041,
+          1.5971,
+          1.6277,
+          1.5793,
+          1.553
+        ],
+        "median_seconds": 1.5971,
+        "translation_stage_seconds": {},
+        "pdf_stage_seconds": {
+          "retained_region_extract": 0.0014,
+          "candidate_fingerprint": 0.1047,
+          "qa_candidate": 0.6433,
+          "completeness_audit": 0.2681
+        },
+        "counters": {
+          "expensive_audit_cache_hit": 1,
+          "render_attempt": 3,
+          "sha256_cache_hit": 48,
+          "sha256_file_read": 19
+        }
+      },
+      "warm": {
+        "seconds": [
+          1.5714,
+          1.5445,
+          1.5607,
+          1.598,
+          1.6281
+        ],
+        "median_seconds": 1.5714,
+        "translation_stage_seconds": {},
+        "pdf_stage_seconds": {
+          "retained_region_extract": 0.0007,
+          "candidate_fingerprint": 0.0983,
+          "qa_candidate": 0.6227,
+          "completeness_audit": 0.2711
+        },
+        "counters": {
+          "expensive_audit_cache_hit": 1,
+          "render_attempt": 3,
+          "sha256_cache_hit": 50,
+          "sha256_file_read": 17
+        }
+      },
+      "page_count": 12,
+      "frozen_unit_count": 180,
       "tags": [
         "body",
         "two-column"
-      ],
+      ]
+    },
+    {
+      "id": "structured-table-and-model",
       "status": "NEEDS_REPAIR",
-      "renderer_version": "1.0",
-      "renderer_build_id": "2eb01fb6e630ce3b96187bb3e832d6c1443a16ae837ace5f983b8623d86c3a8f",
-      "source_page_count": 12,
-      "candidate_page_count": 18,
-      "timing_seconds": {
-        "input_readiness": 0.205,
-        "build": 0.225,
-        "pre_render_audit": 0.011,
-        "preflight": 0.988,
-        "total": 1.43
+      "repeats": 5,
+      "cold": {
+        "seconds": [
+          0.5156,
+          0.3806,
+          0.3686,
+          0.3953,
+          0.38
+        ],
+        "median_seconds": 0.3806,
+        "translation_stage_seconds": {},
+        "pdf_stage_seconds": {
+          "retained_region_extract": 0.0008,
+          "candidate_fingerprint": 0.0143,
+          "qa_candidate": 0.0758,
+          "completeness_audit": 0.0507
+        },
+        "counters": {
+          "expensive_audit_cache_hit": 1,
+          "render_attempt": 1,
+          "sha256_cache_hit": 48,
+          "sha256_file_read": 19
+        }
       },
-      "hard_failure_codes": [
-        "TARGET_TEXT_MISSING",
-        "NULL_CHARACTERS",
-        "TARGET_PRIMARY_SCRIPT_MISSING"
+      "warm": {
+        "seconds": [
+          0.4723,
+          0.4395,
+          0.3729,
+          0.3683,
+          0.3682
+        ],
+        "median_seconds": 0.3729,
+        "translation_stage_seconds": {},
+        "pdf_stage_seconds": {
+          "retained_region_extract": 0.0004,
+          "candidate_fingerprint": 0.0134,
+          "qa_candidate": 0.0797,
+          "completeness_audit": 0.058
+        },
+        "counters": {
+          "expensive_audit_cache_hit": 1,
+          "render_attempt": 1,
+          "sha256_cache_hit": 50,
+          "sha256_file_read": 17
+        }
+      },
+      "page_count": 8,
+      "frozen_unit_count": 128,
+      "tags": [
+        "table",
+        "diagram"
+      ]
+    },
+    {
+      "id": "image-heavy",
+      "status": "NEEDS_REPAIR",
+      "repeats": 5,
+      "cold": {
+        "seconds": [
+          0.257,
+          0.2639,
+          0.2675,
+          0.259,
+          0.2631
+        ],
+        "median_seconds": 0.2631,
+        "translation_stage_seconds": {},
+        "pdf_stage_seconds": {
+          "retained_region_extract": 0.0004,
+          "candidate_fingerprint": 0.007,
+          "qa_candidate": 0.0523,
+          "completeness_audit": 0.0173
+        },
+        "counters": {
+          "expensive_audit_cache_hit": 1,
+          "render_attempt": 1,
+          "sha256_cache_hit": 48,
+          "sha256_file_read": 19
+        }
+      },
+      "warm": {
+        "seconds": [
+          0.253,
+          0.2515,
+          0.2509,
+          0.2505,
+          0.2516
+        ],
+        "median_seconds": 0.2515,
+        "translation_stage_seconds": {},
+        "pdf_stage_seconds": {
+          "retained_region_extract": 0.0002,
+          "candidate_fingerprint": 0.0072,
+          "qa_candidate": 0.0532,
+          "completeness_audit": 0.0164
+        },
+        "counters": {
+          "expensive_audit_cache_hit": 1,
+          "render_attempt": 1,
+          "sha256_cache_hit": 50,
+          "sha256_file_read": 17
+        }
+      },
+      "page_count": 8,
+      "frozen_unit_count": 32,
+      "tags": [
+        "figure",
+        "image"
+      ]
+    },
+    {
+      "id": "reference-heavy",
+      "status": "ERROR: 统一生成器无法在可读字号和页数扩张上限内完成首版。最紧凑的可读试排为 11 页，扩张比 1.833；当前异常保护上限为 1.6。请优先检查重复内容、错误保留区域或异常复杂页载荷。",
+      "repeats": 5,
+      "cold": {
+        "seconds": [
+          1.4756,
+          1.4569,
+          1.5584,
+          1.4395,
+          1.4311
+        ],
+        "median_seconds": 1.4569,
+        "translation_stage_seconds": {},
+        "pdf_stage_seconds": {
+          "retained_region_extract": 0.0002,
+          "completeness_audit": 0.1688
+        },
+        "counters": {
+          "render_attempt": 18,
+          "sha256_cache_hit": 9,
+          "sha256_file_read": 9
+        }
+      },
+      "warm": {
+        "seconds": [
+          1.456,
+          1.4207,
+          1.4712,
+          1.486,
+          1.5366
+        ],
+        "median_seconds": 1.4712,
+        "translation_stage_seconds": {},
+        "pdf_stage_seconds": {
+          "retained_region_extract": 0.0005,
+          "completeness_audit": 0.1662
+        },
+        "counters": {
+          "render_attempt": 18,
+          "sha256_cache_hit": 11,
+          "sha256_file_read": 7
+        }
+      },
+      "page_count": 6,
+      "frozen_unit_count": 313,
+      "tags": [
+        "references"
       ]
     }
-  ]
+  ],
+  "totals": {
+    "cold_median_seconds": 5.1842,
+    "warm_median_seconds": 5.1242,
+    "cold_case_median_seconds": 1.4569,
+    "warm_case_median_seconds": 1.4572
+  },
+  "note": "合成语料只用于比较耗时与重复读取，不能替代真实论文的视觉抽查。模型翻译阶段未测量。"
 }

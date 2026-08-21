@@ -6,6 +6,7 @@ import shutil
 import tempfile
 from pathlib import Path
 
+import perf_trace
 from _common import (
     SCHEMA_VERSION,
     SkillError,
@@ -256,7 +257,7 @@ def _archive_previous_iteration(
     return previous_iteration + 1, previous_hash
 
 
-def register_candidate(
+def _timed_register_candidate(
     job_dir: Path,
     generated_pdf: Path,
     renderer: str,
@@ -470,6 +471,14 @@ def register_candidate(
         job["status"] = "translated"
         write_json(job_dir / "job.json", job)
     return provenance
+
+
+
+def register_candidate(*args, **kwargs):
+    """计时包装：阶段耗时进入性能基线，行为与实现完全一致。"""
+
+    with perf_trace.stage("register_candidate"):
+        return _timed_register_candidate(*args, **kwargs)
 
 
 def main() -> int:

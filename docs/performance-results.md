@@ -1,5 +1,14 @@
 # 性能优化执行结果（P0～P6）
 
+> **这份文档是历史记录。** 里面的数字来自 2026-08 那一轮优化时的代码，
+> 之后的审查又改了字体准备顺序、PDF 打开计数和候选分析复用，构建哈希已经变了。
+> 需要引用**当前版本**的性能数据时，看 `../benchmarks/results/comparison.md`，
+> 那份报告绑定当前 `renderer_build_id`，并由
+> `tests/test_benchmark_provenance.py` 强制校验。
+> 另外，当时的合成语料用拉丁字体排中文、并用"恒等译文"（原文照抄）绕过内容
+> 完整性审查；这两条现在都已经被译文真实性检查拒绝，所以那批数字也无法直接
+> 用当前代码复现。
+
 - 分支：`perf/pipeline-optimization`（未推送）
 - 基线：`main` 分支 `01f797a`
 - 语料：`benchmarks/make_synthetic_corpus.py` 生成的五类合成样本
@@ -357,5 +366,5 @@ python3 benchmarks/profile_pipeline.py \
 
 ```bash
 # 下载论文（arXiv 开放获取）后
-python3 benchmarks/make_real_jobs.py --identity
+python3 benchmarks/make_real_jobs.py
 ```

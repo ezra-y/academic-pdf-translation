@@ -13,7 +13,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import random
 import shutil
 import sys
@@ -26,15 +25,20 @@ from _common import load_json, sha256_file, write_json  # noqa: E402
 from init_job import initialize_job  # noqa: E402
 from make_synthetic_corpus import BUILDERS, build_corpus  # noqa: E402
 from set_complex_content import set_complex_content  # noqa: E402
-
+from translation_truthfulness import refresh_coverage  # noqa: E402
 
 #: 中文译文相对英文原文的字数比例。合成语料按类型给不同默认值，
 #: 让每个案例都能真正走完流水线；参考文献密集页天然更挤，比例更低。
+# 合成译文的字数比例（译文字符数 / 原文字符数）。
+# 0.55 与 benchmarks/make_real_jobs.py 的真实论文默认值一致：中文比英文密，
+# 同样内容的字符数通常只有原文的一半左右。此前用的 0.75 偏长，
+# 在真实中文字体下会把合成语料顶出页数扩张保护上限，测出来的不是
+# 排版性能，而是"语料写得太长"。
 CASE_TRANSLATION_RATIO = {
-    "single-column-body": 0.75,
-    "two-column-body": 0.75,
-    "structured-table-and-model": 0.75,
-    "image-heavy": 0.75,
+    "single-column-body": 0.55,
+    "two-column-body": 0.55,
+    "structured-table-and-model": 0.55,
+    "image-heavy": 0.55,
     "reference-heavy": 0.45,
 }
 
@@ -46,11 +50,7 @@ CASE_TAGS = {
     "reference-heavy": ["references"],
 }
 
-VOCAB = (
-    "缓存 失效 策略 分布式 系统 评估 讨论 样本 方差 区间 回归 效度 信度 "
-    "参与者 流程 测量 结果 处理 对照 基线 显著 估计 队列 站点 负载 延迟 "
-    "陈旧 读取 协调 部署 月度 生成 封套 局限 未来 工作 如下 指标 阈值"
-).split()
+VOCAB = ["缓存", "失效", "策略", "分布式", "系统", "评估", "讨论", "样本", "方差", "区间", "回归", "效度", "信度", "参与者", "流程", "测量", "结果", "处理", "对照", "基线", "显著", "估计", "队列", "站点", "负载", "延迟", "陈旧", "读取", "协调", "部署", "月度", "生成", "封套", "局限", "未来", "工作", "如下", "指标", "阈值"]
 
 
 def _font_path() -> Path:
@@ -101,7 +101,6 @@ def build_jobs(
     translation_ratio: float | None = None,
     sources: dict[str, Path] | None = None,
     tags: dict[str, list[str]] | None = None,
-    identity: bool = False,
 ) -> list[dict[str, Any]]:
     """把一批 PDF 变成可直接跑基准的作业。
 
@@ -143,8 +142,10 @@ def build_jobs(
                 "无需按复杂页重建；仅用于性能基准，不用于质量验收。"
             ),
         )
+        # 字体已由 initialize_job 解析并冻结；这里只在解析结果不可用时兜底。
         job = load_json(job_dir / "job.json")
-        job["quality"]["selected_fonts"] = [font]
+        if not job["quality"].get("selected_fonts"):
+            job["quality"]["selected_fonts"] = [font]
         job["route"]["selected"] = job["route"]["recommended"]
         job["route"]["decision_reason"] = "基准语料：合成样本"
         write_json(job_dir / "job.json", job)
@@ -152,26 +153,26 @@ def build_jobs(
         ratio = (
             translation_ratio
             if translation_ratio is not None
-            else CASE_TRANSLATION_RATIO.get(name, 0.75)
+            else CASE_TRANSLATION_RATIO.get(name, 0.55)
         )
         translation = load_json(job_dir / "translation.json")
         for unit in translation["units"]:
-            unit["translation"] = (
-                # 恒等译文：原文照抄。锚点、句子结构、缩写全部天然保留，
-                # 因此内容完整性审计不会因为夹具是假译文而拦下，
-                # 排版与 QA 仍在真实页面结构上做真实工作。
-                str(unit.get("source") or "")
-                if identity
-                else _synthetic_translation(unit, ratio)
-            )
+            # 合成译文是目标语言的伪词加原样锚点。恒等译文（原文照抄）
+            # 已经被译文真实性检查正确拒绝，因此这里不再提供那条捷径。
+            unit["translation"] = _synthetic_translation(unit, ratio)
+            unit["keep_source_code"] = None
             unit["keep_source_reason"] = None
         translation["terminology_reviewed"] = True
-        translation["coverage"]["complete"] = True
-        translation["coverage"]["translated_units"] = len(
-            translation["units"]
-        )
-        translation["coverage"]["kept_source_units"] = 0
+        # 覆盖率按真实性判定重算，不手写。
+        refresh_coverage(translation)
         write_json(job_dir / "translation.json", translation)
+        if translation["coverage"]["complete"] is not True:
+            raise SystemExit(
+                f"基准作业 {name} 的合成译文没有通过译文真实性检查: "
+                + ", ".join(
+                    translation["coverage"]["truthfulness_problem_codes"]
+                )
+            )
 
         inventory = load_json(job_dir / "figure_inventory.json")
         inventory["inventory_complete"] = True
@@ -199,8 +200,8 @@ def build_jobs(
                     manifest.get("double_column_pages", [])
                 ),
                 "recommended_route": manifest["route"]["recommended"],
-                "translation_ratio": None if identity else ratio,
-                "translation_mode": "identity" if identity else "synthetic",
+                "translation_ratio": ratio,
+                "translation_mode": "synthetic",
             }
         )
     return cases

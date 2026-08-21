@@ -7,6 +7,7 @@ from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any
 
+import perf_trace
 from _common import (
     COMPLEX_CONTENT_KINDS,
     COMPLEX_CONTENT_METHODS,
@@ -1751,7 +1752,7 @@ def _validate_retained_source(
         source_handle.release()
 
 
-def validate_job(
+def _timed_validate_job(
     job_dir: Path,
     stage: str,
     advance: bool = False,
@@ -2354,6 +2355,14 @@ def validate_job(
         write_json(job_dir / "job.json", job)
         report["advanced_to"] = stage_status
     return report
+
+
+
+def validate_job(*args, **kwargs):
+    """计时包装：阶段耗时进入性能基线，行为与实现完全一致。"""
+
+    with perf_trace.stage("validate_job"):
+        return _timed_validate_job(*args, **kwargs)
 
 
 def main() -> int:

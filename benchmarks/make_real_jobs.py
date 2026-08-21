@@ -16,9 +16,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
-from _common import load_json, sha256_file, write_json  # noqa: E402
+from _common import write_json  # noqa: E402
 from make_benchmark_jobs import build_jobs  # noqa: E402
-
 
 #: 五类代表样本，按项目自带的 pdf_profile.py 画像结果选定。
 REAL_CASES = {
@@ -37,11 +36,6 @@ def main() -> int:
     parser.add_argument("--jobs-root", type=Path, default=here / "jobs-real")
     parser.add_argument("--output", type=Path, default=here / "corpus-real.json")
     parser.add_argument("--translation-ratio", type=float, default=0.55)
-    parser.add_argument(
-        "--identity",
-        action="store_true",
-        help="用原文本身作为译文，目标语言设为 en；用于在真实版式上跑通机器链路",
-    )
     args = parser.parse_args()
 
     papers = args.papers_dir.resolve()
@@ -56,11 +50,10 @@ def main() -> int:
     cases = build_jobs(
         args.jobs_root.resolve(),
         papers,
-        target_language="en" if args.identity else "zh-Hans",
+        target_language="zh-Hans",
         translation_ratio=args.translation_ratio,
         sources=sources,
         tags={name: tags for name, (_, tags) in REAL_CASES.items()},
-        identity=args.identity,
     )
     write_json(
         args.output.resolve(),

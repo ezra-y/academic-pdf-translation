@@ -251,7 +251,7 @@ def _refresh_coverage(
     return refresh_coverage(translation, retained_source=retained_source)
 
 
-def apply_translation_batch(
+def _timed_apply_translation_batch(
     job_dir: Path,
     batch_id: str,
     results: list[dict[str, Any]],
@@ -502,6 +502,14 @@ def verify_plan_execution(job_dir: Path) -> dict[str, Any]:
             + "\n".join(f"- {problem}" for problem in problems)
         )
     return report
+
+
+
+def apply_translation_batch(*args, **kwargs):
+    """计时包装：阶段耗时进入性能基线，行为与实现完全一致。"""
+
+    with perf_trace.stage("apply_batch"):
+        return _timed_apply_translation_batch(*args, **kwargs)
 
 
 def main() -> int:

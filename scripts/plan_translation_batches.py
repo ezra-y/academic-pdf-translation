@@ -19,6 +19,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+import perf_trace
 from _common import SkillError, load_json, sha256_file, write_json
 from translation_cache import (
     DEFAULT_PROMPT_VERSION,
@@ -194,7 +195,7 @@ def group_units(
     return groups
 
 
-def plan_translation_batches(
+def _timed_plan_translation_batches(
     job_dir: Path,
     *,
     min_units: int = DEFAULT_MIN_UNITS,
@@ -431,6 +432,14 @@ def load_plan(job_dir: Path) -> dict[str, Any]:
             "缺少 translation-plan.json，请先运行 plan_translation_batches.py"
         )
     return load_json(path)
+
+
+
+def plan_translation_batches(*args, **kwargs):
+    """计时包装：阶段耗时进入性能基线，行为与实现完全一致。"""
+
+    with perf_trace.stage("plan_batches"):
+        return _timed_plan_translation_batches(*args, **kwargs)
 
 
 def main() -> int:

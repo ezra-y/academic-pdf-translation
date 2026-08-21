@@ -3,11 +3,14 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
-
+#: 只列真正影响候选 PDF 输出的模块。字体解析决定实际字体文件，
+#: 候选分析被排版过程用来读原文，两者都会改变输出，必须计入。
 RENDERER_INPUTS = (
     "scripts/_common.py",
     "scripts/build_candidate.py",
+    "scripts/candidate_analysis.py",
     "scripts/candidate_page_map.py",
+    "scripts/font_preparation.py",
     "scripts/cjk_markup.py",
     "scripts/i18n.py",
     "scripts/reportlab_layout.py",

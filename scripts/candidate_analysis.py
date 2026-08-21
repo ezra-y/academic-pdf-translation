@@ -15,9 +15,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Iterator
+from typing import Any
 
 import perf_trace
 from _common import SkillError, open_pdf
@@ -25,7 +26,7 @@ from _common import SkillError, open_pdf
 COUNTER_CANDIDATE_TEXT_EXTRACT = "candidate_text_extract"
 COUNTER_CANDIDATE_ANALYSIS_REUSE = "candidate_analysis_reuse"
 
-_ACTIVE: dict[str, "CandidateAnalysis"] = {}
+_ACTIVE: dict[str, CandidateAnalysis] = {}
 
 
 def _key(path: Path) -> str:
@@ -100,7 +101,7 @@ class CandidateAnalysis:
             for number in range(1, self.page_count + 1)
         )
 
-    def _acquire(self) -> "CandidateAnalysis":
+    def _acquire(self) -> CandidateAnalysis:
         self._refs += 1
         return self
 

@@ -15,7 +15,10 @@
   "cases": [
     {
       "id": "127",
-      "tags": ["mixed-references", "multi-column-continuation"],
+      "tags": [
+        "mixed-references",
+        "multi-column-continuation"
+      ],
       "source_pages": 14,
       "candidate_pages": 17,
       "status": "READY_TO_REGISTER",
@@ -23,7 +26,9 @@
     },
     {
       "id": "133",
-      "tags": ["long-references"],
+      "tags": [
+        "long-references"
+      ],
       "source_pages": 13,
       "candidate_pages": 17,
       "status": "READY_TO_REGISTER",
@@ -31,7 +36,10 @@
     },
     {
       "id": "134",
-      "tags": ["structured-table", "localized-screenshots"],
+      "tags": [
+        "structured-table",
+        "localized-screenshots"
+      ],
       "source_pages": 14,
       "candidate_pages": 21,
       "status": "READY_TO_REGISTER",
@@ -39,7 +47,9 @@
     },
     {
       "id": "138",
-      "tags": ["quadrant-model"],
+      "tags": [
+        "quadrant-model"
+      ],
       "source_pages": 12,
       "candidate_pages": 15,
       "status": "READY_TO_REGISTER",
@@ -47,7 +57,9 @@
     },
     {
       "id": "152",
-      "tags": ["dense-prose"],
+      "tags": [
+        "dense-prose"
+      ],
       "source_pages": 12,
       "candidate_pages": 17,
       "status": "READY_TO_REGISTER",
@@ -57,9 +69,19 @@
   "visual_review": {
     "status": "PASS",
     "sampled_candidate_pages": {
-      "127": [7],
-      "134": [8, 9, 11, 12, 13],
-      "138": [4]
+      "127": [
+        7
+      ],
+      "134": [
+        8,
+        9,
+        11,
+        12,
+        13
+      ],
+      "138": [
+        4
+      ]
     },
     "checks": [
       "no-clipping-or-overlap",
@@ -74,5 +96,8 @@
     "It measures deterministic candidate generation and preflight, not translation-model semantic accuracy.",
     "Fast, precise, and non-Simplified-Chinese modes do not yet have comparable benchmark samples.",
     "No translation or review token usage was available for these prepared jobs."
-  ]
+  ],
+  "status": "HISTORICAL",
+  "superseded_by": "benchmarks/results/comparison.md",
+  "validity_note": "这份报告是在 renderer_build_id 2323605ace4dea00184eea3de474f80e8d129dc223f55e143515fe2a91c3d055 上跑出来的历史记录。代码构建哈希发生变化后它就不再是当前版本的证据，不得用来证明当前版本的通过率或耗时。当前版本的可复现基准见 benchmarks/results/。"
 }

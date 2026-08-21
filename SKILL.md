@@ -159,11 +159,15 @@ python3 scripts/set_complex_payload.py /path/to/job \
 原则是**逐单元校验，按批次翻译**。冻结单元只负责定位遗漏，执行时把多个
 单元编成一批，让模型一次拿到完整上下文。
 
-先编排批次：
+先确认术语表，再编排批次。`translation.terminology_reviewed` 不是 `true`
+时命令会拒绝正式编排；只想看分批结果用 `--preview`，它不写任何文件。
 
 ```bash
-python3 scripts/plan_translation_batches.py /path/to/job
+python3 scripts/plan_translation_batches.py /path/to/job --model <实际模型标识>
 ```
+
+`--model` 写实际执行翻译的模型标识。不写也能编排，但不会生成可复用的正式
+缓存：没有模型标识的结果无法证明是谁翻的，缓存下来会被别的模型误复用。
 
 命令生成 `translation-plan.json` 和 `translation-batches/batch-NNNN.json`。
 每批默认 8～20 个单元、约 8000～12000 字符；标题与其后首段、图表题与相邻
@@ -177,6 +181,7 @@ python3 scripts/plan_translation_batches.py /path/to/job
   {
     "id": "<批次文件 units[] 中的单元 id>",
     "translation": "目标语言译文……",
+    "keep_source_code": null,
     "keep_source_reason": null,
     "review_flags": []
   }
@@ -188,13 +193,61 @@ python3 scripts/plan_translation_batches.py /path/to/job
 ```bash
 python3 scripts/apply_translation_batch.py /path/to/job \
   --batch batch-0001 \
-  --result /path/to/batch-0001-result.json
+  --result /path/to/batch-0001-result.json \
+  --model <实际模型标识>
 ```
 
 写回时逐单元校验：ID 必须存在、不得重复、原文不得修改、数量必须与批次
-一致、`required_anchors` 中的数字与引文不得丢失。任何一项不满足就整批
-拒绝，`translation.json` 保持原样。单批失败只重做该批，已完成批次不受
-影响。中断后重新运行编排命令即可从最后一个成功批次继续。
+一致、`required_anchors` 中的数字与引文不得丢失、实际模型必须与计划一致。
+任何一项不满足就整批拒绝，`translation.json` 保持原样。单批失败只重做该批，
+已完成批次不受影响。中断后重新运行编排命令即可从最后一个成功批次继续。
+
+### 译文真实性检查
+
+写入 `translation.json` 和缓存之前，还要过一遍译文真实性检查。它拦三件事：
+
+1. **原文原样冒充译文。** 跨语言任务里，标准化后 `translation` 与 `source`
+   相同的单元一律拒绝。
+2. **译文不是目标语言。** 普通正文和标题的译文要含合理比例的目标语言字符。
+   单元 0.50、批次 0.70、文档 0.80，三层分别判定。
+3. **用自由文本理由整段保留原文。** 保留原文必须填结构化
+   `keep_source_code`，`keep_source_reason` 只作补充说明，单独不能豁免。
+
+`keep_source_code` 的取值和适用范围：
+
+| code | 只能用在 |
+| --- | --- |
+| `person-name` | 不超过 80 字符、以专名形式出现的人名片段 |
+| `official-product-name` | 不超过 80 字符的正式产品名 |
+| `acronym` | 整段就是缩写本身 |
+| `formula-or-statistical-symbol` | 公式或统计符号片段，普通词不超过 2 个 |
+| `doi-or-url` | 基本只有 DOI 或 URL 的单元 |
+| `citation` | 基本只有引文标记的单元 |
+| `bibliography-entry` | 单元类型是 reference/bibliography，或 `retained_source.json` 中有覆盖该单元坐标的参考文献区域 |
+| `required-original-term` | `translation.terminology` 中登记了 target 与 source 相同的术语 |
+
+普通正文、摘要、标题和章节标题**不能**整单元保留原文：上面每一个 code 都
+用不上它们。
+
+### 自动执行整篇批次
+
+`scripts/run_translation_batches.py` 按计划逐批调用翻译能力，最多 2 批并发，
+每批成功后立即原子写回，单批失败只重试该批，结束时强制核账：
+
+```bash
+python3 scripts/run_translation_batches.py /path/to/job \
+  --command "<读批次 JSON、输出结果 JSON 的命令>" \
+  --model <实际模型标识>
+```
+
+只核账不执行：
+
+```bash
+python3 scripts/run_translation_batches.py /path/to/job --verify-only
+```
+
+核账比较计划批次、已验证批次和实际单元数量。少执行一批时命令直接失败，
+不依赖执行者自己汇报。
 
 同一批原文、目标语言、术语表、提示版本和模型都没变时，可直接从缓存写回：
 
@@ -213,6 +266,7 @@ python3 scripts/apply_translation_batch.py /path/to/job --from-cache
   "source": "Original paragraph...",
   "source_bbox": [57.1, 220.4, 291.0, 338.7],
   "translation": "目标语言译文……",
+  "keep_source_code": null,
   "keep_source_reason": null,
   "review_flags": []
 }
@@ -227,7 +281,10 @@ python3 scripts/apply_translation_batch.py /path/to/job --from-cache
 - 不修改 `source_ref`、`source`、`page` 或 `source_bbox`；
 - 每个冻结原文单元必须恰好出现一次，不得遗漏、重复或合并；
 - 跨栏和跨页续句只翻译一次；
-- 完整更新 `translation.json.coverage`；
+- `translation.json.coverage` 由程序按真实性判定重算，不要手写。
+  `complete` 只在全部单元通过检查后才会变成 `true`，同时给出
+  `validated_translated_units`、`validated_kept_source_units` 和
+  `invalid_or_unverified_units`；
 - 参考文献等保留原文区域写入 `retained_source.json`；
 - 同页存在分栏参考文献时，每个逻辑栏单独登记区域；保留区按左栏到右栏、
   栏内从上到下排版，并排除页眉、页脚和孤立页码；
@@ -260,6 +317,15 @@ python3 scripts/validate_job.py /path/to/job --stage translated --advance
 失败报告的条件。
 
 ## 第三步：生成首版
+
+字体在初始化时就已经解析成磁盘上的实际文件，绝对路径和文件 sha256 写在
+`job.json.quality.selected_fonts` 与 `selected_font_evidence` 里，
+**不需要手工编辑 job.json**。统一入口在输入就绪检查之前会再确认一次；
+字体文件被换掉时哈希对不上，会自动重新选择。需要手动重选时：
+
+```bash
+python3 scripts/font_preparation.py /path/to/job --force
+```
 
 普通正文按实际译文字量用 `typography_fit.py` 计算全篇统一字号，并优先复用
 `reportlab_layout.py`。复杂页按第一步登记的方法单独重建。

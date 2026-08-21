@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 import json
 import re
+import subprocess
 from pathlib import Path
 
 
@@ -246,6 +247,101 @@ def _check_module_reachability(root: Path) -> None:
         )
 
 
+CACHE_DIR_NAMES = {"__pycache__", ".pytest_cache", ".ruff_cache", ".mypy_cache"}
+CACHE_FILE_SUFFIXES = {".pyc", ".pyo"}
+PACKAGE_IGNORED_DIRS = {".git", ".venv", "venv", "Workspace", "audit"}
+
+
+def _is_cache_path(relative: Path) -> bool:
+    return (
+        any(part in CACHE_DIR_NAMES for part in relative.parts)
+        or relative.suffix in CACHE_FILE_SUFFIXES
+    )
+
+
+def _tracked_files(root: Path) -> list[str] | None:
+    """git 跟踪的文件列表；不是 git 仓库时返回 None。"""
+
+    if not (root / ".git").exists():
+        return None
+    try:
+        completed = subprocess.run(
+            ["git", "-C", str(root), "ls-files", "-z"],
+            capture_output=True,
+            check=False,
+        )
+    except OSError:
+        return None
+    if completed.returncode != 0:
+        return None
+    return [
+        value.decode("utf-8")
+        for value in completed.stdout.split(b"\0")
+        if value
+    ]
+
+
+def _check_no_cache_artifacts(root: Path) -> None:
+    """交付物里不得存在字节码或工具缓存。
+
+    这些文件跟着压缩包发出去，既没用，又会泄漏本机路径和 Python 版本。
+
+    判定范围按仓库形态决定：
+    - 在 git 仓库里，只看被跟踪的文件。开发时本地生成的 `__pycache__`
+      已经被 .gitignore 挡住，不会进交付物，不该让检查失败。
+    - 不是 git 仓库时（例如解压后的发布包），扫描整个目录树。
+      这时出现缓存文件，就是打包本身漏了。
+    """
+
+    tracked = _tracked_files(root)
+    if tracked is not None:
+        offenders = sorted(
+            value for value in tracked if _is_cache_path(Path(value))
+        )
+    else:
+        offenders = sorted(
+            str(path.relative_to(root))
+            for path in root.rglob("*")
+            if not (
+                path.relative_to(root).parts
+                and path.relative_to(root).parts[0] in PACKAGE_IGNORED_DIRS
+            )
+            and (
+                (path.is_dir() and path.name in CACHE_DIR_NAMES)
+                or (path.is_file() and path.suffix in CACHE_FILE_SUFFIXES)
+            )
+        )
+    if offenders:
+        raise BundleCheckError(
+            "交付物含缓存或字节码文件，请先删除: "
+            + ", ".join(offenders[:20])
+            + (" ..." if len(offenders) > 20 else "")
+        )
+
+
+def _check_version_sync(root: Path) -> str:
+    """.claude-plugin/plugin.json 与 pyproject.toml 的版本必须一致。"""
+
+    plugin = json.loads(
+        (root / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8")
+    )
+    plugin_version = str(plugin.get("version") or "")
+    match = re.search(
+        r'^version\s*=\s*"([^"]+)"',
+        (root / "pyproject.toml").read_text(encoding="utf-8"),
+        re.MULTILINE,
+    )
+    project_version = match.group(1) if match else ""
+    if not plugin_version or not project_version:
+        raise BundleCheckError("plugin.json 或 pyproject.toml 缺少版本号")
+    if plugin_version != project_version:
+        raise BundleCheckError(
+            f"版本不一致: plugin.json {plugin_version} != "
+            f"pyproject.toml {project_version}"
+        )
+    return plugin_version
+
+
 def check_bundle(root: Path | None = None) -> dict[str, int | str]:
     skill_root = (root or _skill_dir()).resolve()
     required = [
@@ -291,8 +387,11 @@ def check_bundle(root: Path | None = None) -> dict[str, int | str]:
     _check_python_sources(skill_root)
     _check_requirements(skill_root)
     _check_module_reachability(skill_root)
+    _check_no_cache_artifacts(skill_root)
+    version = _check_version_sync(skill_root)
     return {
         "status": "PASS",
+        "version": version,
         "python_files": len(list((skill_root / "scripts").glob("*.py"))),
         "json_assets": len(list((skill_root / "assets").glob("*.json"))),
     }
@@ -305,7 +404,7 @@ def main() -> int:
         print(f"BUNDLE CHECK FAIL: {exc}")
         return 1
     print(
-        "BUNDLE CHECK PASS "
+        f"BUNDLE CHECK PASS v{report['version']} "
         f"({report['python_files']} Python files, "
         f"{report['json_assets']} JSON assets)"
     )

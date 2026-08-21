@@ -4,6 +4,7 @@ import argparse
 import shutil
 from pathlib import Path
 
+import perf_trace
 from _common import (
     SCHEMA_VERSION,
     SkillError,
@@ -121,7 +122,7 @@ def _existing_workspace_job(
     return matches[0] if matches else None
 
 
-def initialize_job(
+def _timed_initialize_job(
     source: Path,
     job_dir: Path,
     target_language: str,
@@ -451,6 +452,14 @@ def initialize_job(
         "selected_font_evidence"
     ]
     return job
+
+
+
+def initialize_job(*args, **kwargs):
+    """计时包装：阶段耗时进入性能基线，行为与实现完全一致。"""
+
+    with perf_trace.stage("initialize_job"):
+        return _timed_initialize_job(*args, **kwargs)
 
 
 def main() -> int:

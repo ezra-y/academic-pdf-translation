@@ -5769,7 +5769,7 @@ def _adaptive_page_expansion_limit(
     )
 
 
-def build_candidate(
+def _timed_build_candidate(
     job_dir: Path,
     output_pdf: Path,
     *,
@@ -6264,6 +6264,14 @@ def build_candidate(
         "page_count_ratio_limit": effective_page_expansion_ratio,
         "elapsed_seconds": layout_log["elapsed_seconds"],
     }
+
+
+
+def build_candidate(*args, **kwargs):
+    """计时包装：阶段耗时进入性能基线，行为与实现完全一致。"""
+
+    with perf_trace.stage("build_candidate"):
+        return _timed_build_candidate(*args, **kwargs)
 
 
 def main() -> int:

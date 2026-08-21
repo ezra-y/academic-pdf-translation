@@ -331,7 +331,7 @@ def _preflight_cycle(
     return ledger_path, ledger, cycle, len(runs) + 1, False
 
 
-def preflight_candidate(
+def _timed_preflight_candidate(
     job_dir: Path,
     generated_pdf: Path,
     renderer: str,
@@ -663,6 +663,14 @@ def _candidate_content_fingerprint(*args, **kwargs):
 
     with perf_trace.stage("candidate_fingerprint"):
         return _timed__candidate_content_fingerprint(*args, **kwargs)
+
+
+def preflight_candidate(*args, **kwargs):
+    """计时包装：阶段耗时进入性能基线，行为与实现完全一致。"""
+
+    with perf_trace.stage("preflight"):
+        return _timed_preflight_candidate(*args, **kwargs)
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(
