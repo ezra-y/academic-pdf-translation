@@ -19,7 +19,8 @@
       "complex_page_count": 0,
       "double_column_page_count": 0,
       "recommended_route": "standard-auto",
-      "translation_ratio": 0.75
+      "translation_ratio": 0.75,
+      "translation_mode": "synthetic"
     },
     {
       "id": "two-column-body",
@@ -36,7 +37,8 @@
       "complex_page_count": 0,
       "double_column_page_count": 12,
       "recommended_route": "standard-auto",
-      "translation_ratio": 0.75
+      "translation_ratio": 0.75,
+      "translation_mode": "synthetic"
     },
     {
       "id": "structured-table-and-model",
@@ -53,7 +55,8 @@
       "complex_page_count": 8,
       "double_column_page_count": 0,
       "recommended_route": "custom-layout",
-      "translation_ratio": 0.75
+      "translation_ratio": 0.75,
+      "translation_mode": "synthetic"
     },
     {
       "id": "image-heavy",
@@ -70,7 +73,8 @@
       "complex_page_count": 8,
       "double_column_page_count": 0,
       "recommended_route": "custom-layout",
-      "translation_ratio": 0.75
+      "translation_ratio": 0.75,
+      "translation_mode": "synthetic"
     },
     {
       "id": "reference-heavy",
@@ -86,7 +90,8 @@
       "complex_page_count": 6,
       "double_column_page_count": 6,
       "recommended_route": "custom-layout",
-      "translation_ratio": 0.45
+      "translation_ratio": 0.45,
+      "translation_mode": "synthetic"
     }
   ]
 }

@@ -41,8 +41,12 @@ Workspace/*
 # corpus.json 用相对路径，可以入库；papers/ 与 jobs/ 由脚本重建，不入库
 # benchmarks/results/*.json 属于报告，允许提交
 benchmarks/papers/
+benchmarks/papers-real/
 benchmarks/jobs/
+benchmarks/jobs-real/
 benchmarks/tmp/
+# 真实论文的渲染页图属于论文内容，受版权保护，不入库
+benchmarks/results/real-visual/
 benchmarks/**/cache/
 
 # 临时与草稿产物

@@ -74,12 +74,16 @@ def _synthetic_translation(unit: dict[str, Any], ratio: float) -> str:
     """
 
     anchors = unit.get("required_anchors") or {}
-    carried = " ".join(
-        str(value)
-        for values in anchors.values()
-        if isinstance(values, list)
-        for value in values
-    ).strip()
+    pieces: list[str] = []
+    for category, values in anchors.items():
+        if not isinstance(values, list):
+            continue
+        for value in values:
+            # 引文编号必须以方括号形式出现才算保留，和真实译文一致。
+            pieces.append(
+                f"[{value}]" if category == "citations" else str(value)
+            )
+    carried = " ".join(pieces).strip()
     generator = random.Random(str(unit.get("id") or ""))
     length = max(6, int(len(str(unit.get("source") or "")) * ratio))
     words: list[str] = []
@@ -95,15 +99,29 @@ def build_jobs(
     *,
     target_language: str = "zh-Hans",
     translation_ratio: float | None = None,
+    sources: dict[str, Path] | None = None,
+    tags: dict[str, list[str]] | None = None,
+    identity: bool = False,
 ) -> list[dict[str, Any]]:
+    """把一批 PDF 变成可直接跑基准的作业。
+
+    默认使用合成语料；传入 `sources` 时可以换成任意 PDF，例如真实开放获取
+    论文。译文仍是合成的，只用来触发同一批代码路径，不是真实翻译。
+    """
+
     jobs_root.mkdir(parents=True, exist_ok=True)
     font = str(_font_path())
     cases: list[dict[str, Any]] = []
+    case_tags = tags if tags is not None else CASE_TAGS
+    plan = (
+        sources
+        if sources is not None
+        else {name: papers_dir / f"{name}.pdf" for name in BUILDERS}
+    )
 
-    for name in BUILDERS:
-        source = papers_dir / f"{name}.pdf"
+    for name, source in plan.items():
         if not source.is_file():
-            raise SystemExit(f"缺少合成语料: {source}")
+            raise SystemExit(f"缺少语料: {source}")
         job_dir = jobs_root / name
         shutil.rmtree(job_dir, ignore_errors=True)
         initialize_job(
@@ -138,7 +156,14 @@ def build_jobs(
         )
         translation = load_json(job_dir / "translation.json")
         for unit in translation["units"]:
-            unit["translation"] = _synthetic_translation(unit, ratio)
+            unit["translation"] = (
+                # 恒等译文：原文照抄。锚点、句子结构、缩写全部天然保留，
+                # 因此内容完整性审计不会因为夹具是假译文而拦下，
+                # 排版与 QA 仍在真实页面结构上做真实工作。
+                str(unit.get("source") or "")
+                if identity
+                else _synthetic_translation(unit, ratio)
+            )
             unit["keep_source_reason"] = None
         translation["terminology_reviewed"] = True
         translation["coverage"]["complete"] = True
@@ -162,8 +187,8 @@ def build_jobs(
         cases.append(
             {
                 "id": name,
-                "job_dir": f"jobs/{name}",
-                "tags": CASE_TAGS.get(name, []),
+                "job_dir": f"{jobs_root.name}/{name}",
+                "tags": case_tags.get(name, []),
                 "source_pdf": source.name,
                 "source_bytes": source.stat().st_size,
                 "source_sha256": sha256_file(source),
@@ -174,7 +199,8 @@ def build_jobs(
                     manifest.get("double_column_pages", [])
                 ),
                 "recommended_route": manifest["route"]["recommended"],
-                "translation_ratio": ratio,
+                "translation_ratio": None if identity else ratio,
+                "translation_mode": "identity" if identity else "synthetic",
             }
         )
     return cases
