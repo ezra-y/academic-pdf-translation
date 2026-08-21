@@ -1,0 +1,21 @@
+{
+  "selected_fonts": [
+    "/Users/ezra/Library/Fonts/msyh.ttc",
+    "/Users/ezra/Library/Fonts/msyh.ttc",
+    "/System/Library/Fonts/Supplemental/Arial.ttf"
+  ],
+  "selected_font_evidence": [
+    {
+      "path": "/Users/ezra/Library/Fonts/msyh.ttc",
+      "sha256": "e4b3b9d058750fb80899c24f68e35beda606ca92694eff0e9f7f91eec7a846aa"
+    },
+    {
+      "path": "/Users/ezra/Library/Fonts/msyh.ttc",
+      "sha256": "e4b3b9d058750fb80899c24f68e35beda606ca92694eff0e9f7f91eec7a846aa"
+    },
+    {
+      "path": "/System/Library/Fonts/Supplemental/Arial.ttf",
+      "sha256": "525979822591a3447cfc49d943d6f7683508e25543407871c0ed8fed05fd2bd9"
+    }
+  ]
+}

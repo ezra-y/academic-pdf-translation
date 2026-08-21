@@ -1,0 +1,4 @@
+作业已初始化: /Users/ezra/Downloads/my_output_skills/academic-pdf-translation/audit/evidence/after/job-p0-3
+建议路线: standard-auto
+目标语言: zh-Hans
+质量档位: 平衡（推荐）

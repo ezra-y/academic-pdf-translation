@@ -1,0 +1,23 @@
+{
+  "batch_id": "batch-0001",
+  "applied_units": 18,
+  "coverage": {
+    "complete": true,
+    "source_units_total": 18,
+    "translated_units": 18,
+    "kept_source_units": 0,
+    "validated_translated_units": 18,
+    "validated_kept_source_units": 0,
+    "invalid_or_unverified_units": 0,
+    "minimum_source_text_coverage_ratio": 0.85,
+    "minimum_candidate_text_presence_ratio": 0.85,
+    "scope_note": "全部原文单元已通过译文真实性检查：译文为目标语言，保留原文的单元均有结构化 keep_source_code 与证据。",
+    "truthfulness_problem_codes": []
+  },
+  "pending_batches": [],
+  "translation_sha256": "ca1c44ebe702393cced0c42587389491d2d5f5a37f88e3327a8a9cebd88b3b34",
+  "truthfulness": {
+    "batch_id": "batch-0001",
+    "target_script_ratio": 1.0
+  }
+}
