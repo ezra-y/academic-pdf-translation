@@ -11,7 +11,10 @@ from build_candidate import (
     RENDERER_VERSION,
     build_candidate,
 )
-from pre_render_audit import build_pre_render_audit
+from pre_render_audit import (
+    build_input_readiness_audit,
+    build_pre_render_audit,
+)
 from preflight_candidate import preflight_candidate
 from renderer_identity import renderer_build_id
 from run_metrics import record_run_metric
@@ -43,6 +46,49 @@ def build_first_candidate(
     else:
         output_pdf = output_pdf.resolve()
 
+    input_started = time.monotonic()
+    input_readiness = build_input_readiness_audit(job_dir)
+    input_seconds = time.monotonic() - input_started
+    input_readiness_path = (
+        job_dir
+        / "staging"
+        / f"input-readiness-{label}.json"
+    )
+    write_json(input_readiness_path, input_readiness)
+    if input_readiness["status"] != "READY_TO_RENDER":
+        total_seconds = time.monotonic() - pipeline_started
+        report = {
+            "status": "BLOCKED_BEFORE_PREFLIGHT",
+            "blocked_stage": "input-readiness",
+            "renderer": RENDERER_NAME,
+            "renderer_version": RENDERER_VERSION,
+            "renderer_build_id": renderer_build_id(),
+            "candidate_pdf": None,
+            "build": None,
+            "input_readiness": str(input_readiness_path),
+            "issues": input_readiness.get("issues", []),
+            "timing_seconds": {
+                "input_readiness": round(input_seconds, 3),
+                "build": 0.0,
+                "pre_render_audit": 0.0,
+                "preflight": 0.0,
+                "total": round(total_seconds, 3),
+            },
+        }
+        record_run_metric(
+            job_dir,
+            stage="candidate-pipeline",
+            status=report["status"],
+            elapsed_seconds=total_seconds,
+            metadata={
+                "attempt_label": label,
+                "attempt_kind": attempt_kind,
+                "blocked_stage": "input-readiness",
+                "timing_seconds": report["timing_seconds"],
+            },
+        )
+        return report
+
     build_started = time.monotonic()
     build = build_candidate(
         job_dir,
@@ -64,14 +110,17 @@ def build_first_candidate(
         total_seconds = time.monotonic() - pipeline_started
         report = {
             "status": "BLOCKED_BEFORE_PREFLIGHT",
+            "blocked_stage": "render-contract",
             "renderer": RENDERER_NAME,
             "renderer_version": RENDERER_VERSION,
             "renderer_build_id": build_id,
             "candidate_pdf": str(output_pdf),
             "build": build,
+            "input_readiness": str(input_readiness_path),
             "render_readiness": str(readiness_path),
             "issues": readiness.get("issues", []),
             "timing_seconds": {
+                "input_readiness": round(input_seconds, 3),
                 "build": round(build_seconds, 3),
                 "pre_render_audit": round(audit_seconds, 3),
                 "preflight": 0.0,
@@ -122,6 +171,7 @@ def build_first_candidate(
         "renderer_build_id": build_id,
         "candidate_pdf": str(output_pdf),
         "build": build,
+        "input_readiness": str(input_readiness_path),
         "render_readiness": str(readiness_path),
         "preflight": str(preflight_path),
         "preflight_attempt": preflight.get("preflight_attempt"),
@@ -129,6 +179,7 @@ def build_first_candidate(
         "validation_warnings": preflight.get("validation_warnings", []),
         "completeness_decision": preflight.get("completeness_decision"),
         "timing_seconds": {
+            "input_readiness": round(input_seconds, 3),
             "build": round(build_seconds, 3),
             "pre_render_audit": round(audit_seconds, 3),
             "preflight": round(preflight_seconds, 3),

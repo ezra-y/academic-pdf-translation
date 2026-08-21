@@ -2736,6 +2736,64 @@ def _test_mapped_reference_presence_exclusion() -> None:
             )
 
 
+def _test_input_readiness_blocks_before_render() -> None:
+    """输入不就绪时，流水线必须在生成任何候选 PDF 之前停下。"""
+
+    from build_first_candidate import build_first_candidate
+    from pre_render_audit import build_input_readiness_audit
+
+    with tempfile.TemporaryDirectory() as raw_root:
+        root = Path(raw_root)
+        source = root / "readiness-source.pdf"
+        _make_pdf(
+            source,
+            [
+                [
+                    "Adaptive cache invalidation in distributed systems.",
+                    "We report a controlled evaluation across three sites.",
+                ],
+                [
+                    "Results indicate a measurable reduction in stale reads.",
+                    "Limitations and future work are discussed below.",
+                ],
+            ],
+        )
+        job_dir = root / "job"
+        initialize_job(
+            source,
+            job_dir,
+            "zh-Hans",
+            "en",
+            False,
+            producer_id="self-test-producer",
+        )
+
+        readiness = build_input_readiness_audit(job_dir)
+        if readiness["status"] != "BLOCKED":
+            raise AssertionError("未翻译的作业必须在输入就绪检查中被拦截")
+        if readiness.get("audit_scope") != "input-readiness":
+            raise AssertionError("输入就绪检查必须标明检查范围")
+        if not (job_dir / "staging" / "input-readiness.json").is_file():
+            raise AssertionError("输入就绪检查必须落盘证据")
+
+        report = build_first_candidate(job_dir)
+        if report["status"] != "BLOCKED_BEFORE_PREFLIGHT":
+            raise AssertionError("输入未就绪时不得进入预检")
+        if report.get("blocked_stage") != "input-readiness":
+            raise AssertionError("阻断阶段必须明确指向输入就绪检查")
+        if report["timing_seconds"]["build"] != 0.0:
+            raise AssertionError("输入未就绪时不得计入排版耗时")
+        produced = list((job_dir / "staging").glob("*.pdf"))
+        if produced:
+            raise AssertionError(
+                "输入未就绪时不得生成任何候选 PDF: "
+                + ", ".join(path.name for path in produced)
+            )
+        if not (job_dir / "generator-layout-log.json").exists():
+            return
+        raise AssertionError("输入未就绪时不得写出排版日志")
+
+
 def run() -> None:
     bundle_report = check_bundle()
     if bundle_report["status"] != "PASS":
@@ -2753,6 +2811,7 @@ def run() -> None:
     _test_content_independent_exact_presence_rules()
     _test_retained_region_reconciliation()
     _test_mapped_reference_presence_exclusion()
+    _test_input_readiness_blocks_before_render()
     if not SOURCE_MAPPING_LABEL_PATTERN.fullmatch("原文第 18 页"):
         raise AssertionError("源页映射标签必须可从正文指标中识别并排除")
 

@@ -114,10 +114,14 @@ def _text_input_issues(
     return issues
 
 
-def _font_issues(
+def _font_file_issues(
     selected_fonts: Any,
-    contract: dict[str, Any],
-) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
+) -> tuple[list[dict[str, Any]], list[dict[str, str]], list[str]]:
+    """只检查冻结字体文件本身，不涉及排版器合同。
+
+    这些问题在渲染前就能判定，因此属于输入就绪检查。
+    """
+
     issues: list[dict[str, Any]] = []
     evidence: list[dict[str, str]] = []
     if not isinstance(selected_fonts, list) or not selected_fonts:
@@ -129,6 +133,7 @@ def _font_issues(
                 }
             ],
             evidence,
+            [],
         )
 
     normalized: list[str] = []
@@ -168,6 +173,14 @@ def _font_issues(
                 "sha256": sha256_file(path),
             }
         )
+    return issues, evidence, normalized
+
+
+def _font_contract_issues(
+    normalized: list[str],
+    contract: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """只检查排版器声明的字体是否与冻结字体一致。"""
 
     contract_fonts = contract.get("font_paths")
     if not isinstance(contract_fonts, list) or sorted(
@@ -175,13 +188,26 @@ def _font_issues(
         for path in contract_fonts
         if isinstance(path, str)
     ) != sorted(normalized):
-        issues.append(
+        return [
             {
                 "code": "RENDERER_FONT_CONTRACT_MISMATCH",
                 "message": "排版器声明的字体与 job.json 冻结字体不一致。",
             }
-        )
-    return issues, evidence
+        ]
+    return []
+
+
+def _font_issues(
+    selected_fonts: Any,
+    contract: dict[str, Any],
+) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
+    file_issues, evidence, normalized = _font_file_issues(selected_fonts)
+    if not isinstance(selected_fonts, list) or not selected_fonts:
+        return file_issues, evidence
+    return (
+        file_issues + _font_contract_issues(normalized, contract),
+        evidence,
+    )
 
 
 def _layout_contract_issues(
@@ -352,8 +378,9 @@ def _content_audit_without_candidate(job_dir: Path) -> dict[str, Any]:
     )
 
 
-def build_pre_render_audit(job_dir: Path) -> dict[str, Any]:
-    job_dir = job_dir.resolve()
+def _audit_context(job_dir: Path) -> dict[str, Any]:
+    """加载两类检查共用的作业输入，只读一次。"""
+
     job = load_json(job_dir / "job.json")
     files = job.get("files", {})
     source_path = internal_job_path(job_dir, job["source"]["job_path"])
@@ -368,56 +395,45 @@ def build_pre_render_audit(job_dir: Path) -> dict[str, Any]:
     )
     layout_path = internal_job_path(job_dir, files["layout_overrides"])
     retained_path = internal_job_path(job_dir, files["retained_source"])
-    layout_log_path = job_dir / "generator-layout-log.json"
+    inventory_path = internal_job_path(job_dir, files["figure_inventory"])
 
-    translation = load_json(translation_path)
-    complex_content = load_json(complex_path)
-    retained = load_json(retained_path)
-    layout_log = load_json(layout_log_path)
     validation = _translated_validation(job_dir)
     completeness = _content_audit_without_candidate(job_dir)
+    translation = load_json(translation_path)
+    complex_content = load_json(complex_path)
 
-    issues: list[dict[str, Any]] = [
+    validation_issues = [
         {
             "code": "JOB_DATA_INVALID",
             "message": error,
         }
         for error in validation.get("errors", [])
     ]
-    issues.extend(_text_input_issues(translation, complex_content))
-    contract_issues, contract_evidence = _layout_contract_issues(
-        layout_log,
-        translation,
-        complex_content,
-        retained,
-        str(job["translation"]["target_language"]),
-        job.get("quality", {}).get("selected_fonts"),
-    )
-    issues.extend(contract_issues)
+    text_issues = _text_input_issues(translation, complex_content)
 
-    inventory = load_json(
-        internal_job_path(job_dir, files["figure_inventory"])
-    )
+    inventory = load_json(inventory_path)
     unresolved = [
         item.get("id") or item.get("page")
         for item in inventory.get("items", [])
         if isinstance(item, dict)
         and str(item.get("status") or "").lower() == "unresolved"
     ]
+    inventory_issues: list[dict[str, Any]] = []
     if (
         inventory.get("inventory_complete") is not True
         or not str(inventory.get("scope_note") or "").strip()
         or unresolved
     ):
-        issues.append(
+        inventory_issues.append(
             {
                 "code": "FIGURE_INVENTORY_NOT_READY",
                 "unresolved": unresolved,
                 "message": "图表、截图和复杂视觉内容尚未在导出前清点完。",
             }
         )
+    completeness_issues: list[dict[str, Any]] = []
     if completeness.get("decision") == "NEEDS_REPAIR":
-        issues.append(
+        completeness_issues.append(
             {
                 "code": "TRANSLATION_DATA_NEEDS_REPAIR",
                 "pages": completeness.get("repair_pages", []),
@@ -425,35 +441,180 @@ def build_pre_render_audit(job_dir: Path) -> dict[str, Any]:
             }
         )
 
+    return {
+        "job": job,
+        "files": files,
+        "paths": {
+            "source": source_path,
+            "source_units": source_units_path,
+            "translation": translation_path,
+            "complex_content": complex_path,
+            "layout_overrides": layout_path,
+            "retained_source": retained_path,
+            "layout_log": job_dir / "generator-layout-log.json",
+        },
+        "translation": translation,
+        "complex_content": complex_content,
+        "validation": validation,
+        "completeness": completeness,
+        "validation_issues": validation_issues,
+        "text_issues": text_issues,
+        "inventory_issues": inventory_issues,
+        "completeness_issues": completeness_issues,
+    }
+
+
+def _completeness_warnings(completeness: dict[str, Any]) -> list[dict[str, Any]]:
+    if not completeness.get("review_pages"):
+        return []
+    return [
+        {
+            "code": "CONTENT_REVIEW_SIGNAL",
+            "pages": completeness.get("review_pages", []),
+            "flag_counts": completeness.get("flag_counts", {}),
+        }
+    ]
+
+
+def build_input_readiness_audit(job_dir: Path) -> dict[str, Any]:
+    """渲染前的输入就绪检查。
+
+    只判断翻译数据、术语、图表清单、复杂页载荷、字体文件、保留原文区域和
+    作业状态。它不读取 `generator-layout-log.json`，因此可以在调用
+    `build_candidate()` 之前运行；输入不完整时不会先浪费时间生成 PDF。
+    """
+
+    job_dir = job_dir.resolve()
+    context = _audit_context(job_dir)
+    paths = context["paths"]
+    font_issues, font_evidence, _ = _font_file_issues(
+        context["job"].get("quality", {}).get("selected_fonts")
+    )
+
+    issues: list[dict[str, Any]] = [
+        *context["validation_issues"],
+        *context["text_issues"],
+        *font_issues,
+        *context["inventory_issues"],
+        *context["completeness_issues"],
+    ]
+    completeness = context["completeness"]
+    report = {
+        "schema_version": "1.0",
+        "generated_at": utc_now(),
+        "audit_scope": "input-readiness",
+        "status": "READY_TO_RENDER" if not issues else "BLOCKED",
+        "issue_count": len(issues),
+        "issues": issues,
+        "warnings": _completeness_warnings(completeness),
+        "input_hashes": {
+            "source_sha256": sha256_file(paths["source"]),
+            "source_units_sha256": _source_units_hash(
+                paths["source_units"],
+                paths["translation"],
+            ),
+            "translation_sha256": sha256_file(paths["translation"]),
+            "complex_content_sha256": sha256_file(paths["complex_content"]),
+            "retained_source_sha256": sha256_file(paths["retained_source"]),
+            "layout_overrides_sha256": sha256_file(paths["layout_overrides"]),
+        },
+        "font_evidence": font_evidence,
+        "validation_warnings": context["validation"].get("warnings", []),
+        "completeness_decision": completeness.get("decision"),
+        "completeness_repair_pages": completeness.get("repair_pages", []),
+        "completeness_review_pages": completeness.get("review_pages", []),
+    }
+    write_json(job_dir / "staging" / "input-readiness.json", report)
+    return report
+
+
+def build_render_contract_audit(job_dir: Path) -> dict[str, Any]:
+    """候选生成后的排版合同检查。
+
+    只判断排版器是否真的消费了全部冻结单元、保留区域和复杂页载荷，以及
+    溢出、孤行、标题位置、实际字体和 CJK 禁则。
+    """
+
+    job_dir = job_dir.resolve()
+    context = _audit_context(job_dir)
+    paths = context["paths"]
+    layout_log = load_json(paths["layout_log"])
+    retained = load_json(paths["retained_source"])
+    issues, contract_evidence = _layout_contract_issues(
+        layout_log,
+        context["translation"],
+        context["complex_content"],
+        retained,
+        str(context["job"]["translation"]["target_language"]),
+        context["job"].get("quality", {}).get("selected_fonts"),
+    )
+    report = {
+        "schema_version": "1.0",
+        "generated_at": utc_now(),
+        "audit_scope": "render-contract",
+        "status": "READY_TO_RENDER" if not issues else "BLOCKED",
+        "issue_count": len(issues),
+        "issues": issues,
+        "contract_evidence": contract_evidence,
+        "input_hashes": {
+            "generator_layout_log_sha256": sha256_file(paths["layout_log"]),
+        },
+    }
+    write_json(job_dir / "staging" / "render-contract.json", report)
+    return report
+
+
+def build_pre_render_audit(job_dir: Path) -> dict[str, Any]:
+    """导出前总检查：输入就绪与排版合同的合并结论。
+
+    问题顺序与错误码与拆分前一致，外部调用不受影响。
+    """
+
+    job_dir = job_dir.resolve()
+    context = _audit_context(job_dir)
+    files = context["files"]
+    paths = context["paths"]
+    layout_log = load_json(paths["layout_log"])
+    retained = load_json(paths["retained_source"])
+    completeness = context["completeness"]
+
+    contract_issues, contract_evidence = _layout_contract_issues(
+        layout_log,
+        context["translation"],
+        context["complex_content"],
+        retained,
+        str(context["job"]["translation"]["target_language"]),
+        context["job"].get("quality", {}).get("selected_fonts"),
+    )
+    issues: list[dict[str, Any]] = [
+        *context["validation_issues"],
+        *context["text_issues"],
+        *contract_issues,
+        *context["inventory_issues"],
+        *context["completeness_issues"],
+    ]
+
     report = {
         "schema_version": "1.0",
         "generated_at": utc_now(),
         "status": "READY_TO_RENDER" if not issues else "BLOCKED",
         "issue_count": len(issues),
         "issues": issues,
-        "warnings": [
-            {
-                "code": "CONTENT_REVIEW_SIGNAL",
-                "pages": completeness.get("review_pages", []),
-                "flag_counts": completeness.get("flag_counts", {}),
-            }
-        ]
-        if completeness.get("review_pages")
-        else [],
+        "warnings": _completeness_warnings(completeness),
         "input_hashes": {
-            "source_sha256": sha256_file(source_path),
+            "source_sha256": sha256_file(paths["source"]),
             "source_units_sha256": _source_units_hash(
-                source_units_path,
-                translation_path,
+                paths["source_units"],
+                paths["translation"],
             ),
-            "translation_sha256": sha256_file(translation_path),
-            "complex_content_sha256": sha256_file(complex_path),
-            "retained_source_sha256": sha256_file(retained_path),
-            "layout_overrides_sha256": sha256_file(layout_path),
-            "generator_layout_log_sha256": sha256_file(layout_log_path),
+            "translation_sha256": sha256_file(paths["translation"]),
+            "complex_content_sha256": sha256_file(paths["complex_content"]),
+            "retained_source_sha256": sha256_file(paths["retained_source"]),
+            "layout_overrides_sha256": sha256_file(paths["layout_overrides"]),
+            "generator_layout_log_sha256": sha256_file(paths["layout_log"]),
         },
         "contract_evidence": contract_evidence,
-        "validation_warnings": validation.get("warnings", []),
+        "validation_warnings": context["validation"].get("warnings", []),
         "completeness_decision": completeness.get("decision"),
         "completeness_repair_pages": completeness.get("repair_pages", []),
         "completeness_review_pages": completeness.get("review_pages", []),
@@ -472,9 +633,23 @@ def main() -> int:
     )
     parser.add_argument("job_dir", type=Path)
     parser.add_argument("--output", type=Path)
+    parser.add_argument(
+        "--scope",
+        choices=("full", "input", "contract"),
+        default="full",
+        help=(
+            "full 为导出前总检查；input 只检查渲染前的输入就绪；"
+            "contract 只检查候选生成后的排版合同"
+        ),
+    )
     args = parser.parse_args()
     try:
-        report = build_pre_render_audit(args.job_dir)
+        builder = {
+            "full": build_pre_render_audit,
+            "input": build_input_readiness_audit,
+            "contract": build_render_contract_audit,
+        }[args.scope]
+        report = builder(args.job_dir)
         if args.output:
             write_json(args.output.resolve(), report)
         print(json.dumps(report, ensure_ascii=False, indent=2))
