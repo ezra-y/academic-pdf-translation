@@ -2442,6 +2442,23 @@ def _test_retained_region_reconciliation() -> None:
         document.close()
 
 
+def _job_tree_digest(job_dir: Path) -> dict[str, str]:
+    """作业目录内每个文件的哈希快照。
+
+    排除 staging：注册前预检本来就会在那里追加自己的账本。
+    """
+
+    digests: dict[str, str] = {}
+    for path in sorted(job_dir.rglob("*")):
+        if not path.is_file():
+            continue
+        relative = path.relative_to(job_dir)
+        if relative.parts and relative.parts[0] in {"staging", "__pycache__"}:
+            continue
+        digests[str(relative)] = sha256_file(path, use_cache=False)
+    return digests
+
+
 def _make_pdf(
     path: Path,
     paragraphs: list[list[str]],
@@ -4958,6 +4975,7 @@ def run() -> None:
             or limit_reports[2]["preflight_attempt"] != 2
         ):
             raise AssertionError("第三个候选不得开启新的单篇返修轮次")
+        tree_before_preflight = _job_tree_digest(job_dir)
         preflight = preflight_candidate(
             job_dir,
             generated_candidate,
@@ -4972,6 +4990,21 @@ def run() -> None:
             job_dir / "candidate_provenance.json"
         ):
             raise AssertionError("注册前预检不得修改正式候选来源记录")
+        tree_after_preflight = _job_tree_digest(job_dir)
+        if tree_before_preflight != tree_after_preflight:
+            changed = sorted(
+                name
+                for name in set(tree_before_preflight)
+                | set(tree_after_preflight)
+                if tree_before_preflight.get(name)
+                != tree_after_preflight.get(name)
+            )
+            raise AssertionError(
+                "注册前预检使用硬链接副本，正式作业必须逐字节不变；"
+                "发生变化的文件: " + ", ".join(changed)
+            )
+        if not preflight.get("formal_job_unchanged"):
+            raise AssertionError("预检必须声明正式作业未被修改")
         register_candidate(
             job_dir,
             generated_candidate,

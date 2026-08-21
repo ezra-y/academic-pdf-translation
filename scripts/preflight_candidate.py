@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import shutil
 import tempfile
 from pathlib import Path
@@ -30,6 +31,20 @@ IGNORED_SHADOW_PATHS = (
     "staging",
     "__pycache__",
 )
+
+
+def _link_or_copy(source: str, destination: str) -> str:
+    """预检副本优先使用硬链接，不支持时回退为普通复制。
+
+    这条路径上的所有写入都走“临时文件加 os.replace”或 unlink，两者都只
+    改动目录项，不会原地截断共享 inode。因此硬链接不会让预检修改正式作业。
+    """
+
+    try:
+        os.link(source, destination)
+        return destination
+    except OSError:
+        return shutil.copy2(source, destination)
 
 
 def _technical_repair_tasks(
@@ -444,6 +459,7 @@ def preflight_candidate(
             job_dir,
             shadow,
             ignore=shutil.ignore_patterns(*IGNORED_SHADOW_PATHS),
+            copy_function=_link_or_copy,
         )
         for relative in (
             "reviews",
