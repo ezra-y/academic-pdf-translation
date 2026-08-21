@@ -20,7 +20,7 @@ class QualityMode(str, Enum):
     PRECISE = "precise"
 
     @classmethod
-    def parse(cls, value: object) -> "QualityMode":
+    def parse(cls, value: object) -> QualityMode:
         text = str(value or "").strip().casefold()
         for member in cls:
             if member.value == text:
