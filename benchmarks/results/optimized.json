@@ -2,12 +2,12 @@
   "schema_version": "2.0",
   "label": "optimized",
   "provenance": {
-    "renderer_build_id": "7747c32bbb2942e455f89dee864718761d645e790de044be677e0e6df430e914",
-    "git_commit": "2ad586f4a0f12c38b13e01aaf186a68ddbd9f3a5",
+    "renderer_build_id": "75c5ce45dcbeb9660d9ff1e477d65d9a134784bc17b0604005e62bdf2257513c",
+    "git_commit": "7962d87049096684eec2a7c6cd982ed5cbfe4d6a",
     "git_branch": "refactor/element-pipeline-v2",
-    "git_dirty": false,
+    "git_dirty": true,
     "python": "3.14.5",
-    "load_average_1m": 7.05,
+    "load_average_1m": 5.44,
     "cpu_count": 15,
     "corpus": "synthetic-representative-v1",
     "corpus_manifest_cases": 5
@@ -31,23 +31,23 @@
       "repeats": 5,
       "cold": {
         "seconds": [
-          1.6704,
-          1.5916,
-          1.5822,
-          1.5918,
-          1.5836
+          1.6806,
+          1.5841,
+          1.6047,
+          1.5997,
+          1.5818
         ],
-        "median_seconds": 1.5916,
+        "median_seconds": 1.5997,
         "translation_stage_seconds": {},
         "pdf_stage_seconds": {
-          "build_candidate": 0.4172,
+          "build_candidate": 0.424,
           "retained_region_extract": 0.0007,
-          "candidate_fingerprint": 0.0868,
-          "register_candidate": 0.0049,
-          "qa_candidate": 0.5184,
-          "validate_job": 0.1652,
-          "completeness_audit": 0.21,
-          "preflight": 0.8248
+          "candidate_fingerprint": 0.0854,
+          "register_candidate": 0.0054,
+          "qa_candidate": 0.5146,
+          "validate_job": 0.1698,
+          "completeness_audit": 0.2208,
+          "preflight": 0.8246
         },
         "counters": {
           "candidate_analysis_reuse": 6,
@@ -62,23 +62,23 @@
       },
       "warm": {
         "seconds": [
-          1.5975,
-          1.5621,
-          1.5676,
-          1.5948,
-          1.5589
+          1.5798,
+          1.5872,
+          1.7196,
+          1.7785,
+          1.8097
         ],
-        "median_seconds": 1.5676,
+        "median_seconds": 1.7196,
         "translation_stage_seconds": {},
         "pdf_stage_seconds": {
-          "build_candidate": 0.4098,
-          "retained_region_extract": 0.0007,
-          "candidate_fingerprint": 0.0815,
-          "register_candidate": 0.0035,
-          "qa_candidate": 0.5141,
-          "validate_job": 0.1724,
-          "completeness_audit": 0.216,
-          "preflight": 0.8208
+          "build_candidate": 0.4303,
+          "retained_region_extract": 0.0009,
+          "candidate_fingerprint": 0.0825,
+          "register_candidate": 0.0041,
+          "qa_candidate": 0.5946,
+          "validate_job": 0.1959,
+          "completeness_audit": 0.2364,
+          "preflight": 0.9481
         },
         "counters": {
           "candidate_analysis_reuse": 6,
@@ -104,23 +104,23 @@
       "repeats": 5,
       "cold": {
         "seconds": [
-          1.7353,
-          1.739,
-          1.7572,
-          1.7455,
-          1.7977
+          1.9681,
+          1.9911,
+          2.0435,
+          1.9382,
+          1.8735
         ],
-        "median_seconds": 1.7455,
+        "median_seconds": 1.9681,
         "translation_stage_seconds": {},
         "pdf_stage_seconds": {
-          "build_candidate": 0.4508,
-          "retained_region_extract": 0.0008,
-          "candidate_fingerprint": 0.0896,
-          "register_candidate": 0.005,
-          "qa_candidate": 0.5717,
-          "validate_job": 0.1855,
-          "completeness_audit": 0.2672,
-          "preflight": 0.9235
+          "build_candidate": 0.5341,
+          "retained_region_extract": 0.0009,
+          "candidate_fingerprint": 0.1025,
+          "register_candidate": 0.0043,
+          "qa_candidate": 0.6611,
+          "validate_job": 0.2168,
+          "completeness_audit": 0.3086,
+          "preflight": 1.0737
         },
         "counters": {
           "candidate_analysis_reuse": 6,
@@ -135,23 +135,23 @@
       },
       "warm": {
         "seconds": [
-          1.7572,
-          1.7579,
-          1.7725,
-          1.7571,
-          1.7463
+          1.8829,
+          2.217,
+          2.0851,
+          2.1087,
+          1.9995
         ],
-        "median_seconds": 1.7572,
+        "median_seconds": 2.0851,
         "translation_stage_seconds": {},
         "pdf_stage_seconds": {
-          "build_candidate": 0.467,
-          "retained_region_extract": 0.0008,
-          "candidate_fingerprint": 0.0907,
-          "register_candidate": 0.0049,
-          "qa_candidate": 0.5708,
-          "validate_job": 0.1869,
-          "completeness_audit": 0.2787,
-          "preflight": 0.9316
+          "build_candidate": 0.5802,
+          "retained_region_extract": 0.0014,
+          "candidate_fingerprint": 0.1035,
+          "register_candidate": 0.0062,
+          "qa_candidate": 0.6338,
+          "validate_job": 0.2306,
+          "completeness_audit": 0.3327,
+          "preflight": 1.0635
         },
         "counters": {
           "candidate_analysis_reuse": 6,
@@ -177,23 +177,23 @@
       "repeats": 5,
       "cold": {
         "seconds": [
-          0.6194,
-          0.6078,
-          0.601,
-          0.6203,
-          0.6098
+          0.7651,
+          0.7026,
+          0.6302,
+          0.621,
+          0.6455
         ],
-        "median_seconds": 0.6098,
+        "median_seconds": 0.6455,
         "translation_stage_seconds": {},
         "pdf_stage_seconds": {
-          "build_candidate": 0.2502,
-          "retained_region_extract": 0.0005,
-          "candidate_fingerprint": 0.0126,
+          "build_candidate": 0.2613,
+          "retained_region_extract": 0.0008,
+          "candidate_fingerprint": 0.0129,
           "register_candidate": 0.004,
-          "qa_candidate": 0.0666,
-          "validate_job": 0.0269,
+          "qa_candidate": 0.0731,
+          "validate_job": 0.0284,
           "completeness_audit": 0.0501,
-          "preflight": 0.1323
+          "preflight": 0.1417
         },
         "counters": {
           "candidate_analysis_reuse": 6,
@@ -208,23 +208,23 @@
       },
       "warm": {
         "seconds": [
-          0.5958,
-          0.5937,
-          0.6112,
-          0.6006,
-          0.604
+          0.6287,
+          0.6275,
+          0.6025,
+          0.6382,
+          0.7276
         ],
-        "median_seconds": 0.6006,
+        "median_seconds": 0.6287,
         "translation_stage_seconds": {},
         "pdf_stage_seconds": {
-          "build_candidate": 0.2715,
+          "build_candidate": 0.2559,
           "retained_region_extract": 0.0006,
           "candidate_fingerprint": 0.0122,
-          "register_candidate": 0.0036,
-          "qa_candidate": 0.0657,
-          "validate_job": 0.0266,
-          "completeness_audit": 0.0472,
-          "preflight": 0.13
+          "register_candidate": 0.0035,
+          "qa_candidate": 0.0681,
+          "validate_job": 0.0292,
+          "completeness_audit": 0.051,
+          "preflight": 0.1377
         },
         "counters": {
           "candidate_analysis_reuse": 6,
@@ -250,23 +250,23 @@
       "repeats": 5,
       "cold": {
         "seconds": [
-          0.5378,
-          0.5207,
-          0.5199,
-          0.5503,
-          0.5495
+          0.5568,
+          0.5518,
+          0.553,
+          0.5471,
+          0.5621
         ],
-        "median_seconds": 0.5378,
+        "median_seconds": 0.553,
         "translation_stage_seconds": {},
         "pdf_stage_seconds": {
-          "build_candidate": 0.2427,
-          "retained_region_extract": 0.0004,
-          "candidate_fingerprint": 0.0069,
-          "register_candidate": 0.0036,
-          "qa_candidate": 0.0468,
-          "validate_job": 0.023,
-          "completeness_audit": 0.0166,
-          "preflight": 0.0873
+          "build_candidate": 0.2593,
+          "retained_region_extract": 0.0005,
+          "candidate_fingerprint": 0.0061,
+          "register_candidate": 0.0032,
+          "qa_candidate": 0.0487,
+          "validate_job": 0.0243,
+          "completeness_audit": 0.0173,
+          "preflight": 0.0896
         },
         "counters": {
           "candidate_analysis_reuse": 6,
@@ -281,23 +281,23 @@
       },
       "warm": {
         "seconds": [
-          0.5077,
-          0.5009,
-          0.5027,
-          0.5007,
-          0.5067
+          0.5197,
+          0.5241,
+          0.5154,
+          0.5756,
+          0.6269
         ],
-        "median_seconds": 0.5027,
+        "median_seconds": 0.5241,
         "translation_stage_seconds": {},
         "pdf_stage_seconds": {
-          "build_candidate": 0.2388,
+          "build_candidate": 0.2463,
           "retained_region_extract": 0.0005,
-          "candidate_fingerprint": 0.0063,
-          "register_candidate": 0.0034,
-          "qa_candidate": 0.0451,
-          "validate_job": 0.0224,
-          "completeness_audit": 0.0176,
-          "preflight": 0.0847
+          "candidate_fingerprint": 0.0065,
+          "register_candidate": 0.0037,
+          "qa_candidate": 0.0467,
+          "validate_job": 0.0233,
+          "completeness_audit": 0.017,
+          "preflight": 0.0898
         },
         "counters": {
           "candidate_analysis_reuse": 6,
@@ -323,19 +323,19 @@
       "repeats": 5,
       "cold": {
         "seconds": [
-          1.4379,
-          1.4276,
-          1.418,
-          1.4493,
-          1.447
+          1.9097,
+          1.7493,
+          1.7663,
+          1.5462,
+          1.7977
         ],
-        "median_seconds": 1.4379,
+        "median_seconds": 1.7663,
         "translation_stage_seconds": {},
         "pdf_stage_seconds": {
-          "build_candidate": 1.1185,
+          "build_candidate": 1.4203,
           "retained_region_extract": 0.0002,
-          "validate_job": 0.0412,
-          "completeness_audit": 0.1327
+          "validate_job": 0.0449,
+          "completeness_audit": 0.1577
         },
         "counters": {
           "candidate_pdf_open": 18,
@@ -348,19 +348,19 @@
       },
       "warm": {
         "seconds": [
-          1.4261,
-          1.4475,
-          1.4234,
-          1.4228,
-          1.4399
+          1.5855,
+          1.6236,
+          1.5677,
+          1.5959,
+          1.6453
         ],
-        "median_seconds": 1.4261,
+        "median_seconds": 1.5959,
         "translation_stage_seconds": {},
         "pdf_stage_seconds": {
-          "build_candidate": 1.1263,
-          "retained_region_extract": 0.0003,
-          "validate_job": 0.042,
-          "completeness_audit": 0.138
+          "build_candidate": 1.2528,
+          "retained_region_extract": 0.0002,
+          "validate_job": 0.0444,
+          "completeness_audit": 0.1469
         },
         "counters": {
           "candidate_pdf_open": 18,
@@ -379,10 +379,10 @@
     }
   ],
   "totals": {
-    "cold_median_seconds": 5.9226,
-    "warm_median_seconds": 5.8542,
-    "cold_case_median_seconds": 1.4379,
-    "warm_case_median_seconds": 1.4261
+    "cold_median_seconds": 6.5326,
+    "warm_median_seconds": 6.5534,
+    "cold_case_median_seconds": 1.5997,
+    "warm_case_median_seconds": 1.5959
   },
   "note": "合成语料只用于比较耗时与重复读取，不能替代真实论文的视觉抽查。模型翻译阶段未测量。"
 }

@@ -7,6 +7,11 @@ from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any
 
+from academic_pdf_translation.contracts.enums import (
+    QUALITY_MODE_TO_REVIEW_MODE,
+    QualityMode,
+)
+
 import perf_trace
 from _common import (
     COMPLEX_CONTENT_KINDS,
@@ -301,6 +306,21 @@ def _review_mode(job: dict, errors: list[str]) -> str:
         return "independent"
     if review.get("choice_recorded") is not True:
         errors.append("开始翻译前必须记录用户选择的检查方式")
+    # 质量档位与复审模式必须一致：review.mode 由 quality_mode 派生。
+    quality_mode = job.get("quality_mode")
+    if quality_mode:
+        try:
+            expected_mode = QUALITY_MODE_TO_REVIEW_MODE[
+                QualityMode.parse(quality_mode)
+            ]
+        except ValueError as exc:
+            errors.append(str(exc))
+        else:
+            if expected_mode != str(mode):
+                errors.append(
+                    f"job.quality_mode={quality_mode!r} 派生的复审模式是 "
+                    f"{expected_mode!r}，与 job.review.mode={mode!r} 不一致"
+                )
     expected_review_rounds, expected_repair_rounds = REVIEW_MODE_LIMITS[
         str(mode)
     ]

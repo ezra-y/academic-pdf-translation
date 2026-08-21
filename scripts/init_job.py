@@ -4,6 +4,12 @@ import argparse
 import shutil
 from pathlib import Path
 
+from academic_pdf_translation.contracts.enums import (
+    QUALITY_MODE_TO_REVIEW_MODE,
+    QualityMode,
+)
+from academic_pdf_translation.contracts.migration import MIGRATION_VERSION
+
 import perf_trace
 from _common import (
     SCHEMA_VERSION,
@@ -151,11 +157,17 @@ def _timed_initialize_job(
             )
     canonical_language, profile = resolve_language_profile(target_language)
     try:
+        # 用户选的是质量档位；review.mode 由它派生，不再是两个独立开关。
+        quality_mode = QualityMode.parse(review)
         review_mode, max_review_rounds, max_repair_rounds = (
             review_choice_config(review)
         )
     except ValueError as exc:
         raise SkillError(str(exc)) from exc
+    if review_mode != QUALITY_MODE_TO_REVIEW_MODE[quality_mode]:
+        raise SkillError(
+            f"质量档位 {quality_mode.value} 与复审模式 {review_mode} 不一致"
+        )
     if producer_id is not None and not producer_id.strip():
         raise SkillError("producer_id 不能是空字符串")
     if review_mode in {"independent", "precise"} and not (
@@ -256,8 +268,12 @@ def _timed_initialize_job(
                 "notes": "",
             },
         },
+        "quality_mode": quality_mode.value,
+        "migration_version": MIGRATION_VERSION,
         "review": {
+            # review.mode 由 quality_mode 派生，不再单独选择。
             "mode": review_mode,
+            "derived_from_quality_mode": True,
             "choice_recorded": True,
             "producer_id": producer_id.strip() if producer_id else None,
             "max_review_rounds": max_review_rounds,

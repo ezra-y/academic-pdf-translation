@@ -3,6 +3,9 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from academic_pdf_translation.contracts.enums import QualityMode
+from academic_pdf_translation.contracts.migration import MIGRATION_VERSION
+
 from _common import SkillError, load_json, utc_now, write_json
 from review_policy import (
     post_repair_confirmation_template,
@@ -73,8 +76,14 @@ def set_review_mode(
             "previous_mode": previous_mode,
             "reason": "用户在正式收尾后要求增加完整独立审查",
         }
+    # 用户改的是质量档位；review.mode 由它派生，两个字段必须一起更新，
+    # 否则一致性检查会（正确地）把作业判为不一致。
+    quality_mode = QualityMode.parse(review)
+    job["quality_mode"] = quality_mode.value
+    job["migration_version"] = MIGRATION_VERSION
     job["review"] = {
         "mode": mode,
+        "derived_from_quality_mode": True,
         "choice_recorded": True,
         "producer_id": effective_producer,
         "max_review_rounds": max_review_rounds,

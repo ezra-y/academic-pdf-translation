@@ -1,18 +1,28 @@
 from __future__ import annotations
 
+import sys as _sys
+from pathlib import Path as _Path
+
+# scripts/ 下的命令行入口用 PYTHONPATH=scripts 运行，仓库根目录不在路径上。
+# 正式包 academic_pdf_translation 在根目录，这里补一次，让两边都能 import。
+# 放在 _common 是因为几乎每个脚本都会先导入它。
+_REPO_ROOT = _Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in _sys.path:
+    _sys.path.insert(0, str(_REPO_ROOT))
+
 import hashlib
 import json
 import os
 import re
 import tempfile
 import unicodedata
+from collections.abc import Iterable
 from datetime import datetime, timezone
 from difflib import SequenceMatcher
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 import perf_trace
-
 
 SCHEMA_VERSION = "1.0"
 ROUTES = {
