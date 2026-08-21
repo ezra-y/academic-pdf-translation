@@ -2,22 +2,29 @@
 
 from __future__ import annotations
 
-import argparse
+import sys
 from pathlib import Path
 
-from academic_pdf_translation.analysis.element_overrides import (
+# 按 README 的写法 `python3 scripts/X.py` 运行时，sys.path 里只有 scripts/，
+# 没有仓库根，academic_pdf_translation 包就 import 不到。先把根加进去。
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+import argparse  # noqa: E402
+from pathlib import Path  # noqa: E402
+
+from academic_pdf_translation.analysis.element_overrides import (  # noqa: E402
     apply_all,
     load_overrides,
 )
-from academic_pdf_translation.analysis.source_elements import (
+from academic_pdf_translation.analysis.source_elements import (  # noqa: E402
     analyze_job_elements,
 )
-from academic_pdf_translation.analysis.unit_binding import (
+from academic_pdf_translation.analysis.unit_binding import (  # noqa: E402
     bind_units,
     validate_payload_sources,
 )
 
-from _common import SkillError, import_fitz, load_json, write_json
+from _common import SkillError, import_fitz, load_json, write_json  # noqa: E402
 
 BINDING_FILE_NAME = "unit_bindings.json"
 

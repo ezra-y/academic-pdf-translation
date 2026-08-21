@@ -1,13 +1,20 @@
 from __future__ import annotations
 
-import argparse
+import sys
 from pathlib import Path
 
-from academic_pdf_translation.contracts.enums import QualityMode
-from academic_pdf_translation.contracts.migration import MIGRATION_VERSION
+# 按 README 的写法 `python3 scripts/X.py` 运行时，sys.path 里只有 scripts/，
+# 没有仓库根，academic_pdf_translation 包就 import 不到。先把根加进去。
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from _common import SkillError, load_json, utc_now, write_json
-from review_policy import (
+import argparse  # noqa: E402
+from pathlib import Path  # noqa: E402
+
+from academic_pdf_translation.contracts.enums import QualityMode  # noqa: E402
+from academic_pdf_translation.contracts.migration import MIGRATION_VERSION  # noqa: E402
+
+from _common import SkillError, load_json, utc_now, write_json  # noqa: E402
+from review_policy import (  # noqa: E402
     post_repair_confirmation_template,
     review_choice_config,
 )

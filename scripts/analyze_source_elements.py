@@ -5,17 +5,24 @@
 
 from __future__ import annotations
 
-import argparse
-import json
+import sys
 from pathlib import Path
 
-from academic_pdf_translation.analysis.source_elements import (
+# 按 README 的写法 `python3 scripts/X.py` 运行时，sys.path 里只有 scripts/，
+# 没有仓库根，academic_pdf_translation 包就 import 不到。先把根加进去。
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+import argparse  # noqa: E402
+import json  # noqa: E402
+from pathlib import Path  # noqa: E402
+
+from academic_pdf_translation.analysis.source_elements import (  # noqa: E402
     ELEMENTS_FILE_NAME,
     analyze_job_elements,
 )
-from academic_pdf_translation.planning.mode_policy import policy_for_job
+from academic_pdf_translation.planning.mode_policy import policy_for_job  # noqa: E402
 
-from _common import SkillError, import_fitz
+from _common import SkillError, import_fitz  # noqa: E402
 
 
 def main() -> int:

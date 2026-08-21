@@ -1,19 +1,26 @@
 from __future__ import annotations
 
-import argparse
-import re
-import unicodedata
-from difflib import SequenceMatcher
+import sys
 from pathlib import Path
-from typing import Any
 
-from academic_pdf_translation.contracts.enums import (
+# 按 README 的写法 `python3 scripts/X.py` 运行时，sys.path 里只有 scripts/，
+# 没有仓库根，academic_pdf_translation 包就 import 不到。先把根加进去。
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+import argparse  # noqa: E402
+import re  # noqa: E402
+import unicodedata  # noqa: E402
+from difflib import SequenceMatcher  # noqa: E402
+from pathlib import Path  # noqa: E402
+from typing import Any  # noqa: E402
+
+from academic_pdf_translation.contracts.enums import (  # noqa: E402
     QUALITY_MODE_TO_REVIEW_MODE,
     QualityMode,
 )
 
-import perf_trace
-from _common import (
+import perf_trace  # noqa: E402
+from _common import (  # noqa: E402
     COMPLEX_CONTENT_KINDS,
     COMPLEX_CONTENT_METHODS,
     ROUTES,
@@ -29,19 +36,22 @@ from _common import (
     sha256_file,
     write_json,
 )
-from candidate_analysis import open_candidate_analysis
-from candidate_page_map import (
+from candidate_analysis import open_candidate_analysis  # noqa: E402
+from candidate_page_map import (  # noqa: E402
     candidate_pages_for_unit,
     load_candidate_page_map,
 )
-from i18n import all_messages
-from review_policy import (
+from i18n import all_messages  # noqa: E402
+from review_policy import (  # noqa: E402
     REVIEW_MODE_LIMITS,
     validate_post_repair_confirmation,
 )
-from semantic_markers import infer_review_flags, validate_terminology
-from set_complex_payload import validate_complex_payload_item
-from translation_truthfulness import TruthfulnessError, evaluate_translation
+from semantic_markers import infer_review_flags, validate_terminology  # noqa: E402
+from set_complex_payload import validate_complex_payload_item  # noqa: E402
+from translation_truthfulness import (  # noqa: E402
+    TruthfulnessError,
+    evaluate_translation,
+)
 
 STAGE_ORDER = {
     "draft": 0,

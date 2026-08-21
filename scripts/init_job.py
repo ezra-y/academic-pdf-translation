@@ -1,17 +1,24 @@
 from __future__ import annotations
 
-import argparse
-import shutil
+import sys
 from pathlib import Path
 
-from academic_pdf_translation.contracts.enums import (
+# 按 README 的写法 `python3 scripts/X.py` 运行时，sys.path 里只有 scripts/，
+# 没有仓库根，academic_pdf_translation 包就 import 不到。先把根加进去。
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+import argparse  # noqa: E402
+import shutil  # noqa: E402
+from pathlib import Path  # noqa: E402
+
+from academic_pdf_translation.contracts.enums import (  # noqa: E402
     QUALITY_MODE_TO_REVIEW_MODE,
     QualityMode,
 )
-from academic_pdf_translation.contracts.migration import MIGRATION_VERSION
+from academic_pdf_translation.contracts.migration import MIGRATION_VERSION  # noqa: E402
 
-import perf_trace
-from _common import (
+import perf_trace  # noqa: E402
+from _common import (  # noqa: E402
     SCHEMA_VERSION,
     SkillError,
     load_json,
@@ -20,19 +27,19 @@ from _common import (
     utc_now,
     write_json,
 )
-from extract_source_structure import extract_source_structure
-from font_preparation import prepare_job_fonts
-from pdf_profile import profile_pdf
-from prepare_translation_units import (
+from extract_source_structure import extract_source_structure  # noqa: E402
+from font_preparation import prepare_job_fonts  # noqa: E402
+from pdf_profile import profile_pdf  # noqa: E402
+from prepare_translation_units import (  # noqa: E402
     build_source_units,
     build_translation_skeleton,
 )
-from review_policy import (
+from review_policy import (  # noqa: E402
     post_repair_confirmation_template,
     review_choice_config,
 )
-from source_analysis import analysis_record, analyze_source
-from workspace import (
+from source_analysis import analysis_record, analyze_source  # noqa: E402
+from workspace import (  # noqa: E402
     TranslationWorkspace,
     open_workspace,
     workspace_job_dir,
