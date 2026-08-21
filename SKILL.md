@@ -366,7 +366,9 @@ python3 scripts/make_review_sheet.py /path/to/job
 ```
 
 默认每张审查图包含两组左右对照页，并按 PDF 顺序覆盖全文。脚本只生成审查
-图包、索引和一份对照 PDF；原文和候选哈希不变时直接复用缓存。
+图包、索引和一份对照 PDF；原文和候选哈希不变时直接复用缓存。返修后重新
+生成时按单页复用：原文页跨候选版本一律复用，候选只重画真正改动过的页，
+审查 PDF 的页面顺序不变。
 
 随后启动一个独立审查智能体，并让它完整执行
 [independent-reviewer.md](agents/independent-reviewer.md)。派发时只提供 Skill
