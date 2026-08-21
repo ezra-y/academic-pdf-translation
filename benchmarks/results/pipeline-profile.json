@@ -8,39 +8,41 @@
       "page_count": 12,
       "frozen_unit_count": 134,
       "status": "NEEDS_REPAIR",
-      "cold_seconds": 1.573,
-      "warm_min_seconds": 1.461,
-      "warm_median_seconds": 1.473,
+      "cold_seconds": 1.354,
+      "warm_min_seconds": 1.281,
+      "warm_median_seconds": 1.281,
       "cold_stage_totals": {
         "qa_candidate": {
           "calls": 1,
-          "total_seconds": 0.5714,
+          "total_seconds": 0.5959,
           "errors": 0
         },
         "completeness_audit": {
-          "calls": 3,
-          "total_seconds": 0.345051,
+          "calls": 2,
+          "total_seconds": 0.229095,
           "errors": 0
         },
         "candidate_fingerprint": {
           "calls": 1,
-          "total_seconds": 0.110596,
+          "total_seconds": 0.103626,
           "errors": 0
         },
         "retained_region_extract": {
-          "calls": 6,
-          "total_seconds": 0.000578,
+          "calls": 5,
+          "total_seconds": 0.000516,
           "errors": 0
         }
       },
       "cold_counters": {
+        "expensive_audit_cache_hit": 1,
         "render_attempt": 3,
-        "sha256_cache_hit": 35,
+        "sha256_cache_hit": 47,
         "sha256_file_read": 18
       },
       "warm_counters": {
+        "expensive_audit_cache_hit": 2,
         "render_attempt": 6,
-        "sha256_cache_hit": 72,
+        "sha256_cache_hit": 96,
         "sha256_file_read": 34
       }
     },
@@ -49,39 +51,41 @@
       "page_count": 12,
       "frozen_unit_count": 180,
       "status": "NEEDS_REPAIR",
-      "cold_seconds": 1.635,
-      "warm_min_seconds": 1.63,
-      "warm_median_seconds": 1.631,
+      "cold_seconds": 1.429,
+      "warm_min_seconds": 1.426,
+      "warm_median_seconds": 1.433,
       "cold_stage_totals": {
         "qa_candidate": {
           "calls": 1,
-          "total_seconds": 0.621884,
+          "total_seconds": 0.616021,
           "errors": 0
         },
         "completeness_audit": {
-          "calls": 3,
-          "total_seconds": 0.431404,
+          "calls": 2,
+          "total_seconds": 0.28953,
           "errors": 0
         },
         "candidate_fingerprint": {
           "calls": 1,
-          "total_seconds": 0.109586,
+          "total_seconds": 0.109448,
           "errors": 0
         },
         "retained_region_extract": {
-          "calls": 6,
-          "total_seconds": 0.000659,
+          "calls": 5,
+          "total_seconds": 0.000521,
           "errors": 0
         }
       },
       "cold_counters": {
+        "expensive_audit_cache_hit": 1,
         "render_attempt": 3,
-        "sha256_cache_hit": 36,
+        "sha256_cache_hit": 48,
         "sha256_file_read": 17
       },
       "warm_counters": {
+        "expensive_audit_cache_hit": 2,
         "render_attempt": 6,
-        "sha256_cache_hit": 72,
+        "sha256_cache_hit": 96,
         "sha256_file_read": 34
       }
     },
@@ -90,39 +94,41 @@
       "page_count": 8,
       "frozen_unit_count": 128,
       "status": "NEEDS_REPAIR",
-      "cold_seconds": 0.249,
-      "warm_min_seconds": 0.243,
-      "warm_median_seconds": 0.244,
+      "cold_seconds": 0.219,
+      "warm_min_seconds": 0.216,
+      "warm_median_seconds": 0.219,
       "cold_stage_totals": {
         "qa_candidate": {
           "calls": 1,
-          "total_seconds": 0.06662,
+          "total_seconds": 0.067449,
           "errors": 0
         },
         "completeness_audit": {
-          "calls": 3,
-          "total_seconds": 0.065336,
+          "calls": 2,
+          "total_seconds": 0.044081,
           "errors": 0
         },
         "candidate_fingerprint": {
           "calls": 1,
-          "total_seconds": 0.012596,
+          "total_seconds": 0.012691,
           "errors": 0
         },
         "retained_region_extract": {
-          "calls": 6,
-          "total_seconds": 0.00041,
+          "calls": 5,
+          "total_seconds": 0.000403,
           "errors": 0
         }
       },
       "cold_counters": {
+        "expensive_audit_cache_hit": 1,
         "render_attempt": 1,
-        "sha256_cache_hit": 36,
+        "sha256_cache_hit": 48,
         "sha256_file_read": 17
       },
       "warm_counters": {
+        "expensive_audit_cache_hit": 2,
         "render_attempt": 2,
-        "sha256_cache_hit": 72,
+        "sha256_cache_hit": 96,
         "sha256_file_read": 34
       }
     },
@@ -131,39 +137,41 @@
       "page_count": 8,
       "frozen_unit_count": 32,
       "status": "NEEDS_REPAIR",
-      "cold_seconds": 0.15,
-      "warm_min_seconds": 0.149,
-      "warm_median_seconds": 0.15,
+      "cold_seconds": 0.144,
+      "warm_min_seconds": 0.136,
+      "warm_median_seconds": 0.14,
       "cold_stage_totals": {
         "qa_candidate": {
           "calls": 1,
-          "total_seconds": 0.049766,
+          "total_seconds": 0.05689,
           "errors": 0
         },
         "completeness_audit": {
-          "calls": 3,
-          "total_seconds": 0.022923,
+          "calls": 2,
+          "total_seconds": 0.015834,
           "errors": 0
         },
         "candidate_fingerprint": {
           "calls": 1,
-          "total_seconds": 0.007562,
+          "total_seconds": 0.007922,
           "errors": 0
         },
         "retained_region_extract": {
-          "calls": 6,
-          "total_seconds": 0.000272,
+          "calls": 5,
+          "total_seconds": 0.000268,
           "errors": 0
         }
       },
       "cold_counters": {
+        "expensive_audit_cache_hit": 1,
         "render_attempt": 1,
-        "sha256_cache_hit": 36,
+        "sha256_cache_hit": 48,
         "sha256_file_read": 17
       },
       "warm_counters": {
+        "expensive_audit_cache_hit": 2,
         "render_attempt": 2,
-        "sha256_cache_hit": 72,
+        "sha256_cache_hit": 96,
         "sha256_file_read": 34
       }
     },
@@ -172,39 +180,41 @@
       "page_count": 6,
       "frozen_unit_count": 313,
       "status": "NEEDS_REPAIR",
-      "cold_seconds": 1.057,
-      "warm_min_seconds": 1.037,
-      "warm_median_seconds": 1.051,
+      "cold_seconds": 0.887,
+      "warm_min_seconds": 0.886,
+      "warm_median_seconds": 0.888,
       "cold_stage_totals": {
         "completeness_audit": {
-          "calls": 3,
-          "total_seconds": 0.384288,
+          "calls": 2,
+          "total_seconds": 0.25988,
           "errors": 0
         },
         "qa_candidate": {
           "calls": 1,
-          "total_seconds": 0.251517,
+          "total_seconds": 0.251241,
           "errors": 0
         },
         "candidate_fingerprint": {
           "calls": 1,
-          "total_seconds": 0.036636,
+          "total_seconds": 0.037201,
           "errors": 0
         },
         "retained_region_extract": {
-          "calls": 6,
-          "total_seconds": 0.000751,
+          "calls": 5,
+          "total_seconds": 0.000657,
           "errors": 0
         }
       },
       "cold_counters": {
+        "expensive_audit_cache_hit": 1,
         "render_attempt": 5,
-        "sha256_cache_hit": 36,
+        "sha256_cache_hit": 48,
         "sha256_file_read": 17
       },
       "warm_counters": {
+        "expensive_audit_cache_hit": 2,
         "render_attempt": 10,
-        "sha256_cache_hit": 72,
+        "sha256_cache_hit": 96,
         "sha256_file_read": 34
       }
     }
@@ -212,25 +222,25 @@
   "stage_totals_cold": {
     "qa_candidate": {
       "calls": 5,
-      "total_seconds": 1.561187,
-      "share": 0.5053
+      "total_seconds": 1.587501,
+      "share": 0.5881
     },
     "completeness_audit": {
-      "calls": 15,
-      "total_seconds": 1.249002,
-      "share": 0.4042
+      "calls": 10,
+      "total_seconds": 0.83842,
+      "share": 0.3106
     },
     "candidate_fingerprint": {
       "calls": 5,
-      "total_seconds": 0.276976,
-      "share": 0.0896
+      "total_seconds": 0.270888,
+      "share": 0.1004
     },
     "retained_region_extract": {
-      "calls": 30,
-      "total_seconds": 0.00267,
+      "calls": 25,
+      "total_seconds": 0.002365,
       "share": 0.0009
     }
   },
-  "measured_stage_seconds": 3.09,
+  "measured_stage_seconds": 2.699,
   "note": "合成语料只用于比较耗时与重复读取，不能替代真实论文的视觉抽查。首版通过率不在本报告口径内。"
 }

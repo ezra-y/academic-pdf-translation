@@ -1,14 +1,14 @@
 {
   "schema_version": "1.0",
-  "generated_at": "2026-08-21T12:39:04+00:00",
+  "generated_at": "2026-08-21T12:55:22+00:00",
   "case_count": 5,
   "automatic_first_pass_count": 0,
   "automatic_first_pass_rate": 0.0,
-  "median_total_seconds": 1.056,
-  "benchmark_wall_seconds": 4.655,
+  "median_total_seconds": 0.89,
+  "benchmark_wall_seconds": 4.057,
   "workers": 1,
   "renderer_build_ids": [
-    "ff036059a9f657d5b2d3dfd0343f5b6e007af25845cc4e9c2f0b3ffd7ca9a951"
+    "2eb01fb6e630ce3b96187bb3e832d6c1443a16ae837ace5f983b8623d86c3a8f"
   ],
   "single_build": true,
   "visual_review_required": true,
@@ -22,15 +22,15 @@
       ],
       "status": "NEEDS_REPAIR",
       "renderer_version": "1.0",
-      "renderer_build_id": "ff036059a9f657d5b2d3dfd0343f5b6e007af25845cc4e9c2f0b3ffd7ca9a951",
+      "renderer_build_id": "2eb01fb6e630ce3b96187bb3e832d6c1443a16ae837ace5f983b8623d86c3a8f",
       "source_page_count": 8,
       "candidate_page_count": 2,
       "timing_seconds": {
         "input_readiness": 0.02,
-        "build": 0.016,
-        "pre_render_audit": 0.027,
-        "preflight": 0.094,
-        "total": 0.159
+        "build": 0.015,
+        "pre_render_audit": 0.009,
+        "preflight": 0.092,
+        "total": 0.138
       },
       "hard_failure_codes": [
         "TARGET_TEXT_MISSING",
@@ -45,15 +45,15 @@
       ],
       "status": "NEEDS_REPAIR",
       "renderer_version": "1.0",
-      "renderer_build_id": "ff036059a9f657d5b2d3dfd0343f5b6e007af25845cc4e9c2f0b3ffd7ca9a951",
+      "renderer_build_id": "2eb01fb6e630ce3b96187bb3e832d6c1443a16ae837ace5f983b8623d86c3a8f",
       "source_page_count": 6,
       "candidate_page_count": 9,
       "timing_seconds": {
-        "input_readiness": 0.163,
-        "build": 0.231,
-        "pre_render_audit": 0.177,
-        "preflight": 0.484,
-        "total": 1.056
+        "input_readiness": 0.164,
+        "build": 0.22,
+        "pre_render_audit": 0.011,
+        "preflight": 0.495,
+        "total": 0.89
       },
       "hard_failure_codes": [
         "TARGET_TEXT_MISSING",
@@ -69,15 +69,15 @@
       ],
       "status": "NEEDS_REPAIR",
       "renderer_version": "1.0",
-      "renderer_build_id": "ff036059a9f657d5b2d3dfd0343f5b6e007af25845cc4e9c2f0b3ffd7ca9a951",
+      "renderer_build_id": "2eb01fb6e630ce3b96187bb3e832d6c1443a16ae837ace5f983b8623d86c3a8f",
       "source_page_count": 12,
       "candidate_page_count": 17,
       "timing_seconds": {
-        "input_readiness": 0.211,
-        "build": 0.209,
-        "pre_render_audit": 0.179,
-        "preflight": 0.909,
-        "total": 1.509
+        "input_readiness": 0.209,
+        "build": 0.2,
+        "pre_render_audit": 0.01,
+        "preflight": 0.91,
+        "total": 1.331
       },
       "hard_failure_codes": [
         "TARGET_TEXT_MISSING",
@@ -93,15 +93,15 @@
       ],
       "status": "NEEDS_REPAIR",
       "renderer_version": "1.0",
-      "renderer_build_id": "ff036059a9f657d5b2d3dfd0343f5b6e007af25845cc4e9c2f0b3ffd7ca9a951",
+      "renderer_build_id": "2eb01fb6e630ce3b96187bb3e832d6c1443a16ae837ace5f983b8623d86c3a8f",
       "source_page_count": 8,
       "candidate_page_count": 3,
       "timing_seconds": {
-        "input_readiness": 0.035,
-        "build": 0.041,
-        "pre_render_audit": 0.039,
-        "preflight": 0.136,
-        "total": 0.253
+        "input_readiness": 0.034,
+        "build": 0.04,
+        "pre_render_audit": 0.01,
+        "preflight": 0.132,
+        "total": 0.217
       },
       "hard_failure_codes": [
         "TARGET_TEXT_MISSING",
@@ -117,15 +117,15 @@
       ],
       "status": "NEEDS_REPAIR",
       "renderer_version": "1.0",
-      "renderer_build_id": "ff036059a9f657d5b2d3dfd0343f5b6e007af25845cc4e9c2f0b3ffd7ca9a951",
+      "renderer_build_id": "2eb01fb6e630ce3b96187bb3e832d6c1443a16ae837ace5f983b8623d86c3a8f",
       "source_page_count": 12,
       "candidate_page_count": 18,
       "timing_seconds": {
-        "input_readiness": 0.211,
-        "build": 0.217,
-        "pre_render_audit": 0.22,
-        "preflight": 0.994,
-        "total": 1.642
+        "input_readiness": 0.205,
+        "build": 0.225,
+        "pre_render_audit": 0.011,
+        "preflight": 0.988,
+        "total": 1.43
       },
       "hard_failure_codes": [
         "TARGET_TEXT_MISSING",
