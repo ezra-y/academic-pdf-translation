@@ -27,15 +27,14 @@ from candidate_page_map import (
     candidate_pages_for_unit,
     load_candidate_page_map,
 )
-from set_complex_payload import validate_complex_payload_item
-from semantic_markers import infer_review_flags, validate_terminology
 from i18n import all_messages
 from review_policy import (
     REVIEW_MODE_LIMITS,
     validate_post_repair_confirmation,
 )
+from semantic_markers import infer_review_flags, validate_terminology
+from set_complex_payload import validate_complex_payload_item
 from translation_truthfulness import TruthfulnessError, evaluate_translation
-
 
 STAGE_ORDER = {
     "draft": 0,
@@ -1684,8 +1683,9 @@ def _validate_retained_source(
     source_doc = None
     if require_reference_boundary and source_path.is_file():
         try:
-            from _common import import_fitz
             import re
+
+            from _common import import_fitz
 
             source_doc = import_fitz().open(source_path)
             for index, page in enumerate(source_doc, 1):

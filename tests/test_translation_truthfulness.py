@@ -184,12 +184,13 @@ def test_cache_replay_runs_the_same_checks(tmp_path: Path) -> None:
     """缓存命中后仍然走同一套检查，不能靠缓存绕过。"""
 
     job_dir = make_job(tmp_path)
-    plan(job_dir)
+    plan(job_dir, model="test-model-a")
     batch = load_batch(job_dir)
     apply_translation_batch(
         job_dir,
         batch["batch_id"],
         translated_results(batch),
+        model="test-model-a",
     )
     cache_path = job_dir / "translation-cache.json"
     cache = json.loads(cache_path.read_text(encoding="utf-8"))

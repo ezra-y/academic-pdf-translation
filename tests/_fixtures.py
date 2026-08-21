@@ -51,7 +51,16 @@ def make_job(
     return job_dir.resolve()
 
 
-def plan(job_dir: Path, **kwargs: Any) -> dict[str, Any]:
+def plan(
+    job_dir: Path,
+    *,
+    reviewed: bool = True,
+    **kwargs: Any,
+) -> dict[str, Any]:
+    """正式编排前先确认术语表；只有专门测这条门槛时才传 reviewed=False。"""
+
+    if reviewed:
+        set_terminology_reviewed(job_dir)
     return plan_translation_batches(job_dir, **kwargs)
 
 

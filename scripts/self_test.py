@@ -2859,12 +2859,22 @@ def _test_translation_batches_keep_unit_level_checks() -> None:
             False,
             producer_id="self-test-producer",
         )
+        try:
+            plan_translation_batches(job_dir, min_units=2, max_units=4)
+        except SkillError:
+            pass
+        else:
+            raise AssertionError("术语表未确认时不得正式编排批次")
+        reviewed = load_json(job_dir / "translation.json")
+        reviewed["terminology_reviewed"] = True
+        write_json(job_dir / "translation.json", reviewed)
         plan = plan_translation_batches(
             job_dir,
             min_units=2,
             max_units=4,
             target_chars=1000,
             max_chars=2000,
+            model="self-test-model",
         )
         if plan["batch_count"] < 2:
             raise AssertionError("自测样本应至少编排出两个批次")
@@ -2903,7 +2913,24 @@ def _test_translation_batches_keep_unit_level_checks() -> None:
         ):
             raise AssertionError("整批拒绝后不得写入任何译文")
 
-        report = apply_translation_batch(job_dir, first["batch_id"], good)
+        try:
+            apply_translation_batch(
+                job_dir,
+                first["batch_id"],
+                good,
+                model="another-model",
+            )
+        except SkillError:
+            pass
+        else:
+            raise AssertionError("实际模型与计划模型不一致时必须拒绝写回")
+
+        report = apply_translation_batch(
+            job_dir,
+            first["batch_id"],
+            good,
+            model="self-test-model",
+        )
         if report["applied_units"] != len(good):
             raise AssertionError("合格批次必须整批写入")
 
@@ -2913,6 +2940,7 @@ def _test_translation_batches_keep_unit_level_checks() -> None:
             max_units=4,
             target_chars=1000,
             max_chars=2000,
+            model="self-test-model",
         )
         if replanned["batches"][0]["status"] != "applied":
             raise AssertionError("重新编排必须保留已完成批次，支持断点续跑")
@@ -2930,6 +2958,10 @@ def _test_translation_batches_keep_unit_level_checks() -> None:
         for entry in restored_plan["batches"]:
             entry["status"] = "pending"
         write_json(job_dir / "translation-plan.json", restored_plan)
+        write_json(
+            job_dir / "translation.json",
+            cleared,
+        )
         if apply_cached_batches(job_dir) != [first["batch_id"]]:
             raise AssertionError("缓存必须能直接写回已完成批次")
         recovered = load_json(job_dir / "translation.json")

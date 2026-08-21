@@ -194,6 +194,54 @@ def _assert_truthful(
     return report
 
 
+def _assert_plan_ready(plan: dict[str, Any]) -> None:
+    """术语表没确认之前不执行批次。"""
+
+    if plan.get("terminology_reviewed") is not True:
+        raise SkillError(
+            "翻译计划记录的 terminology_reviewed 不是 true；"
+            "术语表确认之前不得执行翻译批次，请确认术语表后重新编排。"
+        )
+
+
+def _assert_model_matches_plan(
+    plan: dict[str, Any],
+    model: str | None,
+) -> None:
+    """写回结果时验证实际模型与计划中的模型一致。"""
+
+    planned = str(plan.get("model") or "")
+    actual = str(model or "")
+    if planned and actual and planned != actual:
+        raise SkillError(
+            f"实际模型 {actual!r} 与计划模型 {planned!r} 不一致；"
+            "请用同一个模型重新翻译，或按新模型重新编排批次。"
+        )
+    if planned and not actual:
+        raise SkillError(
+            f"计划记录的模型是 {planned!r}，写回时必须用 --model 声明"
+            "实际执行的模型。"
+        )
+
+
+def cache_identity(
+    plan: dict[str, Any],
+    model: str,
+    batch_id: str,
+) -> dict[str, Any]:
+    """缓存条目的身份：换任何一项都不允许复用旧结果。"""
+
+    return {
+        "batch_id": batch_id,
+        "applied_at": utc_now(),
+        "model": model,
+        "prompt_version": plan.get("prompt_version"),
+        "strategy_version": plan.get("strategy_version"),
+        "terminology_sha256": plan.get("terminology_sha256"),
+        "target_language": plan.get("target_language"),
+    }
+
+
 def _refresh_coverage(
     translation: dict[str, Any],
     retained_source: Any,
@@ -229,6 +277,8 @@ def apply_translation_batch(
     )
     if entry is None:
         raise SkillError(f"翻译计划中没有批次 {batch_id}")
+    _assert_plan_ready(plan)
+    _assert_model_matches_plan(plan, model)
     batch = load_json(job_dir / entry["file"])
 
     perf_trace.count(perf_trace.COUNTER_TRANSLATION_BATCH)
@@ -284,20 +334,25 @@ def apply_translation_batch(
     coverage = _refresh_coverage(translation, retained)
     write_json(translation_path, translation)
 
-    cache = TranslationCache(job_dir)
-    cache.put(
-        str(entry["cache_key"]),
-        [accepted[unit_id] for unit_id in sorted(accepted)],
-        metadata={
-            "batch_id": batch_id,
-            "applied_at": utc_now(),
-            "model": model,
-        },
-    )
+    applied_model = model or plan.get("model")
+    if applied_model:
+        # 只有记录了模型的批次才进正式缓存。没有模型标识的结果无法证明
+        # 是谁翻的，缓存下来就会被别的模型误复用。
+        cache = TranslationCache(job_dir)
+        cache.put(
+            str(entry["cache_key"]),
+            [accepted[unit_id] for unit_id in sorted(accepted)],
+            metadata=cache_identity(plan, applied_model, batch_id),
+        )
 
     entry["status"] = "applied"
     entry["applied_at"] = utc_now()
     entry["retries"] = int(retries)
+    entry["applied_model"] = applied_model
+    entry["applied_unit_ids"] = sorted(accepted)
+    entry["elapsed_seconds"] = elapsed_seconds
+    entry["input_tokens"] = input_tokens
+    entry["output_tokens"] = output_tokens
     plan["translation_sha256"] = sha256_file(translation_path)
     write_json(job_dir / PLAN_FILE_NAME, plan)
 
@@ -339,25 +394,114 @@ def apply_translation_batch(
 
 
 def apply_cached_batches(job_dir: Path) -> list[str]:
-    """把缓存中已有结果的待处理批次直接写回，不重新翻译。"""
+    """把缓存中已有结果的待处理批次直接写回，不重新翻译。
+
+    命中缓存不等于可以少做检查：模型、提示版本、术语表和目标语言逐项复核，
+    随后仍然走同一条写入校验和译文真实性检查。
+    """
 
     job_dir = Path(job_dir).resolve()
     plan = load_plan(job_dir)
+    _assert_plan_ready(plan)
     cache = TranslationCache(job_dir)
     restored: list[str] = []
     for entry in plan.get("batches", []):
         if entry.get("status") == "applied":
             continue
-        cached = cache.get(str(entry.get("cache_key") or ""))
+        cache_key = str(entry.get("cache_key") or "")
+        cached = cache.get(cache_key)
         if not cached:
             continue
+        metadata = cache.metadata(cache_key)
+        expected = cache_identity(
+            plan,
+            str(plan.get("model") or ""),
+            str(entry["batch_id"]),
+        )
+        mismatched = [
+            field
+            for field in (
+                "model",
+                "prompt_version",
+                "strategy_version",
+                "terminology_sha256",
+                "target_language",
+            )
+            if metadata.get(field) != expected[field]
+        ]
+        if mismatched:
+            raise SkillError(
+                f"批次 {entry['batch_id']} 的缓存身份与当前计划不一致: "
+                + ", ".join(mismatched)
+                + "。缓存不得跨模型或跨术语表复用，请重新翻译该批次。"
+            )
         apply_translation_batch(
             job_dir,
             str(entry["batch_id"]),
             cached,
+            model=str(plan.get("model") or "") or None,
         )
         restored.append(str(entry["batch_id"]))
     return restored
+
+
+def verify_plan_execution(job_dir: Path) -> dict[str, Any]:
+    """最后一道账：计划批次、已验证批次和实际单元数量必须对得上。
+
+    少执行一批时，这里必须失败，而不是靠调用方自己汇报。
+    """
+
+    job_dir = Path(job_dir).resolve()
+    plan = load_plan(job_dir)
+    job = load_json(job_dir / "job.json")
+    translation = load_json(job_dir / job["files"]["translation"])
+    batches = [item for item in plan.get("batches", []) if isinstance(item, dict)]
+    applied = [item for item in batches if item.get("status") == "applied"]
+    pending = [item["batch_id"] for item in batches if item not in applied]
+    planned_units = sum(int(item.get("unit_count") or 0) for item in batches)
+    applied_units = sum(
+        len(item.get("applied_unit_ids") or []) for item in applied
+    )
+    document_units = len(
+        [unit for unit in translation.get("units", []) if isinstance(unit, dict)]
+    )
+    coverage = translation.get("coverage", {})
+    problems: list[str] = []
+    if pending:
+        problems.append(
+            f"还有 {len(pending)} 批未执行: " + ", ".join(map(str, pending[:20]))
+        )
+    if planned_units != document_units:
+        problems.append(
+            f"计划单元 {planned_units} 与 translation.json 单元 "
+            f"{document_units} 不一致"
+        )
+    if applied_units != document_units:
+        problems.append(
+            f"已写回单元 {applied_units} 与 translation.json 单元 "
+            f"{document_units} 不一致"
+        )
+    if int(coverage.get("invalid_or_unverified_units") or 0):
+        problems.append(
+            f"仍有 {coverage['invalid_or_unverified_units']} 个单元未通过"
+            "译文真实性检查"
+        )
+    report = {
+        "batch_count": len(batches),
+        "applied_batches": len(applied),
+        "pending_batches": pending,
+        "planned_units": planned_units,
+        "applied_units": applied_units,
+        "document_units": document_units,
+        "complete": not problems,
+        "problems": problems,
+    }
+    if problems:
+        raise SkillError(
+            "翻译批次执行不完整:\n"
+            + "\n".join(f"- {problem}" for problem in problems)
+        )
+    return report
 
 
 def main() -> int:

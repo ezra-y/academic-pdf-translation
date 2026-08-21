@@ -17,7 +17,6 @@ from typing import Any
 import perf_trace
 from _common import SkillError, load_json, write_json
 
-
 CACHE_SCHEMA_VERSION = "1.0"
 TRANSLATION_STRATEGY_VERSION = "batched-units-v1"
 DEFAULT_PROMPT_VERSION = "batch-prompt-v1"
@@ -101,6 +100,13 @@ class TranslationCache:
             return None
         perf_trace.count("translation_cache_hit")
         return results
+
+    def metadata(self, cache_key: str) -> dict[str, Any]:
+        entry = self._load()["entries"].get(cache_key)
+        if not isinstance(entry, dict):
+            return {}
+        value = entry.get("metadata")
+        return value if isinstance(value, dict) else {}
 
     def put(
         self,

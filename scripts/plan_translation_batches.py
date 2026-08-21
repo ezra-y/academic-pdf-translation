@@ -203,6 +203,7 @@ def plan_translation_batches(
     max_chars: int = DEFAULT_MAX_CHARS,
     model: str | None = None,
     prompt_version: str = DEFAULT_PROMPT_VERSION,
+    require_terminology_review: bool = True,
 ) -> dict[str, Any]:
     job_dir = Path(job_dir).resolve()
     job = load_json(job_dir / "job.json")
@@ -222,6 +223,13 @@ def plan_translation_batches(
     ]
     if not units:
         raise SkillError("translation.json 没有可编排的单元")
+    terminology_reviewed = translation.get("terminology_reviewed") is True
+    if require_terminology_review and not terminology_reviewed:
+        raise SkillError(
+            "translation.terminology_reviewed 尚未设为 true；"
+            "术语表确认之前不得正式编排或执行翻译批次。"
+            "只想预览分批时用 --preview。"
+        )
 
     terminology = translation.get("terminology", [])
     terminology_sha256 = terminology_hash(terminology)
@@ -240,8 +248,18 @@ def plan_translation_batches(
     )
     batch_dir = job_dir / BATCH_DIR_NAME
     batch_dir.mkdir(parents=True, exist_ok=True)
-    for stale in batch_dir.glob("batch-*.json"):
-        stale.unlink()
+    # 旧批次文件不先删：先算出新计划，再删掉不在新计划里的文件。
+    # 先删再按译文内容反推历史，会把“已完成”这件事变成猜测。
+    previous_plan = (
+        load_json(job_dir / PLAN_FILE_NAME)
+        if (job_dir / PLAN_FILE_NAME).is_file()
+        else {}
+    )
+    previous_by_key = {
+        str(entry.get("cache_key") or ""): entry
+        for entry in previous_plan.get("batches", [])
+        if isinstance(entry, dict) and entry.get("status") == "applied"
+    }
 
     entries: list[dict[str, Any]] = []
     for order, indices in enumerate(groups, 1):
@@ -327,37 +345,62 @@ def plan_translation_batches(
         }
         batch_path = batch_dir / f"{batch_id}.json"
         write_json(batch_path, payload)
-        translated_already = all(
-            str(unit.get("translation") or "").strip()
-            or str(unit.get("keep_source_reason") or "").strip()
-            for unit in batch_units
-        )
-        entries.append(
-            {
-                "batch_id": batch_id,
-                "index": order,
-                "file": f"{BATCH_DIR_NAME}/{batch_id}.json",
-                "cache_key": cache_key,
-                "unit_count": len(batch_units),
-                "source_chars": sum(
-                    len(_source(unit)) for unit in batch_units
-                ),
-                "first_unit_id": str(batch_units[0].get("id") or ""),
-                "last_unit_id": str(batch_units[-1].get("id") or ""),
-                "pages": sorted(
-                    {_unit_page(unit) for unit in batch_units}
-                ),
-                "section_heading": payload["section_heading"],
-                "status": "applied" if translated_already else "pending",
-                "applied_at": None,
-            }
-        )
+        entry = {
+            "batch_id": batch_id,
+            "index": order,
+            "file": f"{BATCH_DIR_NAME}/{batch_id}.json",
+            "cache_key": cache_key,
+            "unit_count": len(batch_units),
+            "source_chars": sum(
+                len(_source(unit)) for unit in batch_units
+            ),
+            "first_unit_id": str(batch_units[0].get("id") or ""),
+            "last_unit_id": str(batch_units[-1].get("id") or ""),
+            "pages": sorted({_unit_page(unit) for unit in batch_units}),
+            "section_heading": payload["section_heading"],
+            "status": "pending",
+            "applied_at": None,
+            "retries": 0,
+            "applied_model": None,
+            "applied_unit_ids": [],
+        }
+        # 完成过的批次凭 cache_key 与单元边界继承既有证据，
+        # 不看 translation.json 里现在有没有译文。
+        carried = previous_by_key.get(cache_key)
+        if (
+            carried is not None
+            and carried.get("unit_count") == entry["unit_count"]
+            and carried.get("first_unit_id") == entry["first_unit_id"]
+            and carried.get("last_unit_id") == entry["last_unit_id"]
+        ):
+            for key in (
+                "status",
+                "applied_at",
+                "retries",
+                "applied_model",
+                "applied_unit_ids",
+                "elapsed_seconds",
+                "input_tokens",
+                "output_tokens",
+            ):
+                if key in carried:
+                    entry[key] = carried[key]
+        entries.append(entry)
+
+    keep = {f"{entry['batch_id']}.json" for entry in entries}
+    for stale in batch_dir.glob("batch-*.json"):
+        if stale.name not in keep:
+            stale.unlink()
 
     plan = {
         "schema_version": PLAN_SCHEMA_VERSION,
         "strategy_version": TRANSLATION_STRATEGY_VERSION,
         "prompt_version": prompt_version,
         "model": model,
+        "terminology_reviewed": terminology_reviewed,
+        "cache_scope": (
+            "model-bound" if model else "disabled-no-model-recorded"
+        ),
         "source_units_sha256": sha256_file(source_units_path),
         "translation_sha256": sha256_file(translation_path),
         "terminology_sha256": terminology_sha256,
@@ -401,12 +444,47 @@ def main() -> int:
         default=DEFAULT_TARGET_CHARS,
     )
     parser.add_argument("--max-chars", type=int, default=DEFAULT_MAX_CHARS)
-    parser.add_argument("--model")
+    parser.add_argument(
+        "--model",
+        help="实际执行翻译的模型标识；不提供时不会生成可复用的正式缓存",
+    )
     parser.add_argument("--status", action="store_true")
+    parser.add_argument(
+        "--preview",
+        action="store_true",
+        help="术语表确认之前预览分批结果，不写任何文件",
+    )
     args = parser.parse_args()
     try:
         if args.status:
             plan = load_plan(args.job_dir)
+        elif args.preview:
+            job_dir = args.job_dir.resolve()
+            translation = load_json(
+                job_dir
+                / load_json(job_dir / "job.json")["files"]["translation"]
+            )
+            units = [
+                unit
+                for unit in translation.get("units", [])
+                if isinstance(unit, dict)
+            ]
+            groups = group_units(
+                units,
+                min_units=args.min_units,
+                max_units=args.max_units,
+                target_chars=args.target_chars,
+                max_chars=args.max_chars,
+            )
+            print(f"预览：单元 {len(units)} 个，将编成 {len(groups)} 批")
+            for order, indices in enumerate(groups, 1):
+                chars = sum(len(_source(units[i])) for i in indices)
+                print(
+                    f"  batch-{order:04d}  单元 {len(indices):>3}"
+                    f"  字符 {chars:>6}"
+                )
+            print("预览不写文件。确认术语表后再正式编排。")
+            return 0
         else:
             if not 1 <= args.min_units <= args.max_units <= 200:
                 raise SkillError("单元数范围必须满足 1 <= min <= max <= 200")
