@@ -23,11 +23,19 @@ from candidate_page_map import (
 )
 from content_anchors import (
     acronyms as extract_acronyms,
+)
+from content_anchors import (
     anchors_present,
-    citation_numbers as extract_citation_numbers,
     converted_statistics,
-    present_acronyms as extract_present_acronyms,
     required_anchors,
+)
+from content_anchors import (
+    citation_numbers as extract_citation_numbers,
+)
+from content_anchors import (
+    present_acronyms as extract_present_acronyms,
+)
+from content_anchors import (
     statistics as extract_statistics,
 )
 from extract_source_structure import extract_source_structure
@@ -38,7 +46,7 @@ from retained_source import (
     retained_regions_by_page,
     strip_retained_blocks,
 )
-
+from translation_truthfulness import evaluate_translation
 
 CONTENT_RE = re.compile(r"[\w\u3400-\u9fff]", re.UNICODE)
 SOURCE_SENTENCE_RE = re.compile(r"(?<=[.!?])(?:[\"')\]]+)?\s+")
@@ -341,13 +349,19 @@ def _page_translation(units: list[dict[str, Any]]) -> str:
 
 
 def _is_reference_unit(unit: dict[str, Any]) -> bool:
+    """只有结构化证据才算参考文献单元。
+
+    自由文本的 keep_source_reason 不再有效：它曾经能把任意正文单元变成
+    “参考文献”，从而跳过后面全部检查。
+    """
+
     kind = str(unit.get("kind") or "").lower()
-    return bool(
-        kind.startswith(("reference", "bibliography"))
-        or (
-            not str(unit.get("translation") or "").strip()
-            and str(unit.get("keep_source_reason") or "").strip()
-        )
+    if kind.startswith(("reference", "bibliography")):
+        return True
+    return (
+        not str(unit.get("translation") or "").strip()
+        and str(unit.get("keep_source_code") or "").strip()
+        == "bibliography-entry"
     )
 
 
@@ -1100,6 +1114,10 @@ def _timed_build_completeness_audit(
     source_doc.close()
     if candidate_doc is not None:
         candidate_doc.close()
+    truthfulness = evaluate_translation(
+        translation,
+        retained_source=retained,
+    )
     flag_counts = Counter(
         flag for page in pages for flag in page["flags"]
     )
@@ -1112,9 +1130,11 @@ def _timed_build_completeness_audit(
     repair_tasks = _repair_tasks(
         [page for page in pages if page["page"] in repair_pages]
     )
+    # 译文真实性不通过时，整篇直接进入返修，不看页级比例结论。
+    # 这一步不读取 translation.coverage.complete：它由制作方自报，不作数。
     decision = (
         "NEEDS_REPAIR"
-        if repair_pages
+        if repair_pages or not truthfulness["complete"]
         else "REVIEW"
         if review_pages
         else "READY"
@@ -1123,6 +1143,35 @@ def _timed_build_completeness_audit(
         "schema_version": "1.0",
         "job_id": job.get("job_id"),
         "decision": decision,
+        "translation_truthfulness": {
+            "complete": truthfulness["complete"],
+            "cross_language": truthfulness["cross_language"],
+            "unit_count": truthfulness["unit_count"],
+            "validated_translated_units": truthfulness[
+                "validated_translated_units"
+            ],
+            "validated_kept_source_units": truthfulness[
+                "validated_kept_source_units"
+            ],
+            "invalid_or_unverified_units": truthfulness[
+                "invalid_or_unverified_units"
+            ],
+            "document_target_script_ratio": truthfulness[
+                "document_target_script_ratio"
+            ],
+            "kept_source_content_ratio": truthfulness[
+                "kept_source_content_ratio"
+            ],
+            "thresholds": truthfulness["thresholds"],
+            "problem_counts": dict(
+                sorted(
+                    Counter(
+                        problem["code"] for problem in truthfulness["problems"]
+                    ).items()
+                )
+            ),
+            "problems": truthfulness["problems"][:200],
+        },
         "page_count": len(pages),
         "repair_pages": repair_pages,
         "review_pages": review_pages,

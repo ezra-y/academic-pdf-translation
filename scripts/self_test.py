@@ -139,6 +139,7 @@ from i18n import message
 from set_review_mode import set_review_mode
 from set_complex_content import set_complex_content
 from set_complex_payload import validate_complex_payload_item
+from translation_truthfulness import refresh_coverage
 from typography_fit import (
     PageFitMeasurement,
     PageTextProfile,
@@ -2878,7 +2879,7 @@ def _test_translation_batches_keep_unit_level_checks() -> None:
         good = [
             {
                 "id": unit["id"],
-                "translation": "【译】" + unit["source"][:24],
+                "translation": _zh_stub(unit["source"]),
                 "keep_source_reason": None,
                 "review_flags": [],
             }
@@ -2930,6 +2931,51 @@ def _test_translation_batches_keep_unit_level_checks() -> None:
             1 for unit in recovered["units"] if unit.get("translation")
         ) != len(good):
             raise AssertionError("缓存写回后译文数量必须还原")
+
+
+_ZH_STUB_WORDS = (
+    "研究 方法 结果 讨论 模型 样本 证据 方差 队列 基线 估计 显著 区间 "
+    "回归 构念 效度 信度 参与 流程 测量 产出 处理 对照 数据 分析 指标"
+).split()
+_ZH_STUB_TOKEN_RE = re.compile(
+    r"https?://\S+|\b10\.\d{4,9}/\S+|[A-Za-z][A-Za-z'-]*|\S+|\s+"
+)
+
+
+def _zh_stub(source: str) -> str:
+    """自测夹具用的确定性伪译文。
+
+    它不是模型输出，只保证两件事：语言是中文，锚点原样保留。
+    夹具本身如果写成英文，就会被译文真实性检查拦下——那是检查在生效，
+    不是检查过严。
+    """
+
+    out: list[str] = []
+    pending_space = False
+    previous_kept = False
+    for match in _ZH_STUB_TOKEN_RE.finditer(source or ""):
+        token = match.group(0)
+        if token.isspace():
+            pending_space = True
+            continue
+        if token.startswith(("http://", "https://")) or token.startswith("10."):
+            kept, rendered = True, token
+        elif re.fullmatch(r"[A-Za-z][A-Za-z'-]*", token) and not (
+            token.isupper() and len(token) >= 2
+        ):
+            kept = False
+            digest = hashlib.sha256(token.lower().encode("utf-8")).digest()
+            rendered = _ZH_STUB_WORDS[digest[0] % len(_ZH_STUB_WORDS)]
+            if len(token) > 4:
+                rendered += _ZH_STUB_WORDS[digest[1] % len(_ZH_STUB_WORDS)]
+        else:
+            kept, rendered = True, token
+        if pending_space and (kept or previous_kept):
+            out.append(" ")
+        out.append(rendered)
+        pending_space = False
+        previous_kept = kept
+    return "".join(out).strip() or "（无内容）"
 
 
 def _batch_unit_ids(job_dir: Path, entry: dict) -> list[str]:
@@ -3994,14 +4040,8 @@ def run() -> None:
                     f"冻结原文单元拆分结果意外: {source_text!r}"
                 )
             unit["translation"] = french_by_source[source_text]
-        structured_translation["coverage"].update(
-            {
-                "complete": True,
-                "translated_units": len(structured_translation["units"]),
-                "kept_source_units": 0,
-                "scope_note": "冻结原文单元均已逐项翻译。",
-            }
-        )
+        # 覆盖率不再手写：按真实性判定重算，夹具和产品用同一套规则。
+        refresh_coverage(structured_translation)
         structured_translation["terminology_reviewed"] = True
         write_json(
             structured_job_dir / "translation.json",
@@ -5069,14 +5109,10 @@ def run() -> None:
             },
         ]
         translation["coverage"] = {
-            "complete": True,
-            "source_units_total": 6,
-            "translated_units": 6,
-            "kept_source_units": 0,
             "minimum_source_text_coverage_ratio": 0.85,
             "minimum_candidate_text_presence_ratio": 0.85,
-            "scope_note": "自测样本的两页全部文本单元均已覆盖。",
         }
+        refresh_coverage(translation)
         translation["terminology_reviewed"] = True
         write_json(job_dir / "translation.json", translation)
         checkpoint = record_work_checkpoint(

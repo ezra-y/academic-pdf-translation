@@ -34,6 +34,7 @@ from review_policy import (
     REVIEW_MODE_LIMITS,
     validate_post_repair_confirmation,
 )
+from translation_truthfulness import TruthfulnessError, evaluate_translation
 
 
 STAGE_ORDER = {
@@ -345,6 +346,7 @@ def _validate_translation(
     page_count: int,
     target_language: str,
     errors: list[str],
+    retained_source: Any = None,
 ) -> dict:
     translation = _required_mapping(
         translation,
@@ -385,15 +387,25 @@ def _validate_translation(
         if not isinstance(source, str) or not source.strip():
             errors.append(f"{label}.source 不能为空")
         translated = unit.get("translation")
+        keep_code = unit.get("keep_source_code")
         keep_reason = unit.get("keep_source_reason")
-        if not (
-            isinstance(translated, str)
-            and translated.strip()
-            or isinstance(keep_reason, str)
-            and keep_reason.strip()
-        ):
-            errors.append(f"{label} 既没有译文，也没有保留原文理由")
-        elif isinstance(translated, str) and translated.strip():
+        has_translation = isinstance(translated, str) and translated.strip()
+        has_keep_code = isinstance(keep_code, str) and keep_code.strip()
+        has_keep_reason = isinstance(keep_reason, str) and keep_reason.strip()
+        if not has_translation and not has_keep_code:
+            if has_keep_reason:
+                # 旧作业迁移：自由文本理由不能单独豁免，必须补写结构化 code。
+                errors.append(
+                    f"{label} 只有自由文本 keep_source_reason，缺少结构化 "
+                    "keep_source_code。旧作业请为每个保留单元补写 "
+                    "keep_source_code（取值见 translation_truthfulness."
+                    "KEEP_SOURCE_CODES），或改为提供译文"
+                )
+            else:
+                errors.append(f"{label} 既没有译文，也没有保留原文声明")
+        elif has_translation and has_keep_code:
+            errors.append(f"{label} 不能同时给出译文和 keep_source_code")
+        elif has_translation:
             translated_count += 1
             for issue_label, excerpt in _unsourced_review_commentary(unit):
                 errors.append(
@@ -427,9 +439,50 @@ def _validate_translation(
         "translation.coverage",
         errors,
     )
+    # 不相信作业自报的 complete：这里独立重算一次译文真实性。
+    truthfulness = None
+    try:
+        truthfulness = evaluate_translation(
+            translation,
+            retained_source=retained_source,
+        )
+    except (TruthfulnessError, SkillError) as exc:
+        errors.append(f"译文真实性检查无法执行: {exc}")
+    if truthfulness is not None:
+        for problem in truthfulness["problems"][:60]:
+            location = problem.get("unit_id") or problem.get("batch_id") or "全篇"
+            errors.append(
+                f"译文真实性检查未通过 [{problem['code']}] {location}: "
+                f"{problem['message']}"
+            )
+        if truthfulness["invalid_or_unverified_units"]:
+            errors.append(
+                "存在未通过译文真实性检查的单元 "
+                f"{truthfulness['invalid_or_unverified_units']} 个；"
+                "完整性状态不能算通过"
+            )
+
     if coverage:
         if coverage.get("complete") is not True:
             errors.append("translation.coverage.complete 尚未设为 true")
+        if truthfulness is not None:
+            if coverage.get("complete") is True and not truthfulness["complete"]:
+                errors.append(
+                    "translation.coverage.complete 自报为 true，"
+                    "但独立重算的译文真实性检查未通过"
+                )
+            for key in (
+                "validated_translated_units",
+                "validated_kept_source_units",
+                "invalid_or_unverified_units",
+            ):
+                if key not in coverage:
+                    errors.append(f"translation.coverage 缺少字段 {key!r}")
+                elif coverage.get(key) != truthfulness[key]:
+                    errors.append(
+                        f"translation.coverage.{key} 与独立重算结果不一致: "
+                        f"{coverage.get(key)} != {truthfulness[key]}"
+                    )
         if coverage.get("source_units_total") != len(units):
             errors.append("translation.coverage.source_units_total 与单元数不一致")
         if coverage.get("translated_units") != translated_count:
@@ -1836,11 +1889,15 @@ def validate_job(
         _, translation_data = _load_job_file(
             job_dir, job, "translation", errors
         )
+        _, retained_for_translation = _load_job_file(
+            job_dir, job, "retained_source", errors
+        )
         translation_data = _validate_translation(
             translation_data,
             int(source.get("page_count") or 0),
             target_language,
             errors,
+            retained_source=retained_for_translation,
         )
         _validate_frozen_source_units(
             job_dir,

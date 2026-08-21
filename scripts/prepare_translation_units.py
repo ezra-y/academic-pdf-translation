@@ -9,7 +9,7 @@ import perf_trace
 from _common import SkillError, load_json, sha256_file, write_json
 from content_anchors import required_anchors
 from semantic_markers import infer_review_flags
-
+from translation_truthfulness import SCOPE_NOTE_PENDING
 
 SENTENCE_BREAK_RE = re.compile(r"(?<=[.!?])(?:[\"')\]]+)?\s+")
 SPACE_RE = re.compile(r"\s+")
@@ -173,6 +173,7 @@ def build_translation_skeleton(
             "required_anchors": unit.get("required_anchors")
             or required_anchors(str(unit.get("source") or "")),
             "translation": None,
+            "keep_source_code": None,
             "keep_source_reason": None,
             "review_flags": infer_review_flags(
                 str(unit.get("source") or ""),
@@ -195,9 +196,12 @@ def build_translation_skeleton(
             "source_units_total": len(units),
             "translated_units": 0,
             "kept_source_units": 0,
+            "validated_translated_units": 0,
+            "validated_kept_source_units": 0,
+            "invalid_or_unverified_units": len(units),
             "minimum_source_text_coverage_ratio": 0.85,
             "minimum_candidate_text_presence_ratio": 0.85,
-            "scope_note": "原文单元已冻结，等待逐单元翻译或登记合法保留理由。",
+            "scope_note": SCOPE_NOTE_PENDING,
         },
         "units": units,
     }

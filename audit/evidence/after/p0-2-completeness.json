@@ -1,0 +1,658 @@
+{
+  "schema_version": "1.0",
+  "job_id": "repro-paper-4af3540039",
+  "decision": "NEEDS_REPAIR",
+  "translation_truthfulness": {
+    "complete": false,
+    "cross_language": true,
+    "unit_count": 18,
+    "validated_translated_units": 0,
+    "validated_kept_source_units": 0,
+    "invalid_or_unverified_units": 18,
+    "document_target_script_ratio": null,
+    "kept_source_content_ratio": 0.0,
+    "thresholds": {
+      "unit_target_script_ratio_min": 0.5,
+      "batch_target_script_ratio_min": 0.7,
+      "document_target_script_ratio_min": 0.8,
+      "document_keep_source_content_ratio_max": 0.5
+    },
+    "problem_counts": {
+      "KEEP_SOURCE_CODE_MISSING": 18
+    },
+    "problems": [
+      {
+        "code": "KEEP_SOURCE_CODE_MISSING",
+        "message": "保留原文必须填写结构化 keep_source_code；自由文本 keep_source_reason 不能单独豁免。旧作业请为每个保留单元补写 keep_source_code，或改为提供译文",
+        "unit_id": "p0001-u0001"
+      },
+      {
+        "code": "KEEP_SOURCE_CODE_MISSING",
+        "message": "保留原文必须填写结构化 keep_source_code；自由文本 keep_source_reason 不能单独豁免。旧作业请为每个保留单元补写 keep_source_code，或改为提供译文",
+        "unit_id": "p0001-u0002"
+      },
+      {
+        "code": "KEEP_SOURCE_CODE_MISSING",
+        "message": "保留原文必须填写结构化 keep_source_code；自由文本 keep_source_reason 不能单独豁免。旧作业请为每个保留单元补写 keep_source_code，或改为提供译文",
+        "unit_id": "p0001-u0003"
+      },
+      {
+        "code": "KEEP_SOURCE_CODE_MISSING",
+        "message": "保留原文必须填写结构化 keep_source_code；自由文本 keep_source_reason 不能单独豁免。旧作业请为每个保留单元补写 keep_source_code，或改为提供译文",
+        "unit_id": "p0001-u0004"
+      },
+      {
+        "code": "KEEP_SOURCE_CODE_MISSING",
+        "message": "保留原文必须填写结构化 keep_source_code；自由文本 keep_source_reason 不能单独豁免。旧作业请为每个保留单元补写 keep_source_code，或改为提供译文",
+        "unit_id": "p0001-u0005"
+      },
+      {
+        "code": "KEEP_SOURCE_CODE_MISSING",
+        "message": "保留原文必须填写结构化 keep_source_code；自由文本 keep_source_reason 不能单独豁免。旧作业请为每个保留单元补写 keep_source_code，或改为提供译文",
+        "unit_id": "p0001-u0006"
+      },
+      {
+        "code": "KEEP_SOURCE_CODE_MISSING",
+        "message": "保留原文必须填写结构化 keep_source_code；自由文本 keep_source_reason 不能单独豁免。旧作业请为每个保留单元补写 keep_source_code，或改为提供译文",
+        "unit_id": "p0001-u0007"
+      },
+      {
+        "code": "KEEP_SOURCE_CODE_MISSING",
+        "message": "保留原文必须填写结构化 keep_source_code；自由文本 keep_source_reason 不能单独豁免。旧作业请为每个保留单元补写 keep_source_code，或改为提供译文",
+        "unit_id": "p0001-u0008"
+      },
+      {
+        "code": "KEEP_SOURCE_CODE_MISSING",
+        "message": "保留原文必须填写结构化 keep_source_code；自由文本 keep_source_reason 不能单独豁免。旧作业请为每个保留单元补写 keep_source_code，或改为提供译文",
+        "unit_id": "p0001-u0009"
+      },
+      {
+        "code": "KEEP_SOURCE_CODE_MISSING",
+        "message": "保留原文必须填写结构化 keep_source_code；自由文本 keep_source_reason 不能单独豁免。旧作业请为每个保留单元补写 keep_source_code，或改为提供译文",
+        "unit_id": "p0001-u0010"
+      },
+      {
+        "code": "KEEP_SOURCE_CODE_MISSING",
+        "message": "保留原文必须填写结构化 keep_source_code；自由文本 keep_source_reason 不能单独豁免。旧作业请为每个保留单元补写 keep_source_code，或改为提供译文",
+        "unit_id": "p0001-u0011"
+      },
+      {
+        "code": "KEEP_SOURCE_CODE_MISSING",
+        "message": "保留原文必须填写结构化 keep_source_code；自由文本 keep_source_reason 不能单独豁免。旧作业请为每个保留单元补写 keep_source_code，或改为提供译文",
+        "unit_id": "p0001-u0012"
+      },
+      {
+        "code": "KEEP_SOURCE_CODE_MISSING",
+        "message": "保留原文必须填写结构化 keep_source_code；自由文本 keep_source_reason 不能单独豁免。旧作业请为每个保留单元补写 keep_source_code，或改为提供译文",
+        "unit_id": "p0001-u0013"
+      },
+      {
+        "code": "KEEP_SOURCE_CODE_MISSING",
+        "message": "保留原文必须填写结构化 keep_source_code；自由文本 keep_source_reason 不能单独豁免。旧作业请为每个保留单元补写 keep_source_code，或改为提供译文",
+        "unit_id": "p0001-u0014"
+      },
+      {
+        "code": "KEEP_SOURCE_CODE_MISSING",
+        "message": "保留原文必须填写结构化 keep_source_code；自由文本 keep_source_reason 不能单独豁免。旧作业请为每个保留单元补写 keep_source_code，或改为提供译文",
+        "unit_id": "p0002-u0001"
+      },
+      {
+        "code": "KEEP_SOURCE_CODE_MISSING",
+        "message": "保留原文必须填写结构化 keep_source_code；自由文本 keep_source_reason 不能单独豁免。旧作业请为每个保留单元补写 keep_source_code，或改为提供译文",
+        "unit_id": "p0002-u0002"
+      },
+      {
+        "code": "KEEP_SOURCE_CODE_MISSING",
+        "message": "保留原文必须填写结构化 keep_source_code；自由文本 keep_source_reason 不能单独豁免。旧作业请为每个保留单元补写 keep_source_code，或改为提供译文",
+        "unit_id": "p0002-u0003"
+      },
+      {
+        "code": "KEEP_SOURCE_CODE_MISSING",
+        "message": "保留原文必须填写结构化 keep_source_code；自由文本 keep_source_reason 不能单独豁免。旧作业请为每个保留单元补写 keep_source_code，或改为提供译文",
+        "unit_id": "p0002-u0004"
+      }
+    ]
+  },
+  "page_count": 2,
+  "repair_pages": [
+    1,
+    2
+  ],
+  "review_pages": [
+    1,
+    2
+  ],
+  "flag_counts": {
+    "DOI_LOSS": 1,
+    "LOW_SENTENCE_RETENTION": 2,
+    "SEVERE_TRANSLATION_COMPRESSION": 2,
+    "STATISTICAL_ANCHOR_LOSS": 1,
+    "URL_LOSS": 1
+  },
+  "repair_plan": {
+    "schema_version": "1.0",
+    "action": "repair-and-retry",
+    "task_count": 2,
+    "tasks": [
+      {
+        "task_id": "repair-page-0001",
+        "page": 1,
+        "priority": "high",
+        "layers": [
+          "metadata",
+          "translation"
+        ],
+        "problem_codes": [
+          "DOI_LOSS",
+          "LOW_SENTENCE_RETENTION",
+          "SEVERE_TRANSLATION_COMPRESSION",
+          "STATISTICAL_ANCHOR_LOSS",
+          "URL_LOSS"
+        ],
+        "actions": [
+          "回到该页原文文字块，按段落或语义区域重译；不得沿用现有摘要式译文。",
+          "逐项补回统计值、正负号、小数位、区间和显著性标记。",
+          "补回 DOI、URL 和必要出版信息，保持可复制检索。"
+        ],
+        "evidence": {
+          "translation_source_ratio": 0.0,
+          "sentence_retention_ratio": 0.0,
+          "missing_statistics": [
+            "0.004",
+            "0.07",
+            "0.83",
+            "1",
+            "1.88",
+            "100%",
+            "2.41",
+            "2.94",
+            "3.62",
+            "37%",
+            "95%"
+          ],
+          "missing_citations": [
+            "1"
+          ],
+          "missing_acronyms": [],
+          "missing_urls": [
+            "https://example.org/repro"
+          ],
+          "missing_dois": [
+            "10.5555/example.2024.001"
+          ],
+          "missing_headings": [],
+          "shifted_headings": [],
+          "visual_rebuild_issues": [],
+          "unit_issues": [
+            {
+              "unit_id": "p0001-u0003",
+              "source_ref": "p0001-u0003",
+              "source_chars": 323,
+              "translation_chars": 0,
+              "translation_source_ratio": 0.0,
+              "missing_statistics": [
+                "0.004",
+                "0.07",
+                "0.83",
+                "3.62"
+              ],
+              "flags": [
+                "SEVERE_TRANSLATION_COMPRESSION",
+                "STATISTICAL_ANCHOR_LOSS"
+              ]
+            },
+            {
+              "unit_id": "p0001-u0005",
+              "source_ref": "p0001-u0005",
+              "source_chars": 224,
+              "translation_chars": 0,
+              "translation_source_ratio": 0.0,
+              "missing_statistics": [
+                "37%"
+              ],
+              "flags": [
+                "SEVERE_TRANSLATION_COMPRESSION"
+              ]
+            },
+            {
+              "unit_id": "p0001-u0006",
+              "source_ref": "p0001-u0006",
+              "source_chars": 292,
+              "translation_chars": 0,
+              "translation_source_ratio": 0.0,
+              "missing_statistics": [],
+              "flags": [
+                "SEVERE_TRANSLATION_COMPRESSION"
+              ]
+            },
+            {
+              "unit_id": "p0001-u0008",
+              "source_ref": "p0001-u0008",
+              "source_chars": 197,
+              "translation_chars": 0,
+              "translation_source_ratio": 0.0,
+              "missing_statistics": [],
+              "flags": [
+                "SEVERE_TRANSLATION_COMPRESSION"
+              ]
+            },
+            {
+              "unit_id": "p0001-u0009",
+              "source_ref": "p0001-u0009",
+              "source_chars": 181,
+              "translation_chars": 0,
+              "translation_source_ratio": 0.0,
+              "missing_statistics": [
+                "95%"
+              ],
+              "flags": [
+                "SEVERE_TRANSLATION_COMPRESSION"
+              ]
+            },
+            {
+              "unit_id": "p0001-u0011",
+              "source_ref": "p0001-u0011",
+              "source_chars": 155,
+              "translation_chars": 0,
+              "translation_source_ratio": 0.0,
+              "missing_statistics": [
+                "1",
+                "1.88",
+                "2.41",
+                "2.94",
+                "95%"
+              ],
+              "flags": [
+                "SEVERE_TRANSLATION_COMPRESSION",
+                "STATISTICAL_ANCHOR_LOSS"
+              ]
+            },
+            {
+              "unit_id": "p0001-u0012",
+              "source_ref": "p0001-u0012",
+              "source_chars": 121,
+              "translation_chars": 0,
+              "translation_source_ratio": 0.0,
+              "missing_statistics": [
+                "100%"
+              ],
+              "flags": [
+                "SEVERE_TRANSLATION_COMPRESSION"
+              ]
+            },
+            {
+              "unit_id": "p0001-u0014",
+              "source_ref": "p0001-u0014",
+              "source_chars": 221,
+              "translation_chars": 0,
+              "translation_source_ratio": 0.0,
+              "missing_statistics": [],
+              "flags": [
+                "SEVERE_TRANSLATION_COMPRESSION"
+              ]
+            }
+          ]
+        },
+        "completion_check": "完成全部动作，重新生成临时候选并再次运行 preflight_candidate.py；只有返回 READY_TO_REGISTER 才结束返修循环。"
+      },
+      {
+        "task_id": "repair-page-0002",
+        "page": 2,
+        "priority": "high",
+        "layers": [
+          "translation"
+        ],
+        "problem_codes": [
+          "LOW_SENTENCE_RETENTION",
+          "SEVERE_TRANSLATION_COMPRESSION"
+        ],
+        "actions": [
+          "回到该页原文文字块，按段落或语义区域重译；不得沿用现有摘要式译文。"
+        ],
+        "evidence": {
+          "translation_source_ratio": 0.0,
+          "sentence_retention_ratio": 0.0,
+          "missing_statistics": [],
+          "missing_citations": [
+            "1",
+            "2",
+            "3"
+          ],
+          "missing_acronyms": [],
+          "missing_urls": [],
+          "missing_dois": [],
+          "missing_headings": [],
+          "shifted_headings": [],
+          "visual_rebuild_issues": [],
+          "unit_issues": [
+            {
+              "unit_id": "p0002-u0002",
+              "source_ref": "p0002-u0002",
+              "source_chars": 94,
+              "translation_chars": 0,
+              "translation_source_ratio": 0.0,
+              "missing_statistics": [],
+              "flags": [
+                "SEVERE_TRANSLATION_COMPRESSION"
+              ]
+            },
+            {
+              "unit_id": "p0002-u0003",
+              "source_ref": "p0002-u0003",
+              "source_chars": 95,
+              "translation_chars": 0,
+              "translation_source_ratio": 0.0,
+              "missing_statistics": [],
+              "flags": [
+                "SEVERE_TRANSLATION_COMPRESSION"
+              ]
+            },
+            {
+              "unit_id": "p0002-u0004",
+              "source_ref": "p0002-u0004",
+              "source_chars": 102,
+              "translation_chars": 0,
+              "translation_source_ratio": 0.0,
+              "missing_statistics": [],
+              "flags": [
+                "SEVERE_TRANSLATION_COMPRESSION"
+              ]
+            }
+          ]
+        },
+        "completion_check": "完成全部动作，重新生成临时候选并再次运行 preflight_candidate.py；只有返回 READY_TO_REGISTER 才结束返修循环。"
+      }
+    ],
+    "completion_condition": "集中完成全部返修任务，重新生成候选并重复预检，直到状态为 READY_TO_REGISTER。"
+  },
+  "document_translation_source_ratio_median": null,
+  "ratio_thresholds": {
+    "severe": 0.2,
+    "review": 0.25,
+    "language_pair": "und-Latn->zh-Hans"
+  },
+  "pages": [
+    {
+      "page": 1,
+      "reference_page": false,
+      "source_chars": 1813,
+      "translation_chars": 0,
+      "translation_source_ratio": 0.0,
+      "source_sentence_count": 24,
+      "translation_sentence_count": 0,
+      "sentence_retention_ratio": 0.0,
+      "missing_statistics": [
+        "0.004",
+        "0.07",
+        "0.83",
+        "1",
+        "1.88",
+        "100%",
+        "2.41",
+        "2.94",
+        "3.62",
+        "37%",
+        "95%"
+      ],
+      "adjacent_page_statistics": [],
+      "missing_citations": [
+        "1"
+      ],
+      "missing_acronyms": [],
+      "missing_urls": [
+        "https://example.org/repro"
+      ],
+      "missing_dois": [
+        "10.5555/example.2024.001"
+      ],
+      "source_headings": [
+        {
+          "unit_id": "p0001-u0001",
+          "source": "Measuring Reproducibility in Automated Document Pipelines"
+        },
+        {
+          "unit_id": "p0001-u0002",
+          "source": "Abstract"
+        },
+        {
+          "unit_id": "p0001-u0004",
+          "source": "1 Introduction"
+        },
+        {
+          "unit_id": "p0001-u0007",
+          "source": "2 Method"
+        },
+        {
+          "unit_id": "p0001-u0010",
+          "source": "3 Results"
+        },
+        {
+          "unit_id": "p0001-u0013",
+          "source": "4 Discussion"
+        }
+      ],
+      "missing_headings": [],
+      "shifted_headings": [],
+      "anchor_score_current_page": 0,
+      "anchor_scores_neighbor_pages": {
+        "2": 0
+      },
+      "source_visuals": {
+        "drawings": 0,
+        "images": 0,
+        "text_blocks": 14
+      },
+      "candidate_visuals": {
+        "drawings": 0,
+        "images": 0,
+        "text_blocks": 0
+      },
+      "visual_rebuild_issues": [],
+      "unit_issues": [
+        {
+          "unit_id": "p0001-u0003",
+          "source_ref": "p0001-u0003",
+          "source_chars": 323,
+          "translation_chars": 0,
+          "translation_source_ratio": 0.0,
+          "missing_statistics": [
+            "0.004",
+            "0.07",
+            "0.83",
+            "3.62"
+          ],
+          "flags": [
+            "SEVERE_TRANSLATION_COMPRESSION",
+            "STATISTICAL_ANCHOR_LOSS"
+          ]
+        },
+        {
+          "unit_id": "p0001-u0005",
+          "source_ref": "p0001-u0005",
+          "source_chars": 224,
+          "translation_chars": 0,
+          "translation_source_ratio": 0.0,
+          "missing_statistics": [
+            "37%"
+          ],
+          "flags": [
+            "SEVERE_TRANSLATION_COMPRESSION"
+          ]
+        },
+        {
+          "unit_id": "p0001-u0006",
+          "source_ref": "p0001-u0006",
+          "source_chars": 292,
+          "translation_chars": 0,
+          "translation_source_ratio": 0.0,
+          "missing_statistics": [],
+          "flags": [
+            "SEVERE_TRANSLATION_COMPRESSION"
+          ]
+        },
+        {
+          "unit_id": "p0001-u0008",
+          "source_ref": "p0001-u0008",
+          "source_chars": 197,
+          "translation_chars": 0,
+          "translation_source_ratio": 0.0,
+          "missing_statistics": [],
+          "flags": [
+            "SEVERE_TRANSLATION_COMPRESSION"
+          ]
+        },
+        {
+          "unit_id": "p0001-u0009",
+          "source_ref": "p0001-u0009",
+          "source_chars": 181,
+          "translation_chars": 0,
+          "translation_source_ratio": 0.0,
+          "missing_statistics": [
+            "95%"
+          ],
+          "flags": [
+            "SEVERE_TRANSLATION_COMPRESSION"
+          ]
+        },
+        {
+          "unit_id": "p0001-u0011",
+          "source_ref": "p0001-u0011",
+          "source_chars": 155,
+          "translation_chars": 0,
+          "translation_source_ratio": 0.0,
+          "missing_statistics": [
+            "1",
+            "1.88",
+            "2.41",
+            "2.94",
+            "95%"
+          ],
+          "flags": [
+            "SEVERE_TRANSLATION_COMPRESSION",
+            "STATISTICAL_ANCHOR_LOSS"
+          ]
+        },
+        {
+          "unit_id": "p0001-u0012",
+          "source_ref": "p0001-u0012",
+          "source_chars": 121,
+          "translation_chars": 0,
+          "translation_source_ratio": 0.0,
+          "missing_statistics": [
+            "100%"
+          ],
+          "flags": [
+            "SEVERE_TRANSLATION_COMPRESSION"
+          ]
+        },
+        {
+          "unit_id": "p0001-u0014",
+          "source_ref": "p0001-u0014",
+          "source_chars": 221,
+          "translation_chars": 0,
+          "translation_source_ratio": 0.0,
+          "missing_statistics": [],
+          "flags": [
+            "SEVERE_TRANSLATION_COMPRESSION"
+          ]
+        }
+      ],
+      "flags": [
+        "DOI_LOSS",
+        "LOW_SENTENCE_RETENTION",
+        "SEVERE_TRANSLATION_COMPRESSION",
+        "STATISTICAL_ANCHOR_LOSS",
+        "URL_LOSS"
+      ],
+      "notes": [
+        "整页只绑定一个译文单元，无法自动证明逐段对应关系"
+      ],
+      "retained_source_chars_excluded": 0
+    },
+    {
+      "page": 2,
+      "reference_page": false,
+      "source_chars": 301,
+      "translation_chars": 0,
+      "translation_source_ratio": 0.0,
+      "source_sentence_count": 9,
+      "translation_sentence_count": 0,
+      "sentence_retention_ratio": 0.0,
+      "missing_statistics": [],
+      "adjacent_page_statistics": [],
+      "missing_citations": [
+        "1",
+        "2",
+        "3"
+      ],
+      "missing_acronyms": [],
+      "missing_urls": [],
+      "missing_dois": [],
+      "source_headings": [
+        {
+          "unit_id": "p0002-u0001",
+          "source": "References"
+        }
+      ],
+      "missing_headings": [],
+      "shifted_headings": [],
+      "anchor_score_current_page": 0,
+      "anchor_scores_neighbor_pages": {
+        "1": 0
+      },
+      "source_visuals": {
+        "drawings": 0,
+        "images": 0,
+        "text_blocks": 4
+      },
+      "candidate_visuals": {
+        "drawings": 0,
+        "images": 0,
+        "text_blocks": 0
+      },
+      "visual_rebuild_issues": [],
+      "unit_issues": [
+        {
+          "unit_id": "p0002-u0002",
+          "source_ref": "p0002-u0002",
+          "source_chars": 94,
+          "translation_chars": 0,
+          "translation_source_ratio": 0.0,
+          "missing_statistics": [],
+          "flags": [
+            "SEVERE_TRANSLATION_COMPRESSION"
+          ]
+        },
+        {
+          "unit_id": "p0002-u0003",
+          "source_ref": "p0002-u0003",
+          "source_chars": 95,
+          "translation_chars": 0,
+          "translation_source_ratio": 0.0,
+          "missing_statistics": [],
+          "flags": [
+            "SEVERE_TRANSLATION_COMPRESSION"
+          ]
+        },
+        {
+          "unit_id": "p0002-u0004",
+          "source_ref": "p0002-u0004",
+          "source_chars": 102,
+          "translation_chars": 0,
+          "translation_source_ratio": 0.0,
+          "missing_statistics": [],
+          "flags": [
+            "SEVERE_TRANSLATION_COMPRESSION"
+          ]
+        }
+      ],
+      "flags": [
+        "LOW_SENTENCE_RETENTION",
+        "SEVERE_TRANSLATION_COMPRESSION"
+      ],
+      "notes": [],
+      "retained_source_chars_excluded": 0
+    }
+  ],
+  "interpretation": "该脚本把文字提取、阅读顺序、译文完整性和图表重建分开检查。READY 仍不等于语义完全正确；NEEDS_REPAIR 是下一轮制作输入，不是任务终止状态。"
+}

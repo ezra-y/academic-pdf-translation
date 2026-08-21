@@ -1,0 +1,19 @@
+错误: 批次 batch-0001 未通过译文真实性检查，未写入任何译文:
+- p0001-u0001 [KEEP_SOURCE_CODE_NOT_ALLOWED_FOR_UNIT]: bibliography-entry 需要单元类型是 reference/bibliography，或 retained_source.json 中有覆盖该单元坐标的参考文献区域
+- p0001-u0002 [KEEP_SOURCE_CODE_NOT_ALLOWED_FOR_UNIT]: bibliography-entry 需要单元类型是 reference/bibliography，或 retained_source.json 中有覆盖该单元坐标的参考文献区域
+- p0001-u0003 [KEEP_SOURCE_CODE_NOT_ALLOWED_FOR_UNIT]: bibliography-entry 需要单元类型是 reference/bibliography，或 retained_source.json 中有覆盖该单元坐标的参考文献区域
+- p0001-u0004 [KEEP_SOURCE_CODE_NOT_ALLOWED_FOR_UNIT]: bibliography-entry 需要单元类型是 reference/bibliography，或 retained_source.json 中有覆盖该单元坐标的参考文献区域
+- p0001-u0005 [KEEP_SOURCE_CODE_NOT_ALLOWED_FOR_UNIT]: bibliography-entry 需要单元类型是 reference/bibliography，或 retained_source.json 中有覆盖该单元坐标的参考文献区域
+- p0001-u0006 [KEEP_SOURCE_CODE_NOT_ALLOWED_FOR_UNIT]: bibliography-entry 需要单元类型是 reference/bibliography，或 retained_source.json 中有覆盖该单元坐标的参考文献区域
+- p0001-u0007 [KEEP_SOURCE_CODE_NOT_ALLOWED_FOR_UNIT]: bibliography-entry 需要单元类型是 reference/bibliography，或 retained_source.json 中有覆盖该单元坐标的参考文献区域
+- p0001-u0008 [KEEP_SOURCE_CODE_NOT_ALLOWED_FOR_UNIT]: bibliography-entry 需要单元类型是 reference/bibliography，或 retained_source.json 中有覆盖该单元坐标的参考文献区域
+- p0001-u0009 [KEEP_SOURCE_CODE_NOT_ALLOWED_FOR_UNIT]: bibliography-entry 需要单元类型是 reference/bibliography，或 retained_source.json 中有覆盖该单元坐标的参考文献区域
+- p0001-u0010 [KEEP_SOURCE_CODE_NOT_ALLOWED_FOR_UNIT]: bibliography-entry 需要单元类型是 reference/bibliography，或 retained_source.json 中有覆盖该单元坐标的参考文献区域
+- p0001-u0011 [KEEP_SOURCE_CODE_NOT_ALLOWED_FOR_UNIT]: bibliography-entry 需要单元类型是 reference/bibliography，或 retained_source.json 中有覆盖该单元坐标的参考文献区域
+- p0001-u0012 [KEEP_SOURCE_CODE_NOT_ALLOWED_FOR_UNIT]: bibliography-entry 需要单元类型是 reference/bibliography，或 retained_source.json 中有覆盖该单元坐标的参考文献区域
+- p0001-u0013 [KEEP_SOURCE_CODE_NOT_ALLOWED_FOR_UNIT]: bibliography-entry 需要单元类型是 reference/bibliography，或 retained_source.json 中有覆盖该单元坐标的参考文献区域
+- p0001-u0014 [KEEP_SOURCE_CODE_NOT_ALLOWED_FOR_UNIT]: bibliography-entry 需要单元类型是 reference/bibliography，或 retained_source.json 中有覆盖该单元坐标的参考文献区域
+- p0002-u0001 [KEEP_SOURCE_CODE_NOT_ALLOWED_FOR_UNIT]: bibliography-entry 需要单元类型是 reference/bibliography，或 retained_source.json 中有覆盖该单元坐标的参考文献区域
+- p0002-u0002 [KEEP_SOURCE_CODE_NOT_ALLOWED_FOR_UNIT]: bibliography-entry 需要单元类型是 reference/bibliography，或 retained_source.json 中有覆盖该单元坐标的参考文献区域
+- p0002-u0003 [KEEP_SOURCE_CODE_NOT_ALLOWED_FOR_UNIT]: bibliography-entry 需要单元类型是 reference/bibliography，或 retained_source.json 中有覆盖该单元坐标的参考文献区域
+- p0002-u0004 [KEEP_SOURCE_CODE_NOT_ALLOWED_FOR_UNIT]: bibliography-entry 需要单元类型是 reference/bibliography，或 retained_source.json 中有覆盖该单元坐标的参考文献区域

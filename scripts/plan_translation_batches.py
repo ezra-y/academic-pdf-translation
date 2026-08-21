@@ -27,7 +27,7 @@ from translation_cache import (
     terminology_hash,
     unit_content_hash,
 )
-
+from translation_truthfulness import KEEP_SOURCE_CODES
 
 PLAN_SCHEMA_VERSION = "1.0"
 PLAN_FILE_NAME = "translation-plan.json"
@@ -292,16 +292,23 @@ def plan_translation_batches(
                 "每个单元恰好返回一次，数量必须与 units 一致。",
                 "required_anchors 中的数字、统计量、引文编号、缩写、"
                 "DOI 和 URL 必须在译文中保留。",
-                "确需保留原文时，把 translation 留空并写明 "
-                "keep_source_reason。",
+                "普通正文、摘要、标题和章节标题必须给出目标语言译文，"
+                "不能整单元保留原文，也不能把原文原样填进 translation。",
+                "确需保留原文时，把 translation 留空，填写结构化 "
+                "keep_source_code（取值见 keep_source_codes），"
+                "keep_source_reason 只作补充说明，单独不能豁免。",
                 "context 只用于理解上下文，不要翻译其中的内容。",
             ],
+            "keep_source_codes": list(KEEP_SOURCE_CODES),
             "response_format": {
                 "type": "array",
                 "item": {
                     "id": "<units[] 中的单元 id>",
                     "translation": "<目标语言译文，或保留原文时为 null>",
-                    "keep_source_reason": "<null 或保留原因>",
+                    "keep_source_code": (
+                        "<null 或 keep_source_codes 中的一个取值>"
+                    ),
+                    "keep_source_reason": "<null 或补充说明>",
                     "review_flags": [],
                 },
             },

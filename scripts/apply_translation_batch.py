@@ -22,11 +22,12 @@ from _common import SkillError, load_json, sha256_file, utc_now, write_json
 from content_anchors import anchors_present
 from plan_translation_batches import PLAN_FILE_NAME, load_plan
 from translation_cache import TranslationCache
-
+from translation_truthfulness import evaluate_batch, refresh_coverage
 
 ALLOWED_RESULT_KEYS = {
     "id",
     "translation",
+    "keep_source_code",
     "keep_source_reason",
     "review_flags",
 }
@@ -83,17 +84,19 @@ def _validate_against_batch(
         seen.add(unit_id)
 
         translation = item.get("translation")
+        keep_code = item.get("keep_source_code")
         keep_reason = item.get("keep_source_reason")
         has_translation = isinstance(translation, str) and translation.strip()
+        has_keep_code = isinstance(keep_code, str) and keep_code.strip()
         has_keep_reason = isinstance(keep_reason, str) and keep_reason.strip()
-        if not has_translation and not has_keep_reason:
+        if not has_translation and not has_keep_code:
             problems.append(
-                f"{unit_id}: 既没有译文，也没有写明保留原文的理由"
+                f"{unit_id}: 既没有译文，也没有结构化的 keep_source_code"
             )
             continue
-        if has_translation and has_keep_reason:
+        if has_translation and (has_keep_code or has_keep_reason):
             problems.append(
-                f"{unit_id}: 不能同时给出译文和保留原文理由"
+                f"{unit_id}: 不能同时给出译文和保留原文声明"
             )
             continue
 
@@ -132,26 +135,72 @@ def _validate_against_batch(
     return by_id
 
 
-def _refresh_coverage(translation: dict[str, Any]) -> dict[str, Any]:
-    units = [
-        unit for unit in translation.get("units", []) if isinstance(unit, dict)
-    ]
-    translated = sum(
-        1
-        for unit in units
-        if str(unit.get("translation") or "").strip()
+def _truthfulness_units(
+    batch: dict[str, Any],
+    accepted: dict[str, dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """把批次里的冻结原文和本次结果拼成待检查的单元。"""
+
+    merged: list[dict[str, Any]] = []
+    for unit in batch.get("units", []):
+        unit_id = str(unit.get("id") or "")
+        item = accepted.get(unit_id)
+        if item is None:
+            continue
+        merged.append(
+            {
+                "id": unit_id,
+                "page": unit.get("page"),
+                "kind": unit.get("kind"),
+                "source": unit.get("source"),
+                "source_bbox": unit.get("source_bbox"),
+                "translation": item.get("translation"),
+                "keep_source_code": item.get("keep_source_code"),
+                "keep_source_reason": item.get("keep_source_reason"),
+            }
+        )
+    return merged
+
+
+def _assert_truthful(
+    job_dir: Path,
+    batch: dict[str, Any],
+    translation: dict[str, Any],
+    accepted: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    """写入 translation.json 和缓存之前执行的译文真实性检查。
+
+    缓存命中走的也是这条路径，因此缓存不能绕过检查。
+    """
+
+    retained_path = job_dir / "retained_source.json"
+    retained = load_json(retained_path) if retained_path.is_file() else None
+    report = evaluate_batch(
+        _truthfulness_units(batch, accepted),
+        translation_document=translation,
+        retained_source=retained,
+        batch_id=str(batch.get("batch_id") or ""),
     )
-    kept = sum(
-        1
-        for unit in units
-        if str(unit.get("keep_source_reason") or "").strip()
-    )
-    coverage = translation.setdefault("coverage", {})
-    coverage["source_units_total"] = len(units)
-    coverage["translated_units"] = translated
-    coverage["kept_source_units"] = kept
-    coverage["complete"] = translated + kept == len(units)
-    return coverage
+    if not report["accepted"]:
+        lines = [
+            f"- {problem.get('unit_id') or problem.get('batch_id') or '整批'}"
+            f" [{problem['code']}]: {problem['message']}"
+            for problem in report["problems"]
+        ]
+        raise SkillError(
+            f"批次 {batch['batch_id']} 未通过译文真实性检查，未写入任何译文:\n"
+            + "\n".join(lines)
+        )
+    return report
+
+
+def _refresh_coverage(
+    translation: dict[str, Any],
+    retained_source: Any,
+) -> dict[str, Any]:
+    """按真实性判定刷新覆盖率；complete 只在全部单元通过检查后为 true。"""
+
+    return refresh_coverage(translation, retained_source=retained_source)
 
 
 def apply_translation_batch(
@@ -187,6 +236,7 @@ def apply_translation_batch(
     accepted = _validate_against_batch(batch, normalized)
 
     translation = load_json(translation_path)
+    truthfulness = _assert_truthful(job_dir, batch, translation, accepted)
     index = {
         str(unit.get("id")): unit
         for unit in translation.get("units", [])
@@ -214,6 +264,12 @@ def apply_translation_batch(
             if isinstance(translated, str) and translated.strip()
             else None
         )
+        keep_code = item.get("keep_source_code")
+        unit["keep_source_code"] = (
+            str(keep_code).strip()
+            if isinstance(keep_code, str) and keep_code.strip()
+            else None
+        )
         unit["keep_source_reason"] = (
             str(keep_reason).strip()
             if isinstance(keep_reason, str) and keep_reason.strip()
@@ -223,7 +279,9 @@ def apply_translation_batch(
         if isinstance(flags, list):
             unit["review_flags"] = flags
 
-    coverage = _refresh_coverage(translation)
+    retained_path = job_dir / "retained_source.json"
+    retained = load_json(retained_path) if retained_path.is_file() else None
+    coverage = _refresh_coverage(translation, retained)
     write_json(translation_path, translation)
 
     cache = TranslationCache(job_dir)
@@ -273,6 +331,10 @@ def apply_translation_batch(
         "coverage": coverage,
         "pending_batches": [item["batch_id"] for item in pending],
         "translation_sha256": plan["translation_sha256"],
+        "truthfulness": {
+            "batch_id": truthfulness["batch_id"],
+            "target_script_ratio": truthfulness["target_script_ratio"],
+        },
     }
 
 

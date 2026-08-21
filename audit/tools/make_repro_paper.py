@@ -13,7 +13,6 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
 from reportlab.pdfgen import canvas
 
-
 TITLE = "Measuring Reproducibility in Automated Document Pipelines"
 
 ABSTRACT = (
