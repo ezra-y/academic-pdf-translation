@@ -156,8 +156,53 @@ python3 scripts/set_complex_payload.py /path/to/job \
 
 ## 第二步：全文翻译
 
-逐项填写初始化生成的 `translation.json`，只修改 `translation`、
-`keep_source_reason` 和需要的 `review_flags`：
+原则是**逐单元校验，按批次翻译**。冻结单元只负责定位遗漏，执行时把多个
+单元编成一批，让模型一次拿到完整上下文。
+
+先编排批次：
+
+```bash
+python3 scripts/plan_translation_batches.py /path/to/job
+```
+
+命令生成 `translation-plan.json` 和 `translation-batches/batch-NNNN.json`。
+每批默认 8～20 个单元、约 8000～12000 字符；标题与其后首段、图表题与相邻
+说明、跨页续句都保证同批。每个批次文件已带好论文标题、摘要摘录、章节目录、
+当前章节标题、已锁定术语，以及上一批结尾和下一批开头的少量上下文。
+
+按批次翻译后，只返回本批单元的结果数组：
+
+```json
+[
+  {
+    "id": "<批次文件 units[] 中的单元 id>",
+    "translation": "目标语言译文……",
+    "keep_source_reason": null,
+    "review_flags": []
+  }
+]
+```
+
+写回一批：
+
+```bash
+python3 scripts/apply_translation_batch.py /path/to/job \
+  --batch batch-0001 \
+  --result /path/to/batch-0001-result.json
+```
+
+写回时逐单元校验：ID 必须存在、不得重复、原文不得修改、数量必须与批次
+一致、`required_anchors` 中的数字与引文不得丢失。任何一项不满足就整批
+拒绝，`translation.json` 保持原样。单批失败只重做该批，已完成批次不受
+影响。中断后重新运行编排命令即可从最后一个成功批次继续。
+
+同一批原文、目标语言、术语表、提示版本和模型都没变时，可直接从缓存写回：
+
+```bash
+python3 scripts/apply_translation_batch.py /path/to/job --from-cache
+```
+
+`translation.json` 的字段含义不变，仍是每个冻结单元一条记录：
 
 ```json
 {
@@ -177,7 +222,8 @@ python3 scripts/set_complex_payload.py /path/to/job \
 
 - 保持整篇上下文和统一术语，不按孤立字符或碎 span 翻译；
 - 翻译前确认 `translation.terminology`，即使为空也把
-  `terminology_reviewed` 设为 `true`；
+  `terminology_reviewed` 设为 `true`；术语表在编排批次前锁定，锁定后
+  不在批次之间改动；
 - 不修改 `source_ref`、`source`、`page` 或 `source_bbox`；
 - 每个冻结原文单元必须恰好出现一次，不得遗漏、重复或合并；
 - 跨栏和跨页续句只翻译一次；

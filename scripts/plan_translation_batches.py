@@ -1,0 +1,441 @@
+"""把冻结的原文单元编成翻译批次。
+
+检查层不变：`source_units.json` 的单元 ID、原文、页码和坐标全部保持原样。
+本模块只决定“一次交给模型多少个单元”，并为每个批次准备完整上下文。
+
+分批规则：
+
+- 按章节、标题和页面顺序推进，不重排单元；
+- 标题不与它后面的第一段拆开；
+- 图题、表题与相邻说明尽量同批；
+- 跨页续句必须同批；
+- 每批默认 8～20 个单元、约 8000～12000 字符。
+"""
+
+from __future__ import annotations
+
+import argparse
+import re
+from pathlib import Path
+from typing import Any
+
+from _common import SkillError, load_json, sha256_file, write_json
+from translation_cache import (
+    DEFAULT_PROMPT_VERSION,
+    TRANSLATION_STRATEGY_VERSION,
+    batch_cache_key,
+    terminology_hash,
+    unit_content_hash,
+)
+
+
+PLAN_SCHEMA_VERSION = "1.0"
+PLAN_FILE_NAME = "translation-plan.json"
+BATCH_DIR_NAME = "translation-batches"
+
+DEFAULT_MIN_UNITS = 8
+DEFAULT_MAX_UNITS = 20
+DEFAULT_TARGET_CHARS = 10000
+DEFAULT_MAX_CHARS = 12000
+CONTEXT_UNITS = 2
+CONTEXT_CHARS = 320
+
+SENTENCE_END_RE = re.compile(r"[.!?。！？][\"'”’)\]]*\s*$")
+CAPTION_KINDS = {"figure-or-caption", "table-or-caption"}
+
+
+def _kind(unit: dict[str, Any]) -> str:
+    return str(unit.get("kind") or unit.get("kind_hint") or "body").lower()
+
+
+def _source(unit: dict[str, Any]) -> str:
+    return str(unit.get("source") or "")
+
+
+def _unit_page(unit: dict[str, Any]) -> int:
+    try:
+        return int(unit.get("page") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _continues_across_pages(
+    previous: dict[str, Any],
+    following: dict[str, Any],
+) -> bool:
+    """上一单元在页末断句、下一单元在下一页续写时视为同一句。"""
+
+    if _kind(previous) != "body" or _kind(following) != "body":
+        return False
+    if _unit_page(following) != _unit_page(previous) + 1:
+        return False
+    return not SENTENCE_END_RE.search(_source(previous).rstrip())
+
+
+def _may_break_before(
+    previous: dict[str, Any],
+    following: dict[str, Any],
+) -> bool:
+    """判断能否在两个单元之间切开批次。"""
+
+    if _kind(previous) == "heading":
+        return False
+    if _kind(previous) in CAPTION_KINDS and _kind(following) not in {
+        "heading"
+    }:
+        return False
+    return not _continues_across_pages(previous, following)
+
+
+def _document_outline(units: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        {
+            "unit_id": str(unit.get("id") or ""),
+            "page": _unit_page(unit),
+            "heading_level": unit.get("heading_level"),
+            "text": _source(unit),
+        }
+        for unit in units
+        if _kind(unit) == "heading"
+    ]
+
+
+def _document_title(units: list[dict[str, Any]]) -> str:
+    first_page = min((_unit_page(unit) for unit in units), default=0)
+    opening = [unit for unit in units if _unit_page(unit) == first_page]
+    for unit in opening:
+        if _kind(unit) == "heading" and _source(unit).strip():
+            return _source(unit).strip()
+    for unit in opening:
+        if _source(unit).strip():
+            return _source(unit).strip()
+    return ""
+
+
+def _abstract_excerpt(units: list[dict[str, Any]], limit: int = 900) -> str:
+    first_page = min((_unit_page(unit) for unit in units), default=0)
+    body = [
+        _source(unit)
+        for unit in units
+        if _unit_page(unit) <= first_page + 1
+        and _kind(unit) == "body"
+        and _source(unit).strip()
+    ]
+    return " ".join(body)[:limit]
+
+
+def _section_for(
+    unit_index: int,
+    units: list[dict[str, Any]],
+) -> str:
+    for index in range(unit_index, -1, -1):
+        if _kind(units[index]) == "heading":
+            return _source(units[index]).strip()
+    return ""
+
+
+def _context_slice(
+    units: list[dict[str, Any]],
+    *,
+    from_end: bool,
+) -> list[dict[str, Any]]:
+    selected = units[-CONTEXT_UNITS:] if from_end else units[:CONTEXT_UNITS]
+    return [
+        {
+            "id": str(unit.get("id") or ""),
+            "kind": _kind(unit),
+            "source": (
+                _source(unit)[-CONTEXT_CHARS:]
+                if from_end
+                else _source(unit)[:CONTEXT_CHARS]
+            ),
+        }
+        for unit in selected
+    ]
+
+
+def group_units(
+    units: list[dict[str, Any]],
+    *,
+    min_units: int = DEFAULT_MIN_UNITS,
+    max_units: int = DEFAULT_MAX_UNITS,
+    target_chars: int = DEFAULT_TARGET_CHARS,
+    max_chars: int = DEFAULT_MAX_CHARS,
+) -> list[list[int]]:
+    """返回每批的单元下标列表，顺序与原文一致。"""
+
+    if not units:
+        return []
+    groups: list[list[int]] = []
+    current: list[int] = []
+    current_chars = 0
+
+    for index, unit in enumerate(units):
+        length = len(_source(unit))
+        if current:
+            previous = units[current[-1]]
+            breakable = _may_break_before(previous, unit)
+            over_units = len(current) >= max_units
+            over_chars = current_chars + length > max_chars
+            at_section_start = (
+                _kind(unit) == "heading"
+                and current_chars >= target_chars
+                and len(current) >= min_units
+            )
+            if breakable and (over_units or over_chars or at_section_start):
+                groups.append(current)
+                current = []
+                current_chars = 0
+        current.append(index)
+        current_chars += length
+
+    if current:
+        groups.append(current)
+    return groups
+
+
+def plan_translation_batches(
+    job_dir: Path,
+    *,
+    min_units: int = DEFAULT_MIN_UNITS,
+    max_units: int = DEFAULT_MAX_UNITS,
+    target_chars: int = DEFAULT_TARGET_CHARS,
+    max_chars: int = DEFAULT_MAX_CHARS,
+    model: str | None = None,
+    prompt_version: str = DEFAULT_PROMPT_VERSION,
+) -> dict[str, Any]:
+    job_dir = Path(job_dir).resolve()
+    job = load_json(job_dir / "job.json")
+    files = job.get("files", {})
+    translation_path = job_dir / files["translation"]
+    source_units_path = job_dir / files.get(
+        "source_units",
+        "source_units.json",
+    )
+    if not source_units_path.is_file():
+        raise SkillError("缺少 source_units.json，请先初始化作业")
+    translation = load_json(translation_path)
+    units = [
+        unit
+        for unit in translation.get("units", [])
+        if isinstance(unit, dict) and str(unit.get("id") or "")
+    ]
+    if not units:
+        raise SkillError("translation.json 没有可编排的单元")
+
+    terminology = translation.get("terminology", [])
+    terminology_sha256 = terminology_hash(terminology)
+    target_language = str(translation.get("target_language") or "")
+    source_language = str(translation.get("source_language") or "")
+    title = _document_title(units)
+    outline = _document_outline(units)
+    abstract = _abstract_excerpt(units)
+
+    groups = group_units(
+        units,
+        min_units=min_units,
+        max_units=max_units,
+        target_chars=target_chars,
+        max_chars=max_chars,
+    )
+    batch_dir = job_dir / BATCH_DIR_NAME
+    batch_dir.mkdir(parents=True, exist_ok=True)
+    for stale in batch_dir.glob("batch-*.json"):
+        stale.unlink()
+
+    entries: list[dict[str, Any]] = []
+    for order, indices in enumerate(groups, 1):
+        batch_units = [units[index] for index in indices]
+        batch_id = f"batch-{order:04d}"
+        unit_hashes = [unit_content_hash(unit) for unit in batch_units]
+        cache_key = batch_cache_key(
+            unit_hashes=unit_hashes,
+            target_language=target_language,
+            terminology_sha256=terminology_sha256,
+            prompt_version=prompt_version,
+            model=model,
+        )
+        previous_units = [units[index] for index in groups[order - 2]] if order > 1 else []
+        next_units = (
+            [units[index] for index in groups[order]]
+            if order < len(groups)
+            else []
+        )
+        payload = {
+            "schema_version": PLAN_SCHEMA_VERSION,
+            "batch_id": batch_id,
+            "index": order,
+            "batch_count": len(groups),
+            "cache_key": cache_key,
+            "source_language": source_language,
+            "target_language": target_language,
+            "document": {
+                "title": title,
+                "abstract_excerpt": abstract,
+                "outline": outline,
+            },
+            "section_heading": _section_for(indices[0], units),
+            "terminology": terminology,
+            "terminology_reviewed": bool(
+                translation.get("terminology_reviewed")
+            ),
+            "context": {
+                "previous_tail": _context_slice(
+                    previous_units,
+                    from_end=True,
+                ),
+                "next_head": _context_slice(next_units, from_end=False),
+            },
+            "instructions": [
+                "只翻译 units 中的每一条，保持整篇上下文和统一术语。",
+                "不得修改 id、source、page 或 source_bbox。",
+                "每个单元恰好返回一次，数量必须与 units 一致。",
+                "required_anchors 中的数字、统计量、引文编号、缩写、"
+                "DOI 和 URL 必须在译文中保留。",
+                "确需保留原文时，把 translation 留空并写明 "
+                "keep_source_reason。",
+                "context 只用于理解上下文，不要翻译其中的内容。",
+            ],
+            "response_format": {
+                "type": "array",
+                "item": {
+                    "id": "<units[] 中的单元 id>",
+                    "translation": "<目标语言译文，或保留原文时为 null>",
+                    "keep_source_reason": "<null 或保留原因>",
+                    "review_flags": [],
+                },
+            },
+            "units": [
+                {
+                    "id": str(unit.get("id") or ""),
+                    "page": _unit_page(unit),
+                    "kind": _kind(unit),
+                    "heading_level": unit.get("heading_level"),
+                    "source": _source(unit),
+                    "required_anchors": unit.get("required_anchors") or {},
+                    "review_flags": unit.get("review_flags") or [],
+                }
+                for unit in batch_units
+            ],
+        }
+        batch_path = batch_dir / f"{batch_id}.json"
+        write_json(batch_path, payload)
+        translated_already = all(
+            str(unit.get("translation") or "").strip()
+            or str(unit.get("keep_source_reason") or "").strip()
+            for unit in batch_units
+        )
+        entries.append(
+            {
+                "batch_id": batch_id,
+                "index": order,
+                "file": f"{BATCH_DIR_NAME}/{batch_id}.json",
+                "cache_key": cache_key,
+                "unit_count": len(batch_units),
+                "source_chars": sum(
+                    len(_source(unit)) for unit in batch_units
+                ),
+                "first_unit_id": str(batch_units[0].get("id") or ""),
+                "last_unit_id": str(batch_units[-1].get("id") or ""),
+                "pages": sorted(
+                    {_unit_page(unit) for unit in batch_units}
+                ),
+                "section_heading": payload["section_heading"],
+                "status": "applied" if translated_already else "pending",
+                "applied_at": None,
+            }
+        )
+
+    plan = {
+        "schema_version": PLAN_SCHEMA_VERSION,
+        "strategy_version": TRANSLATION_STRATEGY_VERSION,
+        "prompt_version": prompt_version,
+        "model": model,
+        "source_units_sha256": sha256_file(source_units_path),
+        "translation_sha256": sha256_file(translation_path),
+        "terminology_sha256": terminology_sha256,
+        "source_language": source_language,
+        "target_language": target_language,
+        "unit_count": len(units),
+        "batch_count": len(groups),
+        "batching": {
+            "min_units": min_units,
+            "max_units": max_units,
+            "target_chars": target_chars,
+            "max_chars": max_chars,
+        },
+        "batches": entries,
+        "note": (
+            "逐单元校验，按批次翻译。单元 ID 与原文保持冻结；"
+            "批次只决定一次交给模型多少内容。"
+        ),
+    }
+    write_json(job_dir / PLAN_FILE_NAME, plan)
+    return plan
+
+
+def load_plan(job_dir: Path) -> dict[str, Any]:
+    path = Path(job_dir).resolve() / PLAN_FILE_NAME
+    if not path.is_file():
+        raise SkillError(
+            "缺少 translation-plan.json，请先运行 plan_translation_batches.py"
+        )
+    return load_json(path)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("job_dir", type=Path)
+    parser.add_argument("--min-units", type=int, default=DEFAULT_MIN_UNITS)
+    parser.add_argument("--max-units", type=int, default=DEFAULT_MAX_UNITS)
+    parser.add_argument(
+        "--target-chars",
+        type=int,
+        default=DEFAULT_TARGET_CHARS,
+    )
+    parser.add_argument("--max-chars", type=int, default=DEFAULT_MAX_CHARS)
+    parser.add_argument("--model")
+    parser.add_argument("--status", action="store_true")
+    args = parser.parse_args()
+    try:
+        if args.status:
+            plan = load_plan(args.job_dir)
+        else:
+            if not 1 <= args.min_units <= args.max_units <= 200:
+                raise SkillError("单元数范围必须满足 1 <= min <= max <= 200")
+            if not 1000 <= args.target_chars <= args.max_chars <= 40000:
+                raise SkillError(
+                    "字符范围必须满足 1000 <= target <= max <= 40000"
+                )
+            plan = plan_translation_batches(
+                args.job_dir,
+                min_units=args.min_units,
+                max_units=args.max_units,
+                target_chars=args.target_chars,
+                max_chars=args.max_chars,
+                model=args.model,
+            )
+        pending = [
+            batch
+            for batch in plan["batches"]
+            if batch["status"] != "applied"
+        ]
+        print(
+            f"单元 {plan['unit_count']} 个，批次 {plan['batch_count']} 个，"
+            f"待翻译 {len(pending)} 批"
+        )
+        for batch in plan["batches"]:
+            print(
+                f"  {batch['batch_id']}  {batch['status']:<8}"
+                f"  单元 {batch['unit_count']:>3}"
+                f"  字符 {batch['source_chars']:>6}"
+                f"  页 {batch['pages']}"
+            )
+        return 0
+    except SkillError as exc:
+        print(f"错误: {exc}")
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
