@@ -1692,7 +1692,16 @@ def validate_job(
     advance: bool = False,
     *,
     status_override: str | None = None,
+    qa_report: dict | None = None,
 ) -> dict:
+    """校验作业是否满足某个阶段的门槛。
+
+    `qa_report` 只接受调用方在同一进程里刚对同一份候选跑出的自动 QA 结果。
+    传入时不再重跑 QA，但哈希绑定检查照旧执行：候选或原文哈希对不上仍然
+    判定过期。不传入时行为不变，仍然自己重跑一次，因此单独调用本入口的
+    外部使用者不会被降低门槛。
+    """
+
     job_dir = job_dir.resolve()
     errors: list[str] = []
     warnings: list[str] = []
@@ -1967,7 +1976,9 @@ def validate_job(
         if not isinstance(selected_fonts, list) or not selected_fonts:
             warnings.append("job.quality.selected_fonts 尚未记录实际使用字体")
         qa = None
-        if candidate_path.is_file():
+        if qa_report is not None:
+            qa = qa_report
+        elif candidate_path.is_file():
             try:
                 from qa_pdf import run_qa
 

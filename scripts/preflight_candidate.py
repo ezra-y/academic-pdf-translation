@@ -484,6 +484,8 @@ def preflight_candidate(
             shadow,
             "candidate",
             advance=True,
+            # QA 刚在本进程对同一份候选跑完，直接复用；哈希绑定检查照旧执行。
+            qa_report=qa,
         )
         completeness = build_completeness_audit(shadow)
         completeness_needs_repair = (
