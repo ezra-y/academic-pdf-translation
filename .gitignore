@@ -54,3 +54,6 @@ benchmarks/**/cache/
 *.bak
 *.log
 scratch/
+
+# 审查复现作业目录：由 audit/tools 脚本重建，不入库
+audit/evidence/**/job-*/

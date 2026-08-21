@@ -1,0 +1,95 @@
+{
+  "note": "在修改任何生产代码之前采集。命令均在仓库根目录执行，PYTHONPATH=scripts。",
+  "git_commit": "025b7a34346a1085ac40c7abecd3628df6839280",
+  "source_pdf": "audit/evidence/before/repro-paper.pdf",
+  "target_language": "zh-Hans",
+  "findings": [
+    {
+      "id": "P0-1",
+      "title": "原文原样冒充译文被接受",
+      "commands": [
+        "python3 scripts/init_job.py audit/evidence/before/repro-paper.pdf audit/evidence/before/job-p0 --target-language zh-Hans --producer-id audit-repro",
+        "python3 scripts/plan_translation_batches.py audit/evidence/before/job-p0",
+        "python3 scripts/apply_translation_batch.py audit/evidence/before/job-p0 --batch batch-0001 --result audit/evidence/before/p0-1-results.json",
+        "python3 scripts/audit_translation_completeness.py audit/evidence/before/job-p0 --output-json audit/evidence/before/p0-1-completeness.json --output-md audit/evidence/before/p0-1-completeness.md"
+      ],
+      "exit_codes": {
+        "apply": 0,
+        "completeness_audit": 0
+      },
+      "observed": {
+        "accepted": true,
+        "coverage_complete": true,
+        "translated_units": 18,
+        "completeness_decision": "READY",
+        "scope_note": "原文单元已冻结，等待逐单元翻译或登记合法保留理由。"
+      },
+      "evidence": [
+        "audit/evidence/before/p0-1-results.json",
+        "audit/evidence/before/p0-1-apply.txt",
+        "audit/evidence/before/p0-1-completeness.json",
+        "audit/evidence/before/p0-1-completeness.md",
+        "audit/evidence/before/p0-1-completeness.txt"
+      ]
+    },
+    {
+      "id": "P0-2",
+      "title": "任意自由文本保留理由绕过全文翻译",
+      "commands": [
+        "python3 scripts/init_job.py audit/evidence/before/repro-paper.pdf audit/evidence/before/job-p0-2 --target-language zh-Hans --producer-id audit-repro",
+        "python3 scripts/plan_translation_batches.py audit/evidence/before/job-p0-2",
+        "python3 scripts/apply_translation_batch.py audit/evidence/before/job-p0-2 --batch batch-0001 --result audit/evidence/before/p0-2-results.json",
+        "python3 scripts/audit_translation_completeness.py audit/evidence/before/job-p0-2 --output-json audit/evidence/before/p0-2-completeness.json --output-md audit/evidence/before/p0-2-completeness.md"
+      ],
+      "exit_codes": {
+        "apply": 0,
+        "completeness_audit": 0
+      },
+      "observed": {
+        "accepted": true,
+        "coverage_complete": true,
+        "translated_units": 0,
+        "kept_source_units": 18,
+        "reference_page_flags": {
+          "1": true,
+          "2": true
+        },
+        "completeness_decision": "READY"
+      },
+      "evidence": [
+        "audit/evidence/before/p0-2-results.json",
+        "audit/evidence/before/p0-2-apply.txt",
+        "audit/evidence/before/p0-2-completeness.json",
+        "audit/evidence/before/p0-2-completeness.md"
+      ]
+    },
+    {
+      "id": "P0-3",
+      "title": "新作业字体循环依赖",
+      "commands": [
+        "python3 scripts/init_job.py audit/evidence/before/repro-paper.pdf audit/evidence/before/job-p0-3 --target-language zh-Hans --producer-id audit-repro",
+        "python3 scripts/plan_translation_batches.py audit/evidence/before/job-p0-3",
+        "python3 scripts/apply_translation_batch.py audit/evidence/before/job-p0-3 --batch batch-0001 --result audit/evidence/before/p0-3-results.json",
+        "python3 scripts/set_complex_content.py audit/evidence/before/job-p0-3 --none --notes ...",
+        "手工补齐 route.selected / route.decision_reason / terminology_reviewed / inventory_complete",
+        "python3 scripts/build_first_candidate.py audit/evidence/before/job-p0-3"
+      ],
+      "exit_codes": {
+        "build_first_candidate": 2
+      },
+      "observed": {
+        "status": "BLOCKED_BEFORE_PREFLIGHT",
+        "blocked_stage": "input-readiness",
+        "issues": [
+          "SELECTED_FONTS_MISSING"
+        ],
+        "selected_fonts_in_job_json": [],
+        "note": "自动字体解析位于 build_candidate._resolve_fonts，输入就绪检查在它之前执行，因此永远没有机会运行。"
+      },
+      "evidence": [
+        "audit/evidence/before/p0-3-results.json",
+        "audit/evidence/before/p0-3-build.txt"
+      ]
+    }
+  ]
+}

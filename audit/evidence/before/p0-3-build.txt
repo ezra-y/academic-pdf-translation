@@ -1,0 +1,23 @@
+{
+  "status": "BLOCKED_BEFORE_PREFLIGHT",
+  "blocked_stage": "input-readiness",
+  "renderer": "academic-pdf-layout",
+  "renderer_version": "1.0",
+  "renderer_build_id": "2eb01fb6e630ce3b96187bb3e832d6c1443a16ae837ace5f983b8623d86c3a8f",
+  "candidate_pdf": null,
+  "build": {},
+  "input_readiness": "/Users/ezra/Downloads/my_output_skills/academic-pdf-translation/audit/evidence/before/job-p0-3/staging/input-readiness-first.json",
+  "issues": [
+    {
+      "code": "SELECTED_FONTS_MISSING",
+      "message": "导出前必须冻结实际使用的字体文件。"
+    }
+  ],
+  "timing_seconds": {
+    "input_readiness": 0.246,
+    "build": 0.0,
+    "pre_render_audit": 0.0,
+    "preflight": 0.0,
+    "total": 0.247
+  }
+}

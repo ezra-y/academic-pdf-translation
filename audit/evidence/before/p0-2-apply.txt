@@ -1,0 +1,15 @@
+{
+  "batch_id": "batch-0001",
+  "applied_units": 18,
+  "coverage": {
+    "complete": true,
+    "source_units_total": 18,
+    "translated_units": 0,
+    "kept_source_units": 18,
+    "minimum_source_text_coverage_ratio": 0.85,
+    "minimum_candidate_text_presence_ratio": 0.85,
+    "scope_note": "原文单元已冻结，等待逐单元翻译或登记合法保留理由。"
+  },
+  "pending_batches": [],
+  "translation_sha256": "9fc84a7429469619c304ad46a18ed40726407e4a1355fe27f11db8ff063b9b9e"
+}

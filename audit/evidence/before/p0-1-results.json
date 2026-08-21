@@ -1,0 +1,74 @@
+[
+  {
+    "id": "p0001-u0001",
+    "translation": "Measuring Reproducibility in Automated Document Pipelines"
+  },
+  {
+    "id": "p0001-u0002",
+    "translation": "Abstract"
+  },
+  {
+    "id": "p0001-u0003",
+    "translation": "This study evaluates whether automated translation pipelines preserve the meaning of academic prose. We analysed 1,248 documents drawn from 12 venues and observed a mean coverage of 0.83 (SD = 0.07). The effect was significant, t(41) = 3.62, p = 0.004, and remained stable after controlling for document length. We conclude that coverage counters alone cannot certify that a document has been translated."
+  },
+  {
+    "id": "p0001-u0004",
+    "translation": "1 Introduction"
+  },
+  {
+    "id": "p0001-u0005",
+    "translation": "Automated document pipelines increasingly report their own completion status. Prior work [1] shows that self reported status fields diverge from observable output in 37% of runs. We therefore ask whether a pipeline can be trusted to certify its own translation coverage."
+  },
+  {
+    "id": "p0001-u0006",
+    "translation": "We contribute three findings. First, a coverage counter that counts non empty fields accepts source text copied verbatim into the translation field. Second, a free text exemption reason can convert an ordinary body page into a page that skips every downstream check. Third, font preparation ordered after the readiness audit blocks fresh jobs entirely."
+  },
+  {
+    "id": "p0001-u0007",
+    "translation": "2 Method"
+  },
+  {
+    "id": "p0001-u0008",
+    "translation": "We sampled 1,248 documents between 2019 and 2024. Each document was processed twice, once with the default settings and once with an adversarial payload. Reviewers recorded the final decision and the reported coverage value for both runs."
+  },
+  {
+    "id": "p0001-u0009",
+    "translation": "Statistical tests used a two sided alpha of 0.05. Effect sizes are reported as Cohen d with 95% confidence intervals. All analysis code is available at https://example.org/repro and archived under doi:10.5555/example.2024.001."
+  },
+  {
+    "id": "p0001-u0010",
+    "translation": "3 Results"
+  },
+  {
+    "id": "p0001-u0011",
+    "translation": "The adversarial payload was accepted in every run. Reported coverage reached 1.00 while the observable target language content remained at 0.00. The difference was large, d = 2.41, 95% CI [1.88, 2.94]."
+  },
+  {
+    "id": "p0001-u0012",
+    "translation": "Runs that supplied a free text exemption reason were marked as reference pages on 100% of pages, and the final decision was READY in 42 of 42 attempts."
+  },
+  {
+    "id": "p0001-u0013",
+    "translation": "4 Discussion"
+  },
+  {
+    "id": "p0001-u0014",
+    "translation": "These results indicate that completion fields must be derived from verifiable evidence rather than asserted. A pipeline that counts filled fields measures effort, not output. We recommend structured exemption codes bound to unit type and to recorded coordinates."
+  },
+  {
+    "id": "p0002-u0001",
+    "translation": "References"
+  },
+  {
+    "id": "p0002-u0002",
+    "translation": "[1] Almeida, R., & Novak, P. (2021). Self reported status in document automation. Journal of Reproducible Systems, 14(2), 118-140."
+  },
+  {
+    "id": "p0002-u0003",
+    "translation": "[2] Berger, T. (2019). Coverage metrics considered harmful. Proceedings of the Conference on Document Engineering, 55-64."
+  },
+  {
+    "id": "p0002-u0004",
+    "translation": "[3] Chen, L., Okafor, N., & Silva, M. (2023). Structured exemptions for machine translation review. Computational Linguistics, 49(1), 77-102."
+  }
+]
