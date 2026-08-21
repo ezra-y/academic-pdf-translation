@@ -198,6 +198,54 @@ def _check_requirements(root: Path) -> None:
         )
 
 
+def _check_module_reachability(root: Path) -> None:
+    """每个模块要么是命令行入口，要么被生产代码引用。
+
+    只被 self_test.py 引用、又没有命令行入口的模块，就是"文档说该用、
+    实际没人调用"的死抽象。这类模块会让文档和真实调用链慢慢分叉。
+    """
+
+    scripts_dir = root / "scripts"
+    modules = {path.stem: path for path in sorted(scripts_dir.glob("*.py"))}
+    imported_by: dict[str, set[str]] = {name: set() for name in modules}
+    entry_points: set[str] = set()
+
+    for name, path in modules.items():
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        has_main = any(
+            isinstance(node, ast.FunctionDef) and node.name == "main"
+            for node in tree.body
+        )
+        runs_standalone = any(
+            isinstance(node, ast.If)
+            and ast.dump(node.test).find("__main__") >= 0
+            for node in tree.body
+        )
+        if has_main and runs_standalone:
+            entry_points.add(name)
+        for node in ast.walk(tree):
+            targets: list[str] = []
+            if isinstance(node, ast.Import):
+                targets = [alias.name.split(".", 1)[0] for alias in node.names]
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                targets = [node.module.split(".", 1)[0]]
+            for target in targets:
+                if target in modules and target != name:
+                    imported_by[target].add(name)
+
+    unreachable = sorted(
+        name
+        for name in modules
+        if name not in entry_points
+        and not (imported_by[name] - {"self_test"})
+    )
+    if unreachable:
+        raise BundleCheckError(
+            "以下模块既不是命令行入口，也没有被生产代码引用，"
+            "属于失效抽象: " + ", ".join(unreachable)
+        )
+
+
 def check_bundle(root: Path | None = None) -> dict[str, int | str]:
     skill_root = (root or _skill_dir()).resolve()
     required = [
@@ -242,6 +290,7 @@ def check_bundle(root: Path | None = None) -> dict[str, int | str]:
     _check_json_assets(skill_root)
     _check_python_sources(skill_root)
     _check_requirements(skill_root)
+    _check_module_reachability(skill_root)
     return {
         "status": "PASS",
         "python_files": len(list((skill_root / "scripts").glob("*.py"))),

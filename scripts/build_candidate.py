@@ -38,6 +38,7 @@ from reportlab.platypus import (
 
 import perf_trace
 from i18n import message
+from reportlab_layout import make_cjk_style
 from typography_fit import (
     candidate_groups,
     search_first_acceptable,
@@ -3269,20 +3270,18 @@ def _styles(
     leading_ratio: float,
     reference_font_pt: float,
 ) -> dict[str, ParagraphStyle]:
-    body = ParagraphStyle(
+    # 正文基样式由通用流排层定义，生成器只补上自己的正文颜色。
+    # 这样"CJK 段落样式"在全项目只有一处定义。
+    body = make_cjk_style(
         "body",
-        fontName=regular_font,
-        fontSize=body_font_pt,
-        leading=body_font_pt * leading_ratio,
+        font_name=regular_font,
+        font_size=body_font_pt,
+        leading_ratio=leading_ratio,
         alignment=TA_LEFT,
-        firstLineIndent=body_font_pt * 2,
-        spaceAfter=body_font_pt * 0.62,
-        wordWrap="CJK",
-        splitLongWords=True,
-        allowWidows=0,
-        allowOrphans=0,
-        textColor=colors.HexColor("#1A2025"),
+        first_line_indent_em=2,
+        space_after_em=0.62,
     )
+    body.textColor = colors.HexColor("#1A2025")
     return {
         "body": body,
         "body_no_indent": ParagraphStyle(
