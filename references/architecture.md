@@ -30,6 +30,9 @@
   和隐藏作业目录；
 - `job.json`：作业状态与冻结配置；
 - `source_manifest.json`：原文画像；
+- `source-analysis.json`：原文单次扫描凭据，记录缓存键（原文 SHA-256、
+  分析 Schema 版本、PyMuPDF 主版本、分析器构建版本）与逐页规模；原始
+  `text_dict` 不落盘，派生结论仍以下面两份文件为准；
 - `source_structure.json`：原文文字块、坐标、栏位、原生顺序、坐标推断顺序、
   图像与矢量信号；顺序冲突时保留歧义，不静默选边；
 - `source_units.json`：初始化时自动生成的冻结原文单元；每项绑定页码、文字块
@@ -196,6 +199,13 @@ BabelDOC 或其他排版器，而不改变“全篇统一字号、逐页真实�
 - 首版使用 `build_first_candidate.py` 串联试排、总检查和预检，不由调用者
   手工猜测三个步骤的依赖顺序；
 - 检查点只能在对应翻译单元已经落盘后前进，同一阶段不能倒退；
+- 原文只做一次完整页面解析。`source_analysis.analyze_source()` 打开一次
+  PDF，逐页各取一次 `get_text("dict")`、`get_text("blocks")`、
+  `get_text("text")`、`get_image_info()` 和 `get_drawings()`；
+  `pdf_profile` 与 `extract_source_structure` 消费同一份结果，各自的派生
+  逻辑与输出字段保持不变；
+- 同一进程内相同文件的 SHA-256 只计算一次。缓存键为绝对路径、文件大小和
+  `mtime_ns`，任一变化即失效；正式哈希仍写入各自结果文件，不只存在于内存；
 - 脚本输入不原地修改；
 - 输出路径明确，JSON 原子写入；
 - 无效输入和硬门槛失败返回非零状态；

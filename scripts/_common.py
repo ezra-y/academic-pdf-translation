@@ -11,6 +11,8 @@ from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any, Iterable
 
+import perf_trace
+
 
 SCHEMA_VERSION = "1.0"
 ROUTES = {
@@ -573,12 +575,65 @@ def is_nonsemantic_source_furniture_unit(
     return False
 
 
-def sha256_file(path: Path, chunk_size: int = 1024 * 1024) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        while chunk := handle.read(chunk_size):
-            digest.update(chunk)
-    return digest.hexdigest()
+class ArtifactFingerprintCache:
+    """进程内文件 SHA-256 缓存。
+
+    缓存键是 (绝对路径, 文件大小, mtime_ns)。三者任一变化就重新读取，
+    因此不会把“路径没变”当作“内容没变”。缓存只存在于当前进程，
+    正式哈希仍然写入各自的结果文件。
+    """
+
+    def __init__(self) -> None:
+        self._entries: dict[tuple[str, int, int], str] = {}
+
+    def clear(self) -> None:
+        self._entries.clear()
+
+    def digest(self, path: Path, chunk_size: int = 1024 * 1024) -> str:
+        resolved = Path(path).resolve()
+        try:
+            status = resolved.stat()
+            key: tuple[str, int, int] | None = (
+                str(resolved),
+                int(status.st_size),
+                int(status.st_mtime_ns),
+            )
+        except OSError:
+            key = None
+        if key is not None:
+            cached = self._entries.get(key)
+            if cached is not None:
+                perf_trace.count(perf_trace.COUNTER_SHA256_CACHE_HIT)
+                return cached
+
+        perf_trace.count(perf_trace.COUNTER_SHA256_READ)
+        digest = hashlib.sha256()
+        with resolved.open("rb") as handle:
+            while chunk := handle.read(chunk_size):
+                digest.update(chunk)
+        value = digest.hexdigest()
+        if key is not None:
+            self._entries[key] = value
+        return value
+
+
+FINGERPRINT_CACHE = ArtifactFingerprintCache()
+
+
+def sha256_file(
+    path: Path,
+    chunk_size: int = 1024 * 1024,
+    *,
+    use_cache: bool = True,
+) -> str:
+    if not use_cache:
+        perf_trace.count(perf_trace.COUNTER_SHA256_READ)
+        digest = hashlib.sha256()
+        with Path(path).open("rb") as handle:
+            while chunk := handle.read(chunk_size):
+                digest.update(chunk)
+        return digest.hexdigest()
+    return FINGERPRINT_CACHE.digest(Path(path), chunk_size)
 
 
 def load_json(path: Path) -> Any:
@@ -613,6 +668,28 @@ def import_fitz():
             "缺少 PyMuPDF。请使用当前工作区 Python，或安装 pymupdf。"
         ) from exc
     return fitz
+
+
+def open_pdf(path: Path, *, role: str = "pdf"):
+    """打开 PDF 并记一次打开计数。
+
+    role 只用于性能基线区分原文与候选，不影响返回值。
+    """
+
+    fitz = import_fitz()
+    path = Path(path)
+    if not path.is_file():
+        raise SkillError(f"PDF 不存在: {path}")
+    try:
+        document = fitz.open(path)
+    except Exception as exc:
+        raise SkillError(f"无法打开 PDF: {path}: {exc}") from exc
+    perf_trace.count(perf_trace.COUNTER_PDF_OPEN)
+    if role == "source":
+        perf_trace.count(perf_trace.COUNTER_SOURCE_PDF_OPEN)
+    elif role == "candidate":
+        perf_trace.count(perf_trace.COUNTER_CANDIDATE_PDF_OPEN)
+    return document
 
 
 def language_profiles() -> dict[str, dict[str, Any]]:

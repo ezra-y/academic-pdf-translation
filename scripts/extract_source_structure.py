@@ -7,7 +7,9 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-from _common import SkillError, import_fitz, sha256_file, utc_now, write_json
+import perf_trace
+from _common import SkillError, utc_now, write_json
+from source_analysis import PageScan, SourceAnalysis, analyze_source
 
 
 FURNITURE_DIGIT_RE = re.compile(r"\d+")
@@ -354,13 +356,6 @@ def _layout_order(
     return order
 
 
-def _drawing_bbox(drawing: dict[str, Any]) -> list[float] | None:
-    rect = drawing.get("rect")
-    if rect is None:
-        return None
-    return [round(float(rect.x0), 3), round(float(rect.y0), 3), round(float(rect.x1), 3), round(float(rect.y1), 3)]
-
-
 def _likely_heading(
     text: str,
     font: dict[str, Any],
@@ -376,11 +371,13 @@ def _likely_heading(
 
 
 def _page_data(
-    page: Any,
-    page_number: int,
+    scan: PageScan,
     furniture_keys: set[str],
 ) -> dict[str, Any]:
-    text_dict = page.get_text("dict")
+    page_number = scan.number
+    page_width = scan.width
+    page_height = scan.height
+    text_dict = scan.text_dict
     raw_text_blocks = [
         block for block in text_dict.get("blocks", []) if block.get("type") == 0
     ]
@@ -404,7 +401,7 @@ def _page_data(
                         1,
                     )
         x0, y0, x1, y1 = map(float, block["bbox"])
-        top_or_bottom = y1 <= float(page.rect.height) * 0.1 or y0 >= float(page.rect.height) * 0.9
+        top_or_bottom = y1 <= page_height * 0.1 or y0 >= page_height * 0.9
         furniture = top_or_bottom and _furniture_key(text) in furniture_keys
         block_rows.append(
             {
@@ -440,7 +437,7 @@ def _page_data(
             for segment in block["segments"]
         )
 
-    two_column, labels = _column_signal(content_blocks, float(page.rect.width))
+    two_column, labels = _column_signal(content_blocks, page_width)
     for block in block_rows:
         block["column"] = labels.get(int(block["id"]), "furniture")
     native_order = [int(block["id"]) for block in content_blocks]
@@ -448,12 +445,12 @@ def _page_data(
         content_blocks,
         labels,
         two_column,
-        float(page.rect.height),
+        page_height,
     )
     disagreement = _inversion_ratio(native_order, layout_order)
 
     images = []
-    for index, info in enumerate(page.get_image_info(xrefs=True), 1):
+    for index, info in enumerate(scan.image_info, 1):
         bbox = info.get("bbox")
         if bbox:
             images.append(
@@ -463,13 +460,11 @@ def _page_data(
                     "xref": int(info.get("xref", 0) or 0),
                 }
             )
-    drawings = page.get_drawings()
-    drawing_boxes = [
-        bbox for drawing in drawings if (bbox := _drawing_bbox(drawing)) is not None
-    ]
-    source_text = page.get_text("text")
+    drawing_count = scan.drawing_count
+    drawing_boxes = [list(bbox) for bbox in scan.drawing_bboxes]
+    source_text = scan.plain_text
     text_chars = len(_clean_text(source_text))
-    page_area = max(float(page.rect.width * page.rect.height), 1.0)
+    page_area = max(page_width * page_height, 1.0)
     image_area = sum(
         max(0.0, item["bbox"][2] - item["bbox"][0])
         * max(0.0, item["bbox"][3] - item["bbox"][1])
@@ -477,10 +472,10 @@ def _page_data(
     )
     image_ratio = min(image_area / page_area, 1.0)
     scan_risk = text_chars < 80 and image_ratio >= 0.35
-    vector_dense = len(drawings) >= 60
+    vector_dense = drawing_count >= 60
     table_signal = bool(
         re.search(r"(?im)^\s*(table|tab\.|表)\s*\d+", source_text)
-        or (len(drawings) >= 25 and len(content_blocks) >= 12)
+        or (drawing_count >= 25 and len(content_blocks) >= 12)
     )
     figure_signal = bool(
         re.search(r"(?im)^\s*(fig(?:ure)?\.?|图)\s*\d+", source_text)
@@ -512,9 +507,9 @@ def _page_data(
 
     return {
         "page": page_number,
-        "width": round(float(page.rect.width), 3),
-        "height": round(float(page.rect.height), 3),
-        "rotation": int(page.rotation),
+        "width": round(page_width, 3),
+        "height": round(page_height, 3),
+        "rotation": scan.rotation,
         "text_layer": {
             "text_chars": text_chars,
             "scan_risk": scan_risk,
@@ -531,7 +526,7 @@ def _page_data(
         "blocks": block_rows,
         "images": images,
         "image_area_ratio": round(image_ratio, 4),
-        "drawing_count": len(drawings),
+        "drawing_count": drawing_count,
         "drawing_bboxes": drawing_boxes,
         "signals": {
             "table": table_signal,
@@ -543,12 +538,12 @@ def _page_data(
     }
 
 
-def _repeated_furniture_keys(document: Any) -> set[str]:
+def _repeated_furniture_keys(analysis: SourceAnalysis) -> set[str]:
     counts: Counter[str] = Counter()
-    for page in document:
-        height = float(page.rect.height)
+    for scan in analysis.pages:
+        height = scan.height
         seen: set[str] = set()
-        for block in page.get_text("blocks"):
+        for block in scan.text_blocks:
             text = _clean_text(str(block[4]))
             if not text:
                 continue
@@ -559,25 +554,31 @@ def _repeated_furniture_keys(document: Any) -> set[str]:
             if len(key) >= 8:
                 seen.add(key)
         counts.update(seen)
-    minimum = max(2, math.ceil(document.page_count * 0.35))
+    minimum = max(2, math.ceil(analysis.page_count * 0.35))
     return {key for key, count in counts.items() if count >= minimum}
 
 
-def extract_source_structure(source_pdf: Path) -> dict[str, Any]:
-    source_pdf = source_pdf.resolve()
-    if not source_pdf.is_file():
-        raise SkillError(f"PDF 不存在: {source_pdf}")
-    fitz = import_fitz()
-    try:
-        document = fitz.open(source_pdf)
-    except Exception as exc:
-        raise SkillError(f"无法打开 PDF: {source_pdf}: {exc}") from exc
-    furniture_keys = _repeated_furniture_keys(document)
-    pages = [
-        _page_data(page, page_number, furniture_keys)
-        for page_number, page in enumerate(document, 1)
-    ]
-    document.close()
+def extract_source_structure(
+    source_pdf: Path,
+    *,
+    analysis: SourceAnalysis | None = None,
+) -> dict[str, Any]:
+    """提取原文文字块、坐标、栏位与复杂视觉信号。
+
+    传入 `analysis` 时复用已完成的单次原文扫描，不再重复打开 PDF。
+    """
+
+    source_pdf = Path(source_pdf).resolve()
+    if analysis is None:
+        analysis = analyze_source(source_pdf)
+    elif source_pdf != analysis.path:
+        raise SkillError("传入的原文扫描结果与目标 PDF 不一致")
+
+    with perf_trace.stage("source_structure"):
+        furniture_keys = _repeated_furniture_keys(analysis)
+        pages = [
+            _page_data(scan, furniture_keys) for scan in analysis.pages
+        ]
     visual_pages = [
         page["page"]
         for page in pages
@@ -590,7 +591,7 @@ def extract_source_structure(source_pdf: Path) -> dict[str, Any]:
         "schema_version": "1.0",
         "generated_at": utc_now(),
         "source": str(source_pdf),
-        "source_sha256": sha256_file(source_pdf),
+        "source_sha256": analysis.sha256,
         "page_count": len(pages),
         "repeated_page_furniture_patterns": sorted(furniture_keys),
         "visual_confirmation_pages": visual_pages,

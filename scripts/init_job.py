@@ -15,6 +15,7 @@ from _common import (
 )
 from extract_source_structure import extract_source_structure
 from pdf_profile import profile_pdf
+from source_analysis import analysis_record, analyze_source
 from prepare_translation_units import (
     build_source_units,
     build_translation_skeleton,
@@ -190,19 +191,22 @@ def initialize_job(
     if source != job_source:
         shutil.copy2(source, job_source)
 
-    manifest = profile_pdf(job_source)
-    structure = extract_source_structure(job_source)
+    analysis = analyze_source(job_source, sha256=source_hash)
+    manifest = profile_pdf(job_source, analysis=analysis)
+    structure = extract_source_structure(job_source, analysis=analysis)
     heuristic_candidate_pages = _merge_structure_candidates(
         manifest,
         structure,
     )
     write_json(job_dir / "source_manifest.json", manifest)
     write_json(job_dir / "source_structure.json", structure)
+    write_json(job_dir / "source-analysis.json", analysis_record(analysis))
     detected_source = manifest["source_language_estimate"]
     source_language = detected_source if source_language == "auto" else source_language
     files = {
         "source_manifest": "source_manifest.json",
         "source_structure": "source_structure.json",
+        "source_analysis": "source-analysis.json",
         "source_units": "source_units.json",
         "translation": "translation.json",
         "retained_source": "retained_source.json",
