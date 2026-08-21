@@ -7,7 +7,7 @@
     "git_branch": "HEAD",
     "git_dirty": true,
     "python": "3.14.5",
-    "load_average_1m": 5.38,
+    "load_average_1m": 6.72,
     "cpu_count": 15,
     "corpus": "synthetic-representative-v1",
     "corpus_manifest_cases": 5
@@ -31,19 +31,19 @@
       "repeats": 5,
       "cold": {
         "seconds": [
-          1.5296,
-          1.4662,
-          1.3877,
-          1.4865,
-          1.4918
+          1.5053,
+          1.516,
+          1.7669,
+          1.6574,
+          1.5508
         ],
-        "median_seconds": 1.4865,
+        "median_seconds": 1.5508,
         "translation_stage_seconds": {},
         "pdf_stage_seconds": {
-          "retained_region_extract": 0.0006,
-          "candidate_fingerprint": 0.0907,
-          "qa_candidate": 0.5538,
-          "completeness_audit": 0.2189
+          "retained_region_extract": 0.0008,
+          "candidate_fingerprint": 0.1034,
+          "qa_candidate": 0.6855,
+          "completeness_audit": 0.2721
         },
         "counters": {
           "expensive_audit_cache_hit": 1,
@@ -54,19 +54,19 @@
       },
       "warm": {
         "seconds": [
-          1.4495,
-          1.4572,
-          1.4824,
-          1.5157,
-          1.3693
+          1.4692,
+          1.4291,
+          1.4403,
+          1.3922,
+          1.4826
         ],
-        "median_seconds": 1.4572,
+        "median_seconds": 1.4403,
         "translation_stage_seconds": {},
         "pdf_stage_seconds": {
-          "retained_region_extract": 0.0006,
-          "candidate_fingerprint": 0.0945,
-          "qa_candidate": 0.5935,
-          "completeness_audit": 0.2238
+          "retained_region_extract": 0.001,
+          "candidate_fingerprint": 0.095,
+          "qa_candidate": 0.5814,
+          "completeness_audit": 0.217
         },
         "counters": {
           "expensive_audit_cache_hit": 1,
@@ -88,19 +88,19 @@
       "repeats": 5,
       "cold": {
         "seconds": [
-          1.6041,
-          1.5971,
-          1.6277,
-          1.5793,
-          1.553
+          1.6232,
+          1.6067,
+          1.5646,
+          1.5565,
+          1.5597
         ],
-        "median_seconds": 1.5971,
+        "median_seconds": 1.5646,
         "translation_stage_seconds": {},
         "pdf_stage_seconds": {
-          "retained_region_extract": 0.0014,
-          "candidate_fingerprint": 0.1047,
-          "qa_candidate": 0.6433,
-          "completeness_audit": 0.2681
+          "retained_region_extract": 0.0006,
+          "candidate_fingerprint": 0.0988,
+          "qa_candidate": 0.6112,
+          "completeness_audit": 0.268
         },
         "counters": {
           "expensive_audit_cache_hit": 1,
@@ -111,19 +111,19 @@
       },
       "warm": {
         "seconds": [
-          1.5714,
-          1.5445,
-          1.5607,
-          1.598,
-          1.6281
+          1.6044,
+          1.5947,
+          1.6313,
+          1.6519,
+          1.778
         ],
-        "median_seconds": 1.5714,
+        "median_seconds": 1.6313,
         "translation_stage_seconds": {},
         "pdf_stage_seconds": {
-          "retained_region_extract": 0.0007,
-          "candidate_fingerprint": 0.0983,
-          "qa_candidate": 0.6227,
-          "completeness_audit": 0.2711
+          "retained_region_extract": 0.0009,
+          "candidate_fingerprint": 0.1049,
+          "qa_candidate": 0.6188,
+          "completeness_audit": 0.2949
         },
         "counters": {
           "expensive_audit_cache_hit": 1,
@@ -145,19 +145,19 @@
       "repeats": 5,
       "cold": {
         "seconds": [
-          0.5156,
-          0.3806,
-          0.3686,
-          0.3953,
-          0.38
+          0.4135,
+          0.3733,
+          0.3772,
+          0.4709,
+          0.4421
         ],
-        "median_seconds": 0.3806,
+        "median_seconds": 0.4135,
         "translation_stage_seconds": {},
         "pdf_stage_seconds": {
-          "retained_region_extract": 0.0008,
+          "retained_region_extract": 0.0005,
           "candidate_fingerprint": 0.0143,
-          "qa_candidate": 0.0758,
-          "completeness_audit": 0.0507
+          "qa_candidate": 0.0776,
+          "completeness_audit": 0.053
         },
         "counters": {
           "expensive_audit_cache_hit": 1,
@@ -168,19 +168,19 @@
       },
       "warm": {
         "seconds": [
-          0.4723,
-          0.4395,
-          0.3729,
-          0.3683,
-          0.3682
+          0.4053,
+          0.3883,
+          0.4342,
+          0.4049,
+          0.4033
         ],
-        "median_seconds": 0.3729,
+        "median_seconds": 0.4049,
         "translation_stage_seconds": {},
         "pdf_stage_seconds": {
-          "retained_region_extract": 0.0004,
-          "candidate_fingerprint": 0.0134,
-          "qa_candidate": 0.0797,
-          "completeness_audit": 0.058
+          "retained_region_extract": 0.0007,
+          "candidate_fingerprint": 0.015,
+          "qa_candidate": 0.0848,
+          "completeness_audit": 0.0577
         },
         "counters": {
           "expensive_audit_cache_hit": 1,
@@ -202,19 +202,19 @@
       "repeats": 5,
       "cold": {
         "seconds": [
-          0.257,
-          0.2639,
-          0.2675,
-          0.259,
-          0.2631
+          0.2923,
+          0.2834,
+          0.2853,
+          0.2783,
+          0.3206
         ],
-        "median_seconds": 0.2631,
+        "median_seconds": 0.2853,
         "translation_stage_seconds": {},
         "pdf_stage_seconds": {
-          "retained_region_extract": 0.0004,
-          "candidate_fingerprint": 0.007,
-          "qa_candidate": 0.0523,
-          "completeness_audit": 0.0173
+          "retained_region_extract": 0.0003,
+          "candidate_fingerprint": 0.0074,
+          "qa_candidate": 0.0547,
+          "completeness_audit": 0.0166
         },
         "counters": {
           "expensive_audit_cache_hit": 1,
@@ -225,19 +225,19 @@
       },
       "warm": {
         "seconds": [
-          0.253,
-          0.2515,
-          0.2509,
-          0.2505,
-          0.2516
+          0.2572,
+          0.3187,
+          0.242,
+          0.2503,
+          0.2468
         ],
-        "median_seconds": 0.2515,
+        "median_seconds": 0.2503,
         "translation_stage_seconds": {},
         "pdf_stage_seconds": {
-          "retained_region_extract": 0.0002,
-          "candidate_fingerprint": 0.0072,
-          "qa_candidate": 0.0532,
-          "completeness_audit": 0.0164
+          "retained_region_extract": 0.0003,
+          "candidate_fingerprint": 0.007,
+          "qa_candidate": 0.0507,
+          "completeness_audit": 0.0165
         },
         "counters": {
           "expensive_audit_cache_hit": 1,
@@ -259,17 +259,17 @@
       "repeats": 5,
       "cold": {
         "seconds": [
-          1.4756,
-          1.4569,
-          1.5584,
-          1.4395,
-          1.4311
+          1.4388,
+          1.3882,
+          1.4182,
+          1.4341,
+          1.4094
         ],
-        "median_seconds": 1.4569,
+        "median_seconds": 1.4182,
         "translation_stage_seconds": {},
         "pdf_stage_seconds": {
           "retained_region_extract": 0.0002,
-          "completeness_audit": 0.1688
+          "completeness_audit": 0.1646
         },
         "counters": {
           "render_attempt": 18,
@@ -279,17 +279,17 @@
       },
       "warm": {
         "seconds": [
-          1.456,
-          1.4207,
-          1.4712,
-          1.486,
-          1.5366
+          1.5752,
+          1.5463,
+          1.6305,
+          1.5419,
+          1.5475
         ],
-        "median_seconds": 1.4712,
+        "median_seconds": 1.5475,
         "translation_stage_seconds": {},
         "pdf_stage_seconds": {
-          "retained_region_extract": 0.0005,
-          "completeness_audit": 0.1662
+          "retained_region_extract": 0.0002,
+          "completeness_audit": 0.1747
         },
         "counters": {
           "render_attempt": 18,
@@ -305,10 +305,10 @@
     }
   ],
   "totals": {
-    "cold_median_seconds": 5.1842,
-    "warm_median_seconds": 5.1242,
-    "cold_case_median_seconds": 1.4569,
-    "warm_case_median_seconds": 1.4572
+    "cold_median_seconds": 5.2324,
+    "warm_median_seconds": 5.2743,
+    "cold_case_median_seconds": 1.4182,
+    "warm_case_median_seconds": 1.4403
   },
   "note": "合成语料只用于比较耗时与重复读取，不能替代真实论文的视觉抽查。模型翻译阶段未测量。"
 }

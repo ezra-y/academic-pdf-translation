@@ -1,0 +1,42 @@
+{
+  "paper": "Ronneberger et al., U-Net (arXiv:1505.04597), 8 页开放获取论文",
+  "source_sha256": "a3172b2124f38e260dc2c7ed968d87c31bc94dbc19a42a7ab3dcbd7534319c44",
+  "translator_model": "claude-opus-5",
+  "language_pair": "und-Latn -> zh-Hans",
+  "units_total": 141,
+  "validated_translated_units": 73,
+  "validated_kept_source_units": 68,
+  "invalid_or_unverified_units": 0,
+  "source_content_chars": 15543,
+  "target_content_chars": 5067,
+  "target_over_source_ratio": 0.326,
+  "document_target_script_ratio": 0.9382,
+  "kept_source_content_ratio": 0.128,
+  "batches": 10,
+  "model_recorded_in_plan": "claude-opus-5",
+  "keep_source_codes_used": [
+    "bibliography-entry",
+    "formula-or-statistical-symbol",
+    "person-name"
+  ],
+  "terminology_terms": [
+    "U-Net",
+    "data augmentation",
+    "contracting path",
+    "expansive path",
+    "feature map",
+    "PhC-U373",
+    "DIC-HeLa",
+    "HeLa"
+  ],
+  "completeness_decision": "READY",
+  "qa_hard_failures": [],
+  "pipeline_status": "READY_TO_REGISTER",
+  "source_pages": 8,
+  "candidate_pages": 9,
+  "candidate_sha256": "109cf20ffc659ed5b1ed1acb72173a06912aedd7e73d773ec3cb31be71e71bbf",
+  "model_translation_seconds": null,
+  "input_tokens": null,
+  "output_tokens": null,
+  "measurement_note": "译文由 claude-opus-5 在本次会话中逐批产出。会话内无法可靠测量模型端的耗时与 Token，因此这三项标记为未测量，不做估算。"
+}

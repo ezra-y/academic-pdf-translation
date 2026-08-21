@@ -655,6 +655,33 @@ def _validate_complex_content_payload(
             errors.append(f"第 {page} 页复杂内容载荷: {error}")
 
 
+def _bbox_within_page(unit: dict[str, Any], source_doc: Any) -> bool:
+    """单元坐标是否落在所属页面内且非退化。"""
+
+    bbox = unit.get("source_bbox")
+    page_number = unit.get("page")
+    if (
+        not isinstance(page_number, int)
+        or not isinstance(bbox, list)
+        or len(bbox) != 4
+        or not all(isinstance(value, (int, float)) for value in bbox)
+    ):
+        return False
+    try:
+        rect = source_doc[page_number - 1].rect
+    except Exception:
+        return False
+    x0, y0, x1, y1 = (float(value) for value in bbox)
+    if x1 <= x0 or y1 <= y0:
+        return False
+    return (
+        x0 >= float(rect.x0) - 1.0
+        and y0 >= float(rect.y0) - 1.0
+        and x1 <= float(rect.x1) + 1.0
+        and y1 <= float(rect.y1) + 1.0
+    )
+
+
 def _normalize_source_text(text: str) -> str:
     normalized = unicodedata.normalize("NFKD", text)
     return "".join(
@@ -808,6 +835,7 @@ def _validate_source_text_coverage(
         page: bytearray(len(text)) for page, text in page_texts.items()
     }
     unmatched: list[str] = []
+    symbol_only: list[str] = []
     sources_by_page: dict[int, list[tuple[str, str, str]]] = {}
     for unit in translation.get("units", []):
         page_number = unit.get("page")
@@ -863,6 +891,15 @@ def _validate_source_text_coverage(
         if _is_nonsemantic_divider_source(raw_source_text):
             continue
         source_text = _normalize_source_text(raw_source_text)
+        if source_text == "" and raw_source_text.strip():
+            # 整段只有符号（公式定界符、感叹号、控制字符等），归一化后没有
+            # 任何字母或数字，靠文本匹配本来就定位不了。改用坐标核对：
+            # bbox 必须落在页面内且非退化，否则仍然算没定位上。
+            if _bbox_within_page(unit, source_doc):
+                symbol_only.append(str(unit.get("id", "?")))
+            else:
+                unmatched.append(str(unit.get("id", "?")))
+            continue
         if not page_text or not source_text:
             unmatched.append(str(unit.get("id", "?")))
             continue
@@ -949,6 +986,12 @@ def _validate_source_text_coverage(
             "以下翻译单元无法在对应原文页定位: "
             + ", ".join(unmatched[:20])
             + (" ..." if len(unmatched) > 20 else "")
+        )
+    if symbol_only:
+        warnings.append(
+            "以下翻译单元只含符号，按坐标核对通过，未做文本定位: "
+            + ", ".join(symbol_only[:20])
+            + (" ..." if len(symbol_only) > 20 else "")
         )
     source_handle.release()
 

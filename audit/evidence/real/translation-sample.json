@@ -1,0 +1,37 @@
+[
+  {
+    "id": "p0001-u0001",
+    "kind": "heading",
+    "source": "U-Net: Convolutional Networks for Biomedical",
+    "translation": "U-Net：用于生物医学图像分割的卷积网络",
+    "keep_source_code": null
+  },
+  {
+    "id": "p0001-u0007",
+    "kind": "body",
+    "source": "Abstract. There is large consent that successful training of deep networks requires many thousand annotated training samples. In this paper, we present a network and training strategy that relies on the strong use of data augmentation to use the available annotated samples more eﬃciently. The architecture consists of a contracting path to capture context and a symmetric expanding path that enables",
+    "translation": "摘要。人们普遍认为，要成功训练深度网络，需要数以千计的带标注训练样本。本文提出一种网络结构与训练策略，通过大量使用数据增强，把已有的带标注样本用得更充分。该结构由一条用于捕捉上下文的收缩路径，和一条与之对称、用于实现精确定位的扩张路径组成。我们证明，这样的网络可以用极少的图像端到端地训练，并且在电子显微镜图像堆栈中神经元结构分割的 ISBI 挑战赛上，超过了此前的最佳方法（一种滑动窗口卷积网络）。用同一网络在透射光显微图像（相差成像与微分干涉成像）上训练后，我们以大幅优势赢得了 2015 年 ISBI 细胞追踪挑战赛的这两个类别。此外，该网络速度很快。",
+    "keep_source_code": null
+  },
+  {
+    "id": "p0001-u0003",
+    "kind": "body",
+    "source": "Olaf Ronneberger, Philipp Fischer, and Thomas Brox",
+    "translation": "",
+    "keep_source_code": "person-name"
+  },
+  {
+    "id": "p0004-u0014",
+    "kind": "body",
+    "source": "activation in feature channel k at the pixel position x ∈Ωwith Ω⊂Z2. K is the number of classes and pk(x) is the approximated maximum-function. I.e. pk(x) ≈1 for the k that has the maximum activation ak(x) and pk(x) ≈0 for all other k. The cross entropy then penalizes at each position the deviation of pℓ(x)(x) from 1 using",
+    "translation": "像素位置 x ∈Ω（Ω 为 Z2 的子集）处特征通道 k 上的激活值。K 为类别数，pk(x) 是近似的最大值函数：对激活值 ak(x) 最大的那个 k，有 pk(x) ≈1；对其余所有 k，有 pk(x) ≈0。交叉熵随后在每个位置上，对 pℓ(x)(x) 偏离 1 的程度施加惩罚，其形式为",
+    "keep_source_code": null
+  },
+  {
+    "id": "p0008-u0006",
+    "kind": "body",
+    "source": "1. Ciresan, D.C., Gambardella, L.M., Giusti, A., Schmidhuber, J.: Deep neural networks segment neuronal membranes in electron microscopy images. In: NIPS. pp. 2852–2860 (2012) 2. Dosovitskiy, A., Springenberg, J.T., Riedmiller, M., Brox, T.: Discriminative unsupervised feature learning with convolutional neural networks. In: NIPS (2014) 3. Girshick, R., Donahue, J., Darrell, T., Malik, J.: Rich fe",
+    "translation": "",
+    "keep_source_code": "bibliography-entry"
+  }
+]

@@ -82,6 +82,19 @@ REFERENCE_KINDS = {
 }
 HEADING_KINDS = {"title", "subtitle", "heading", "section-heading"}
 SUPERSCRIPT_DIGITS = "⁰¹²³⁴⁵⁶⁷⁸⁹"
+#: C0 控制字符（保留换行与制表符），不得进入候选 PDF。
+CONTROL_CHARACTER_RE = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
+#: 排版连字（U+FB00 起）绝大多数字体都没有字形，抽文字时会变成空字符。
+#: 原文抽取经常带出它们（例如 "Caﬀe"），这里统一还原成普通字母。
+LIGATURE_REPLACEMENTS = {
+    "\ufb00": "ff",
+    "\ufb01": "fi",
+    "\ufb02": "fl",
+    "\ufb03": "ffi",
+    "\ufb04": "ffl",
+    "\ufb05": "st",
+    "\ufb06": "st",
+}
 
 
 def _unicode_superscript_characters() -> str:
@@ -123,12 +136,62 @@ def _plain_superscript(text: str) -> str:
     )
 
 
-def _markup(text: str, *, cjk_font: str | None = None) -> str:
+def _font_supports(font_name: str, character: str) -> bool:
+    """已注册字体能否画出这个字符；无法判断时按"能"处理，不误拦。"""
+
+    try:
+        face = pdfmetrics.getFont(font_name).face
+    except Exception:
+        return True
+    mapping = getattr(face, "charToGlyph", None)
+    if not isinstance(mapping, dict) or not mapping:
+        return True
+    return ord(character) in mapping
+
+
+def _fallback_runs(
+    token: str,
+    primary_font: str,
+    fallback_font: str,
+) -> list[tuple[str, bool]]:
+    """把 token 切成 (片段, 是否改用后备字体) 的连续段。
+
+    题录用的是拉丁字体，但保留原文的公式片段里可能出现 ∈、Ω 这类
+    拉丁字体没有的符号。这些字符在候选里会退化成 \x00，
+    直接触发 NULL_CHARACTERS。这里逐字符判断，缺字形就换后备字体。
+    """
+
+    runs: list[tuple[str, bool]] = []
+    for character in token:
+        needs_fallback = not _font_supports(
+            primary_font,
+            character,
+        ) and _font_supports(fallback_font, character)
+        if runs and runs[-1][1] == needs_fallback:
+            runs[-1] = (runs[-1][0] + character, needs_fallback)
+        else:
+            runs.append((character, needs_fallback))
+    return runs
+
+
+def _markup(
+    text: str,
+    *,
+    cjk_font: str | None = None,
+    primary_font: str | None = None,
+) -> str:
     safe_text = re.sub(
         r"(?<=[A-Za-z0-9])\x00(?=[A-Za-z0-9])",
         "-",
         text,
     ).replace("\x00", "")
+    # 原文抽取偶尔会带出 C0 控制字符（数学字体的定界符最常见）。
+    # 它们在候选里没有可映射的字形，抽文字时会变成 \x00，直接触发
+    # NULL_CHARACTERS 硬失败。在进排版之前一律去掉。
+    safe_text = CONTROL_CHARACTER_RE.sub("", safe_text)
+    for ligature, plain in LIGATURE_REPLACEMENTS.items():
+        if ligature in safe_text:
+            safe_text = safe_text.replace(ligature, plain)
     safe_text = (
         safe_text.replace("x\u0304", "x-bar")
         .replace("X\u0304", "X-bar")
@@ -180,6 +243,18 @@ def _markup(text: str, *, cjk_font: str | None = None) -> str:
                 rendered = (
                     f'<font name="{escaped_font}">{rendered}</font>'
                 )
+            elif escaped_font and primary_font:
+                runs = _fallback_runs(token, primary_font, cjk_font or "")
+                if any(needs for _, needs in runs):
+                    rendered = "".join(
+                        (
+                            f'<font name="{escaped_font}">'
+                            f"{reportlab_cjk_markup(piece)}</font>"
+                            if needs
+                            else reportlab_cjk_markup(piece)
+                        )
+                        for piece, needs in runs
+                    )
             rendered_tokens.append(rendered)
         rendered_lines.append("".join(rendered_tokens))
     return "<br/>".join(rendered_lines)
@@ -3295,6 +3370,11 @@ def _unit_flowables(
                         if style is styles["reference"]
                         else None
                     ),
+                    primary_font=(
+                        style.fontName
+                        if style is styles["reference"]
+                        else None
+                    ),
                 ),
                 style,
             )
@@ -3746,6 +3826,11 @@ def _retained_flowables(
                         text,
                         cjk_font=(
                             styles["body"].fontName
+                            if category in REFERENCE_CATEGORIES
+                            else None
+                        ),
+                        primary_font=(
+                            styles["reference"].fontName
                             if category in REFERENCE_CATEGORIES
                             else None
                         ),

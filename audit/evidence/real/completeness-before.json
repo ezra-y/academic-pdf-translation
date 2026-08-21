@@ -1,0 +1,426 @@
+{
+  "schema_version": "1.0",
+  "job_id": "arxiv-1505.04597-a3172b2124",
+  "decision": "READY",
+  "page_count": 8,
+  "repair_pages": [],
+  "review_pages": [],
+  "flag_counts": {},
+  "repair_plan": {
+    "schema_version": "1.0",
+    "action": "repair-and-retry",
+    "task_count": 0,
+    "tasks": [],
+    "completion_condition": "集中完成全部返修任务，重新生成候选并重复预检，直到状态为 READY_TO_REGISTER。"
+  },
+  "document_translation_source_ratio_median": 0.386,
+  "ratio_thresholds": {
+    "severe": 0.2,
+    "review": 0.25,
+    "language_pair": "und-Latn->zh-Hans"
+  },
+  "pages": [
+    {
+      "page": 1,
+      "reference_page": false,
+      "source_chars": 2084,
+      "translation_chars": 827,
+      "translation_source_ratio": 0.397,
+      "source_sentence_count": 19,
+      "translation_sentence_count": 17,
+      "sentence_retention_ratio": 0.895,
+      "missing_statistics": [],
+      "adjacent_page_statistics": [],
+      "missing_citations": [],
+      "missing_acronyms": [],
+      "missing_urls": [],
+      "missing_dois": [],
+      "source_headings": [
+        {
+          "unit_id": "p0001-u0001",
+          "source": "U-Net: Convolutional Networks for Biomedical"
+        },
+        {
+          "unit_id": "p0001-u0002",
+          "source": "Image Segmentation"
+        },
+        {
+          "unit_id": "p0001-u0005",
+          "source": "University of Freiburg, Germany"
+        },
+        {
+          "unit_id": "p0001-u0009",
+          "source": "1 Introduction"
+        },
+        {
+          "unit_id": "p0001-u0012",
+          "source": "arXiv:1505.04597v1 [cs.CV] 18 May 2015"
+        }
+      ],
+      "missing_headings": [],
+      "shifted_headings": [],
+      "anchor_score_current_page": 6,
+      "anchor_scores_neighbor_pages": {
+        "2": 1
+      },
+      "source_visuals": {
+        "drawings": 0,
+        "images": 0,
+        "text_blocks": 10
+      },
+      "candidate_visuals": {
+        "drawings": 0,
+        "images": 0,
+        "text_blocks": 0
+      },
+      "visual_rebuild_issues": [],
+      "unit_issues": [],
+      "flags": [],
+      "notes": [],
+      "retained_source_chars_excluded": 0
+    },
+    {
+      "page": 2,
+      "reference_page": false,
+      "source_chars": 1510,
+      "translation_chars": 528,
+      "translation_source_ratio": 0.35,
+      "source_sentence_count": 22,
+      "translation_sentence_count": 14,
+      "sentence_retention_ratio": 0.636,
+      "missing_statistics": [],
+      "adjacent_page_statistics": [],
+      "missing_citations": [],
+      "missing_acronyms": [],
+      "missing_urls": [],
+      "missing_dois": [],
+      "source_headings": [
+        {
+          "unit_id": "p0002-u0002",
+          "source": "copy and crop"
+        },
+        {
+          "unit_id": "p0002-u0003",
+          "source": "input image"
+        },
+        {
+          "unit_id": "p0002-u0004",
+          "source": "tile"
+        },
+        {
+          "unit_id": "p0002-u0005",
+          "source": "output segmentation map"
+        },
+        {
+          "unit_id": "p0002-u0011",
+          "source": "max pool 2x2"
+        },
+        {
+          "unit_id": "p0002-u0012",
+          "source": "up-conv 2x2"
+        },
+        {
+          "unit_id": "p0002-u0013",
+          "source": "conv 3x3, ReLU"
+        },
+        {
+          "unit_id": "p0002-u0045",
+          "source": "conv 1x1"
+        }
+      ],
+      "missing_headings": [],
+      "shifted_headings": [],
+      "anchor_score_current_page": 4,
+      "anchor_scores_neighbor_pages": {
+        "1": 1,
+        "3": 0
+      },
+      "source_visuals": {
+        "drawings": 213,
+        "images": 0,
+        "text_blocks": 49
+      },
+      "candidate_visuals": {
+        "drawings": 0,
+        "images": 0,
+        "text_blocks": 0
+      },
+      "visual_rebuild_issues": [],
+      "unit_issues": [],
+      "flags": [],
+      "notes": [],
+      "retained_source_chars_excluded": 0
+    },
+    {
+      "page": 3,
+      "reference_page": false,
+      "source_chars": 2038,
+      "translation_chars": 768,
+      "translation_source_ratio": 0.377,
+      "source_sentence_count": 19,
+      "translation_sentence_count": 19,
+      "sentence_retention_ratio": 1.0,
+      "missing_statistics": [],
+      "adjacent_page_statistics": [],
+      "missing_citations": [],
+      "missing_acronyms": [],
+      "missing_urls": [],
+      "missing_dois": [],
+      "source_headings": [],
+      "missing_headings": [],
+      "shifted_headings": [],
+      "anchor_score_current_page": 2,
+      "anchor_scores_neighbor_pages": {
+        "2": 0,
+        "4": 0
+      },
+      "source_visuals": {
+        "drawings": 15,
+        "images": 2,
+        "text_blocks": 7
+      },
+      "candidate_visuals": {
+        "drawings": 0,
+        "images": 0,
+        "text_blocks": 0
+      },
+      "visual_rebuild_issues": [],
+      "unit_issues": [],
+      "flags": [],
+      "notes": [],
+      "retained_source_chars_excluded": 0
+    },
+    {
+      "page": 4,
+      "reference_page": false,
+      "source_chars": 2132,
+      "translation_chars": 740,
+      "translation_source_ratio": 0.347,
+      "source_sentence_count": 22,
+      "translation_sentence_count": 20,
+      "sentence_retention_ratio": 0.909,
+      "missing_statistics": [],
+      "adjacent_page_statistics": [],
+      "missing_citations": [],
+      "missing_acronyms": [],
+      "missing_urls": [],
+      "missing_dois": [],
+      "source_headings": [
+        {
+          "unit_id": "p0004-u0003",
+          "source": "2 Network Architecture"
+        },
+        {
+          "unit_id": "p0004-u0007",
+          "source": "3 Training"
+        },
+        {
+          "unit_id": "p0004-u0013",
+          "source": "where ak(x) denotes the"
+        }
+      ],
+      "missing_headings": [],
+      "shifted_headings": [],
+      "anchor_score_current_page": 4,
+      "anchor_scores_neighbor_pages": {
+        "3": 0,
+        "5": 0
+      },
+      "source_visuals": {
+        "drawings": 0,
+        "images": 0,
+        "text_blocks": 17
+      },
+      "candidate_visuals": {
+        "drawings": 0,
+        "images": 0,
+        "text_blocks": 0
+      },
+      "visual_rebuild_issues": [],
+      "unit_issues": [],
+      "flags": [],
+      "notes": [],
+      "retained_source_chars_excluded": 0
+    },
+    {
+      "page": 5,
+      "reference_page": false,
+      "source_chars": 1652,
+      "translation_chars": 653,
+      "translation_source_ratio": 0.395,
+      "source_sentence_count": 19,
+      "translation_sentence_count": 19,
+      "sentence_retention_ratio": 1.0,
+      "missing_statistics": [],
+      "adjacent_page_statistics": [],
+      "missing_citations": [],
+      "missing_acronyms": [],
+      "missing_urls": [],
+      "missing_dois": [],
+      "source_headings": [
+        {
+          "unit_id": "p0005-u0019",
+          "source": "3.1 Data Augmentation"
+        }
+      ],
+      "missing_headings": [],
+      "shifted_headings": [],
+      "anchor_score_current_page": 3,
+      "anchor_scores_neighbor_pages": {
+        "4": 0,
+        "6": 0
+      },
+      "source_visuals": {
+        "drawings": 2,
+        "images": 4,
+        "text_blocks": 20
+      },
+      "candidate_visuals": {
+        "drawings": 0,
+        "images": 0,
+        "text_blocks": 0
+      },
+      "visual_rebuild_issues": [],
+      "unit_issues": [],
+      "flags": [],
+      "notes": [],
+      "retained_source_chars_excluded": 0
+    },
+    {
+      "page": 6,
+      "reference_page": false,
+      "source_chars": 2044,
+      "translation_chars": 789,
+      "translation_source_ratio": 0.386,
+      "source_sentence_count": 27,
+      "translation_sentence_count": 17,
+      "sentence_retention_ratio": 0.63,
+      "missing_statistics": [],
+      "adjacent_page_statistics": [],
+      "missing_citations": [],
+      "missing_acronyms": [],
+      "missing_urls": [],
+      "missing_dois": [],
+      "source_headings": [
+        {
+          "unit_id": "p0006-u0003",
+          "source": "4 Experiments"
+        }
+      ],
+      "missing_headings": [],
+      "shifted_headings": [],
+      "anchor_score_current_page": 23,
+      "anchor_scores_neighbor_pages": {
+        "5": 0,
+        "7": 1
+      },
+      "source_visuals": {
+        "drawings": 3,
+        "images": 0,
+        "text_blocks": 9
+      },
+      "candidate_visuals": {
+        "drawings": 0,
+        "images": 0,
+        "text_blocks": 0
+      },
+      "visual_rebuild_issues": [],
+      "unit_issues": [],
+      "flags": [],
+      "notes": [],
+      "retained_source_chars_excluded": 0
+    },
+    {
+      "page": 7,
+      "reference_page": false,
+      "source_chars": 1640,
+      "translation_chars": 799,
+      "translation_source_ratio": 0.487,
+      "source_sentence_count": 25,
+      "translation_sentence_count": 21,
+      "sentence_retention_ratio": 0.84,
+      "missing_statistics": [],
+      "adjacent_page_statistics": [],
+      "missing_citations": [],
+      "missing_acronyms": [],
+      "missing_urls": [],
+      "missing_dois": [],
+      "source_headings": [
+        {
+          "unit_id": "p0007-u0013",
+          "source": "5 Conclusion"
+        }
+      ],
+      "missing_headings": [],
+      "shifted_headings": [],
+      "anchor_score_current_page": 22,
+      "anchor_scores_neighbor_pages": {
+        "6": 1,
+        "8": 0
+      },
+      "source_visuals": {
+        "drawings": 4,
+        "images": 4,
+        "text_blocks": 15
+      },
+      "candidate_visuals": {
+        "drawings": 0,
+        "images": 0,
+        "text_blocks": 0
+      },
+      "visual_rebuild_issues": [],
+      "unit_issues": [],
+      "flags": [],
+      "notes": [],
+      "retained_source_chars_excluded": 0
+    },
+    {
+      "page": 8,
+      "reference_page": false,
+      "source_chars": 479,
+      "translation_chars": 233,
+      "translation_source_ratio": 0.486,
+      "source_sentence_count": 5,
+      "translation_sentence_count": 5,
+      "sentence_retention_ratio": 1.0,
+      "missing_statistics": [],
+      "adjacent_page_statistics": [],
+      "missing_citations": [],
+      "missing_acronyms": [],
+      "missing_urls": [],
+      "missing_dois": [],
+      "source_headings": [
+        {
+          "unit_id": "p0008-u0003",
+          "source": "Acknowlegements"
+        },
+        {
+          "unit_id": "p0008-u0005",
+          "source": "References"
+        }
+      ],
+      "missing_headings": [],
+      "shifted_headings": [],
+      "anchor_score_current_page": 1,
+      "anchor_scores_neighbor_pages": {
+        "7": 0
+      },
+      "source_visuals": {
+        "drawings": 1,
+        "images": 0,
+        "text_blocks": 7
+      },
+      "candidate_visuals": {
+        "drawings": 0,
+        "images": 0,
+        "text_blocks": 0
+      },
+      "visual_rebuild_issues": [],
+      "unit_issues": [],
+      "flags": [],
+      "notes": [],
+      "retained_source_chars_excluded": 1720
+    }
+  ],
+  "interpretation": "该脚本把文字提取、阅读顺序、译文完整性和图表重建分开检查。READY 仍不等于语义完全正确；NEEDS_REPAIR 是下一轮制作输入，不是任务终止状态。"
+}

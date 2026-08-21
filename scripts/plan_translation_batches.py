@@ -338,6 +338,9 @@ def _timed_plan_translation_batches(
                     "kind": _kind(unit),
                     "heading_level": unit.get("heading_level"),
                     "source": _source(unit),
+                    # 坐标必须随批次一起给出：写回时要用它核对
+                    # keep_source_code=bibliography-entry 的保留区域证据。
+                    "source_bbox": unit.get("source_bbox"),
                     "required_anchors": unit.get("required_anchors") or {},
                     "review_flags": unit.get("review_flags") or [],
                 }

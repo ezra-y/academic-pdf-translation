@@ -176,6 +176,79 @@ def _font_file_issues(
     return issues, evidence, normalized
 
 
+#: 排版器会在进入 PDF 之前规范化掉的字符，覆盖检查不重复报。
+RENDERER_NORMALIZED_CHARACTERS = frozenset(
+    [chr(code) for code in range(0x00, 0x09)]
+    + [chr(code) for code in range(0x0B, 0x20)]
+    + [chr(0x7F)]
+    + [chr(code) for code in range(0xFB00, 0xFB07)]
+)
+
+
+def _font_coverage_issues(
+    normalized: list[str],
+    translation: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """冻结字体合起来能不能画出全部待排文字。
+
+    画不出的字符在候选里会退化成 \x00，最后以 NULL_CHARACTERS 的形式
+    出现在 QA 里——那时只知道"有几个空字符"，不知道是哪个字符、哪一段。
+    这里在渲染之前就把字符和单元指出来。
+    """
+
+    if not normalized:
+        return []
+    covered: set[int] = set()
+    for index, path in enumerate(normalized):
+        try:
+            face = TTFont(f"CoverageProbe{index}", path).face
+        except Exception:
+            return []
+        mapping = getattr(face, "charToGlyph", None)
+        if not isinstance(mapping, dict) or not mapping:
+            return []
+        covered.update(mapping)
+
+    missing: dict[str, list[str]] = {}
+    for unit in translation.get("units", []):
+        if not isinstance(unit, dict):
+            continue
+        text = str(unit.get("translation") or "")
+        if not text:
+            # 保留原文的单元同样要排进候选，一并检查。
+            text = str(unit.get("source") or "")
+        for character in text:
+            if character.isspace() or ord(character) in covered:
+                continue
+            if character in RENDERER_NORMALIZED_CHARACTERS:
+                # 排版器会先删掉控制字符、把连字还原成普通字母，
+                # 这些字符不会以原样进入候选，不算覆盖缺口。
+                continue
+            missing.setdefault(character, []).append(
+                str(unit.get("id") or "?")
+            )
+    if not missing:
+        return []
+    return [
+        {
+            "code": "FONT_CHARACTER_COVERAGE_GAP",
+            "message": (
+                "冻结字体无法画出以下字符，候选里会退化成空字符。"
+                "请改用覆盖这些字符的字体，或在译文中换用等价写法。"
+            ),
+            "characters": [
+                {
+                    "character": character,
+                    "codepoint": f"U+{ord(character):04X}",
+                    "unit_ids": sorted(set(unit_ids))[:10],
+                    "occurrences": len(unit_ids),
+                }
+                for character, unit_ids in sorted(missing.items())
+            ][:40],
+        }
+    ]
+
+
 def _stale_font_evidence_issues(
     quality: dict[str, Any],
     observed: list[dict[str, str]],
@@ -605,6 +678,12 @@ def build_input_readiness_audit(job_dir: Path) -> dict[str, Any]:
     )
     if not font_issues:
         font_issues.extend(_stale_font_evidence_issues(quality, font_evidence))
+        font_issues.extend(
+            _font_coverage_issues(
+                [str(entry["path"]) for entry in font_evidence],
+                context["translation"],
+            )
+        )
 
     issues: list[dict[str, Any]] = [
         *context["validation_issues"],

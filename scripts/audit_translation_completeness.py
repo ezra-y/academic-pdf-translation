@@ -485,7 +485,14 @@ def _unit_compression_flags(
     ratio: float,
     hard_floor: float,
     review_floor: float,
+    *,
+    validated_keep_source: bool = False,
 ) -> list[str]:
+    # 通过真实性检查的保留原文单元本来就没有译文，拿它衡量"译文压缩"没有意义。
+    # 这里只信真实性检查给出的判定：自己写个理由把译文清空的单元，
+    # 在同一次审查里已经被判为 invalid，整篇照样进返修。
+    if validated_keep_source:
+        return []
     compression_exempt = kind.lower() in {
         "title",
         "subtitle",
@@ -709,6 +716,16 @@ def _timed_build_completeness_audit(
         for page, text in translations.items()
     }
 
+    truthfulness = evaluate_translation(
+        translation,
+        retained_source=retained,
+    )
+    validated_keep_source_ids = {
+        verdict["unit_id"]
+        for verdict in truthfulness["units"]
+        if verdict["state"] == "kept-source"
+    }
+
     pages: list[dict[str, Any]] = []
     document_ratios: list[float] = []
     required_repair_flags = {
@@ -843,6 +860,9 @@ def _timed_build_completeness_audit(
                 unit_ratio,
                 hard_floor,
                 review_floor,
+                validated_keep_source=(
+                    str(unit.get("id") or "") in validated_keep_source_ids
+                ),
             )
             source_unit_stats = _stats(unit_source)
             if (
@@ -1117,10 +1137,6 @@ def _timed_build_completeness_audit(
     source_analysis.release()
     if candidate_handle is not None:
         candidate_handle.release()
-    truthfulness = evaluate_translation(
-        translation,
-        retained_source=retained,
-    )
     flag_counts = Counter(
         flag for page in pages for flag in page["flags"]
     )

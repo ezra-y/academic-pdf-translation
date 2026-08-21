@@ -66,6 +66,13 @@ REFERENCE_KIND_PREFIXES = ("reference", "bibliography")
 REFERENCE_CATEGORIES = frozenset({"references", "bibliography"})
 
 ACRONYM_TOKEN_RE = re.compile(r"(?<![A-Za-z0-9-])[A-Z][A-Z0-9-]{1,12}(?![A-Za-z0-9-])")
+#: 邮箱、arXiv 编号和 URL、DOI 一样是持久标识符，不是散文。
+#: 翻译时本来就该原样保留，不能算成"没翻的英文"。
+EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
+ARXIV_RE = re.compile(
+    r"arxiv\s*:\s*(?:[a-z-]+(?:\.[A-Z]{2})?/)?\d{4}\.?\d{4,5}(?:v\d+)?",
+    re.IGNORECASE,
+)
 CITATION_BRACKET_RE = re.compile(r"\[[^\]]{0,40}\]")
 ACRONYM_FULL_RE = re.compile(r"[A-Z0-9][A-Z0-9\-/&.]{0,23}")
 AUTHOR_YEAR_CITATION_RE = re.compile(
@@ -105,12 +112,20 @@ def _prose_words(text: str) -> list[str]:
 
 
 def is_prose(source: str) -> bool:
-    return len(_prose_words(source)) >= PROSE_WORD_MIN
+    """这一段是不是真的散文。
+
+    判断前先剥掉 URL、DOI、邮箱、缩写和引文标记：一行作者邮箱加主页链接，
+    拆开看有十几个"单词"，但它一句话都没有，不该按散文要求目标语言占比。
+    """
+
+    return len(_prose_words(_protected_stripped(source, ()))) >= PROSE_WORD_MIN
 
 
 def _protected_stripped(text: str, terminology_terms: tuple[str, ...]) -> str:
     value = URL_RE.sub(" ", text or "")
     value = DOI_RE.sub(" ", value)
+    value = EMAIL_RE.sub(" ", value)
+    value = ARXIV_RE.sub(" ", value)
     value = CITATION_BRACKET_RE.sub(" ", value)
     value = ACRONYM_TOKEN_RE.sub(" ", value)
     for term in terminology_terms:

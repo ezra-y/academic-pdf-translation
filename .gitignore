@@ -57,3 +57,6 @@ scratch/
 
 # 审查复现作业目录：由 audit/tools 脚本重建，不入库
 audit/evidence/**/job-*/
+
+# 真实论文原文与候选属于论文内容，受版权保护，只保留审查证据里的对照图
+audit/evidence/real/*.pdf

@@ -44,7 +44,14 @@
   "audit/evidence/before/p0-3-results.json": "53837c07e3ee0ea4a2054652f6c5d0e185bd468175c75bcdc22a1d4d63013fba",
   "audit/evidence/before/repro-paper.pdf": "4af35400390b6cf119d551eff6b757c97a85a2f478deadb949aab5455e97c1d2",
   "audit/evidence/before/reproduction.json": "2c23e776d3201843fe8da82e0065be6341f138fdd9a0d99aeb7e96acd1e19a1d",
-  "benchmarks/results/baseline.json": "f67836a17d6fad7205537d4e132eb0a8c64187f69cb40ac4a0e9493e237f61c0",
-  "benchmarks/results/optimized.json": "1346f6bfb0b12bbdc467271754c7ceaa6849b507684b6087411f01a4ba2bc78a",
-  "benchmarks/results/comparison.md": "a071a95ba014bd41978057c9cf77758198b25c010c73922e5d07c7ae5df75d42"
+  "benchmarks/results/baseline.json": "08ef6362b036f42d46f9941df07fd9e648442e5fe5da77a58236f08642ae71b0",
+  "benchmarks/results/optimized.json": "6d1670d7ba5691c50665ce39eda466a777ba9288d6d914b8101d1666e73c3a6b",
+  "benchmarks/results/comparison.md": "fecc3635fcc228f593abccd051d06e831bd8c4679d346f14c9b59c7fc07a63ad",
+  "audit/evidence/real/build-after.json": "e6a00583bbaf93b3c4a704502f4bc8d6c063925cdc350ef5942d294f51e8cb1b",
+  "audit/evidence/real/comparison-page-1-2.png": "453af494ba16ead95d9becb9a1af1a56559db384ed2b95ef376e0072ef2f0c5d",
+  "audit/evidence/real/comparison-page-3-4.png": "d8339627fff0e38bc90ff95b6232d128b15cce2ec4e6c571d37488a6ad440fa8",
+  "audit/evidence/real/completeness-after.json": "468adf9c1e94e4df378bfd5781c7f4fce6dea2efc92ec14b469e9e09a8f4404f",
+  "audit/evidence/real/completeness-before.json": "8471e5e94250a38f3e1a1963be9e34e46f15459e3fb8e663d92848e7659035ac",
+  "audit/evidence/real/summary.json": "f0f54d938c8097b7842ed1d7a86a79523ff014d11de14e6aab1a9a89fefc1ee6",
+  "audit/evidence/real/translation-sample.json": "917b730b3a9a6f084731797b0d172e894393a75965a0f577f688a7a72348ae11"
 }
