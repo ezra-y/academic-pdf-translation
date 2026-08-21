@@ -29,6 +29,7 @@ Workspace/*
 **/staging/
 **/history/iteration-*/
 **/comparisons/sheets/
+**/review-page-cache/
 **/comparisons/*.pdf
 **/source-analysis.json
 **/translation-batches/

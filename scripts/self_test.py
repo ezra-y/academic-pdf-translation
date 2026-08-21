@@ -2442,6 +2442,98 @@ def _test_retained_region_reconciliation() -> None:
         document.close()
 
 
+def _test_review_page_cache_tracks_visual_change() -> None:
+    """审查图单页缓存：指纹必须与实际像素判断一致，未变的页不得重画。"""
+
+    from make_review_sheet import (
+        _page_fingerprint,
+        _prune_page_cache,
+        _render_page,
+        _render_page_cached,
+    )
+
+    fitz = import_fitz()
+    with tempfile.TemporaryDirectory() as raw_root:
+        root = Path(raw_root)
+        first = root / "first.pdf"
+        second = root / "second.pdf"
+        _make_pdf(
+            first,
+            [
+                ["Page one baseline content."],
+                ["Page two baseline content."],
+            ],
+        )
+        _make_pdf(
+            second,
+            [
+                ["Page one baseline content."],
+                ["Page two has been rewritten."],
+            ],
+        )
+
+        document_a = fitz.open(first)
+        document_b = fitz.open(second)
+        fingerprints_a = [
+            _page_fingerprint(page, 96) for page in document_a
+        ]
+        fingerprints_b = [
+            _page_fingerprint(page, 96) for page in document_b
+        ]
+        changed_by_fingerprint = {
+            index + 1
+            for index, (left, right) in enumerate(
+                zip(fingerprints_a, fingerprints_b)
+            )
+            if left != right
+        }
+        changed_by_pixels = set()
+        for index in range(document_a.page_count):
+            image_a = _render_page(document_a[index], 72)
+            image_b = _render_page(document_b[index], 72)
+            if image_a.tobytes() != image_b.tobytes():
+                changed_by_pixels.add(index + 1)
+            image_a.close()
+            image_b.close()
+        if changed_by_fingerprint != changed_by_pixels:
+            raise AssertionError(
+                "单页指纹与实际像素判断不一致，缓存会让审查图显示过期图像: "
+                f"指纹 {sorted(changed_by_fingerprint)} vs "
+                f"像素 {sorted(changed_by_pixels)}"
+            )
+        if changed_by_pixels != {2}:
+            raise AssertionError("自测夹具应当只有第二页发生变化")
+
+        if _page_fingerprint(document_a[0], 96) == _page_fingerprint(
+            document_a[0],
+            150,
+        ):
+            raise AssertionError("不同 DPI 必须是不同的缓存条目")
+
+        cache_dir = root / "cache"
+        cache_dir.mkdir()
+        used: set[str] = set()
+        image = _render_page_cached(document_a[0], 96, cache_dir, used)
+        image.close()
+        cached_files = list(cache_dir.glob("*.png"))
+        if len(cached_files) != 1:
+            raise AssertionError("单页渲染必须落盘为一个缓存条目")
+        second_image = _render_page_cached(document_a[0], 96, cache_dir, used)
+        second_image.close()
+        if len(list(cache_dir.glob("*.png"))) != 1:
+            raise AssertionError("同一页重复渲染不得产生第二个缓存条目")
+
+        stale = cache_dir / "deadbeef.png"
+        stale.write_bytes(b"stale")
+        if _prune_page_cache(cache_dir, used) != 1:
+            raise AssertionError("清理必须移除本轮未使用的缓存条目")
+        if not cached_files[0].is_file():
+            raise AssertionError("本轮用到的缓存条目不得被清理")
+
+        document_a.close()
+        document_b.close()
+
+
 def _test_expensive_audit_cache_key_ignores_only_fonts() -> None:
     """昂贵审计缓存的前提：换掉 selected_fonts 不改变阶段校验和完整性审计。
 
@@ -3240,6 +3332,7 @@ def run() -> None:
     _test_translation_batches_keep_unit_level_checks()
     _test_typography_search_matches_linear_scan()
     _test_expensive_audit_cache_key_ignores_only_fonts()
+    _test_review_page_cache_tracks_visual_change()
     if not SOURCE_MAPPING_LABEL_PATTERN.fullmatch("原文第 18 页"):
         raise AssertionError("源页映射标签必须可从正文指标中识别并排除")
 
