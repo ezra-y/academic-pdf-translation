@@ -35,6 +35,9 @@ from academic_pdf_translation.render.preserved_region_renderer import (  # noqa:
     MIN_RASTER_DPI,
     PDF_BASE_DPI,
 )
+from academic_pdf_translation.render.table_autobuild import (  # noqa: E402
+    build_table_payload,
+)
 from academic_pdf_translation.render.reference_renderer import (  # noqa: E402
     build_hyphenated_forms,
     build_vocabulary,
@@ -4241,18 +4244,37 @@ def _table_flowables(
             fontSize=table_font_size,
             leading=max(table_font_size * 1.24, table_font_size + 1.6),
         )
+        bold_cells = table.get("bold_cells")
+        bold_font_name = styles["table_header"].fontName
+
+        def _cell_paragraph(row_index: int, col_index: int, cell: str):
+            markup = _markup(cell)
+            if (
+                isinstance(bold_cells, list)
+                and row_index < len(bold_cells)
+                and isinstance(bold_cells[row_index], list)
+                and col_index < len(bold_cells[row_index])
+                and bold_cells[row_index][col_index]
+            ):
+                # 原表用粗体标各列最优值，这是语义不是装饰，必须跟到中文表里。
+                markup = (
+                    f'<font name="{html.escape(bold_font_name, quote=True)}">'
+                    f"{markup}</font>"
+                )
+            return Paragraph(
+                markup,
+                (
+                    table_header_style
+                    if row_index < header_rows
+                    or row_index in emphasis_rows
+                    else table_style
+                ),
+            )
+
         data = [
             [
-                Paragraph(
-                    _markup(cell),
-                    (
-                        table_header_style
-                        if row_index < header_rows
-                        or row_index in emphasis_rows
-                        else table_style
-                    ),
-                )
-                for cell in row
+                _cell_paragraph(row_index, col_index, cell)
+                for col_index, cell in enumerate(row)
             ]
             for row_index, row in enumerate(matrix)
         ]
@@ -6159,7 +6181,14 @@ def _merge_render_plan_preservations(
     elements = load_json(elements_path).get("elements") or []
     unit_texts = _element_unit_texts(job_dir, translation)
     page_sizes: dict[int, tuple[float, float]] = {}
+    table_items: list[dict[str, Any]] = []
+    rebuilt_tables: set[str] = set()
     source_path = job_dir / "source.pdf"
+    translation_units = [
+        unit
+        for unit in translation.get("units", [])
+        if isinstance(unit, dict)
+    ]
     if source_path.is_file():
         # 经计数通道打开：这次读页尺寸也计入性能基线的 PDF 打开次数。
         handle = open_candidate_analysis(source_path, role="source")
@@ -6172,19 +6201,69 @@ def _merge_render_plan_preservations(
                 )
                 for index in range(_doc.page_count)
             }
+            # 计划定为"保留表格区域"的表，先试自动重建成中文结构表：
+            # 网格是几何事实，数字不用翻，文字格的译文从既有单元里收割。
+            # 哪一步没把握就仍走贴图保底。
+            plan_strategies = {
+                str(entry.get("element_id") or ""): str(
+                    entry.get("strategy") or ""
+                )
+                for entry in plan.get("elements", [])
+                if isinstance(entry, dict)
+            }
+            unit_texts_for_captions = _element_unit_texts(job_dir, translation)
+            elements_by_id = {
+                str(element.get("id") or ""): element
+                for element in elements
+                if isinstance(element, dict)
+            }
+            for element in elements:
+                if not isinstance(element, dict):
+                    continue
+                element_id = str(element.get("id") or "")
+                if (
+                    plan_strategies.get(element_id)
+                    != "preserve-table-region-with-translation-key"
+                ):
+                    continue
+                page_number = int(element.get("page") or 0)
+                if not 1 <= page_number <= _doc.page_count:
+                    continue
+                caption = ""
+                for caption_id in (element.get("relations") or {}).get(
+                    "caption", []
+                ):
+                    caption = unit_texts_for_captions.get(
+                        str(caption_id), ""
+                    ).strip()
+                    if not caption:
+                        caption_element = elements_by_id.get(str(caption_id))
+                        if caption_element:
+                            caption = str(
+                                caption_element.get("text_excerpt") or ""
+                            ).strip()
+                    if caption:
+                        break
+                item = build_table_payload(
+                    _doc[page_number - 1],
+                    element,
+                    translation_units,
+                    caption=caption,
+                )
+                if item is not None:
+                    table_items.append(item)
+                    rebuilt_tables.add(element_id)
         finally:
-            handle.close()
+            handle.release()
     bridged = build_preservation_items(
         plan,
         elements,
         unit_texts_by_element=unit_texts,
         page_sizes=page_sizes,
-        units=[
-            unit
-            for unit in translation.get("units", [])
-            if isinstance(unit, dict)
-        ],
+        units=translation_units,
+        skip_elements=rebuilt_tables,
     )
+    bridged.items.extend(table_items)
     merged = (
         merge_into_complex_content(complex_content, bridged)
         if (bridged.items or bridged.skipped)

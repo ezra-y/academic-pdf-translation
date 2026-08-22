@@ -186,6 +186,7 @@ def build_preservation_items(
     unit_texts_by_element: dict[str, str] | None = None,
     page_sizes: dict[int, tuple[float, float]] | None = None,
     units: list[dict[str, Any]] | None = None,
+    skip_elements: set[str] | None = None,
 ) -> BridgeResult:
     """把计划里定到保留级的元素翻成复杂内容条目。
 
@@ -205,6 +206,9 @@ def build_preservation_items(
     result = BridgeResult()
 
     for planned in _planned_preservations(render_plan):
+        if planned.element_id in (skip_elements or set()):
+            # 别处已经用更好的方式（比如结构化中文重建）处理了它。
+            continue
         element = by_id.get(planned.element_id)
         if element is None:
             result.skipped.append(
