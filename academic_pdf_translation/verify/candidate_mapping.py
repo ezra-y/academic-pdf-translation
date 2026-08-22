@@ -31,6 +31,7 @@ from academic_pdf_translation.contracts.models import normalize_bbox
 SCHEMA_VERSION = "1.0"
 
 METHOD_IMAGE_DIGEST = "image-digest"
+METHOD_REGION_PIXELS = "region-pixels"
 METHOD_TEXT_ANCHOR = "text-anchor"
 METHOD_TEXT_SEARCH = "text-search"
 METHOD_DRAWING_BOUND = "drawing-count-lower-bound"
@@ -42,6 +43,17 @@ TEXT_PROBE_CHARS = 24
 #: 文字探针的最短长度。「1 引言」这样的章节标题只有三个字，
 #: 门槛定高了它们就会被当成"找不到"。短探针照查，命中多页时如实报不唯一。
 MIN_TEXT_PROBE_CHARS = 2
+#: 像素指纹的网格边长。16x16 灰度足以认出"是不是同一块"，
+#: 又对缩放和重新编码不敏感。
+FINGERPRINT_GRID = 16
+#: 两块区域算同一块的平均灰度差上限。
+#: 真实样本上：保留下来的区域与原区域差 1.3-3.6，不相干的区域差 20 以上，
+#: 门槛定在中间留足余量。
+MAX_FINGERPRINT_DISTANCE = 8.0
+#: 区域太平（几乎全白）时不做像素比对——两块空白永远长得一样。
+MIN_FINGERPRINT_CONTRAST = 6.0
+#: 计算像素指纹时的渲染倍率。
+FINGERPRINT_SCALE = 2.0
 #: 矢量元素至少要认出这么多个文字锚点，才算定位成功。
 MIN_ANCHOR_HITS = 2
 #: 只靠绘图对象数量下界时的置信度。它证明不了"在"。
@@ -222,6 +234,112 @@ def text_anchors(
     return seen
 
 
+def region_fingerprint(page: Any, rect: Any) -> list[int] | None:
+    """一块区域的灰度指纹。
+
+    保留下来的原文区域在候选里是一张图片：没有文字层，也没有绘图对象，
+    文字锚点和几何数量都看不见它。但**像素还在**——把两边都降采样成
+    一小格灰度图比一比，就知道是不是同一块。
+
+    这不是"相信生成器说它保留了"，是自己去看候选页面上画的是什么。
+    """
+
+    import fitz
+
+    pixmap = page.get_pixmap(
+        matrix=fitz.Matrix(FINGERPRINT_SCALE, FINGERPRINT_SCALE),
+        clip=rect,
+        alpha=False,
+    )
+    pixmap = fitz.Pixmap(fitz.csGRAY, pixmap)
+    width, height, samples = pixmap.width, pixmap.height, pixmap.samples
+    if width < FINGERPRINT_GRID or height < FINGERPRINT_GRID:
+        return None
+    grid: list[int] = []
+    for row in range(FINGERPRINT_GRID):
+        for column in range(FINGERPRINT_GRID):
+            x0 = column * width // FINGERPRINT_GRID
+            x1 = max(x0 + 1, (column + 1) * width // FINGERPRINT_GRID)
+            y0 = row * height // FINGERPRINT_GRID
+            y1 = max(y0 + 1, (row + 1) * height // FINGERPRINT_GRID)
+            total = count = 0
+            for y in range(y0, y1, max(1, (y1 - y0) // 4)):
+                for x in range(x0, x1, max(1, (x1 - x0) // 4)):
+                    total += samples[y * width + x]
+                    count += 1
+            grid.append(total // max(count, 1))
+    return grid
+
+
+def fingerprint_contrast(grid: list[int]) -> float:
+    """指纹的起伏。几乎全白的区域起伏接近 0，比对它没有意义。"""
+
+    if not grid:
+        return 0.0
+    mean = sum(grid) / len(grid)
+    return (sum((value - mean) ** 2 for value in grid) / len(grid)) ** 0.5
+
+
+def fingerprint_distance(first: list[int], second: list[int]) -> float:
+    """两个指纹的平均灰度差。"""
+
+    if not first or len(first) != len(second):
+        return float("inf")
+    return sum(abs(a - b) for a, b in zip(first, second, strict=True)) / len(
+        first
+    )
+
+
+def candidate_image_fingerprints(
+    document: Any,
+) -> list[tuple[int, list[float], list[int]]]:
+    """候选里每张图片所占区域的指纹与落点。"""
+
+    found: list[tuple[int, list[float], list[int]]] = []
+    for index in range(document.page_count):
+        page = document[index]
+        for info in page.get_images(full=True):
+            for rect in page.get_image_rects(info[0]):
+                grid = region_fingerprint(page, rect)
+                if grid is None:
+                    continue
+                found.append(
+                    (index + 1, [rect.x0, rect.y0, rect.x1, rect.y1], grid)
+                )
+    return found
+
+
+def locate_by_pixels(
+    source_document: Any,
+    element: dict[str, Any],
+    fingerprints: list[tuple[int, list[float], list[int]]],
+) -> tuple[list[int], list[float] | None, float]:
+    """按像素指纹找这块原文区域被搬到了候选哪一页。"""
+
+    import fitz
+
+    if not fingerprints:
+        return ([], None, float("inf"))
+    box = normalize_bbox(element.get("bbox"))
+    page_number = int(element.get("page") or 0)
+    if box is None or not 1 <= page_number <= source_document.page_count:
+        return ([], None, float("inf"))
+
+    grid = region_fingerprint(
+        source_document[page_number - 1], fitz.Rect(*box)
+    )
+    if grid is None or fingerprint_contrast(grid) < MIN_FINGERPRINT_CONTRAST:
+        return ([], None, float("inf"))
+
+    best = min(
+        fingerprints, key=lambda item: fingerprint_distance(grid, item[2])
+    )
+    distance = fingerprint_distance(grid, best[2])
+    if distance > MAX_FINGERPRINT_DISTANCE:
+        return ([], None, distance)
+    return ([best[0]], list(best[1]), distance)
+
+
 def _page_texts(document: Any) -> list[str]:
     return [
         normalize_text(document[index].get_text("text"))
@@ -297,6 +415,7 @@ def locate_element(
     page_texts: list[str],
     digests: dict[str, list[tuple[int, list[float]]]],
     drawing_counts: list[int],
+    fingerprints: list[tuple[int, list[float], list[int]]] | None = None,
     element_texts: dict[str, str] | None = None,
 ) -> ElementLocation:
     """定位一个源元素。逐个判据往下试，用上哪个就记哪个。"""
@@ -359,7 +478,23 @@ def locate_element(
             )
             return finish(location)
 
-    # 3. 矢量元素：按区域内的文字锚点认。
+    # 3. 保留下来的原文区域：候选里是一张图片，没有文字层也没有绘图对象，
+    #    文字锚点和几何数量都看不见它。比像素。
+    pages, bbox, distance = locate_by_pixels(
+        source_document, element, list(fingerprints or [])
+    )
+    if pages:
+        location.candidate_pages = pages
+        location.candidate_bbox = bbox
+        location.method = METHOD_REGION_PIXELS
+        location.confidence = EXACT_CONFIDENCE
+        location.evidence = (
+            f"原区域与候选那块图片的灰度指纹平均差 {distance:.1f}，"
+            f"低于 {MAX_FINGERPRINT_DISTANCE:.1f}"
+        )
+        return finish(location)
+
+    # 4. 矢量元素：按区域内的文字锚点认。
     anchors = text_anchors(source_document, element)
     pages, hits = locate_by_anchors(page_texts, anchors)
     if pages:
@@ -371,7 +506,7 @@ def locate_element(
         )
         return finish(location)
 
-    # 4. 只剩绘图对象数量。它只能证明"不在"。
+    # 5. 只剩绘图对象数量。它只能证明"不在"。
     if needed > 0:
         enough = [
             index + 1
@@ -426,6 +561,7 @@ def build_mapping(
     page_texts = _page_texts(candidate_document)
     digests = image_digests(candidate_document)
     drawing_counts = _drawing_counts(candidate_document)
+    fingerprints = candidate_image_fingerprints(candidate_document)
 
     locations = [
         locate_element(
@@ -435,6 +571,7 @@ def build_mapping(
             page_texts=page_texts,
             digests=digests,
             drawing_counts=drawing_counts,
+            fingerprints=fingerprints,
             element_texts=element_texts,
         )
         for element in elements

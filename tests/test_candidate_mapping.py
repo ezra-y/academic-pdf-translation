@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import fitz  # noqa: E402
 import pytest  # noqa: E402
 from academic_pdf_translation.verify.candidate_mapping import (  # noqa: E402
+    MAX_FINGERPRINT_DISTANCE,
     METHOD_IMAGE_DIGEST,
     METHOD_NO_EVIDENCE,
     METHOD_NOT_FOUND,
@@ -24,11 +25,16 @@ from academic_pdf_translation.verify.candidate_mapping import (  # noqa: E402
     CandidateMappingError,
     ElementLocation,
     build_mapping,
+    candidate_image_fingerprints,
     element_texts_from_units,
+    fingerprint_contrast,
+    fingerprint_distance,
     image_digests,
     locate_by_anchors,
+    locate_by_pixels,
     locate_by_text,
     normalize_text,
+    region_fingerprint,
     source_image_digest,
     text_anchors,
     verify_mapping,
@@ -323,3 +329,83 @@ def test_required_but_unlocatable_is_still_reported() -> None:
     )
     problems = verify_mapping(mapping)
     assert any("没有任何可定位的证据" in problem for problem in problems)
+
+
+# --- 像素指纹 ---------------------------------------------------------------
+
+
+def test_a_region_matches_itself() -> None:
+    """同一块区域，指纹差应当接近 0。"""
+
+    source, _, elements, _, _ = _real_job()
+    figures = [
+        item for item in elements if item["type"] == "vector-figure"
+    ]
+    assert figures
+    element = figures[0]
+    page = source[element["page"] - 1]
+    rect = fitz.Rect(*element["bbox"])
+    first = region_fingerprint(page, rect)
+    second = region_fingerprint(page, rect)
+    assert first is not None
+    assert fingerprint_distance(first, second) == 0.0
+
+
+def test_two_different_regions_do_not_match() -> None:
+    source, _, elements, _, _ = _real_job()
+    by_type: dict[str, dict] = {}
+    for item in elements:
+        by_type.setdefault(item["type"], item)
+    first_element = by_type["vector-figure"]
+    second_element = by_type["table"]
+    first = region_fingerprint(
+        source[first_element["page"] - 1], fitz.Rect(*first_element["bbox"])
+    )
+    second = region_fingerprint(
+        source[second_element["page"] - 1], fitz.Rect(*second_element["bbox"])
+    )
+    assert fingerprint_distance(first, second) > MAX_FINGERPRINT_DISTANCE
+
+
+def test_a_blank_region_has_no_contrast() -> None:
+    """两块空白永远长得一样，所以不拿它们比。"""
+
+    document = fitz.open()
+    page = document.new_page(width=200, height=200)
+    grid = region_fingerprint(page, page.rect)
+    document.close()
+    assert grid is not None
+    assert fingerprint_contrast(grid) < 1.0
+
+
+def test_a_flat_region_is_not_matched_by_pixels() -> None:
+    document = fitz.open()
+    document.new_page(width=200, height=200)
+    element = {"id": "e1", "page": 1, "bbox": [10, 10, 190, 190]}
+    pages, bbox, _distance = locate_by_pixels(
+        document, element, [(1, [0, 0, 1, 1], [128] * 256)]
+    )
+    document.close()
+    assert pages == []
+    assert bbox is None
+
+
+def test_a_tiny_region_yields_no_fingerprint() -> None:
+    source, _, _, _, _ = _real_job()
+    grid = region_fingerprint(source[0], fitz.Rect(10, 10, 12, 12))
+    assert grid is None
+
+
+def test_mismatched_fingerprints_are_infinitely_far() -> None:
+    assert fingerprint_distance([], []) == float("inf")
+    assert fingerprint_distance([1, 2], [1]) == float("inf")
+
+
+def test_the_first_candidate_has_fingerprints_for_its_images() -> None:
+    _, candidate, _, _, _ = _real_job()
+    fingerprints = candidate_image_fingerprints(candidate)
+    assert fingerprints
+    for page, bbox, grid in fingerprints:
+        assert page >= 1
+        assert len(bbox) == 4
+        assert len(grid) == 256

@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+import sys
+from pathlib import Path as _Path
+
+# 按 README 的写法直接跑时 sys.path 里没有仓库根，包就 import 不到。
+sys.path.insert(0, str(_Path(__file__).resolve().parent.parent))
+
 import argparse
 import hashlib
 import html
@@ -15,6 +21,18 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
+from academic_pdf_translation.planning.mode_policy import (  # noqa: E402
+    FALLBACK_PRESERVE_ELEMENT_REGION,
+    FALLBACK_PRESERVE_FULL_PAGE,
+)
+from academic_pdf_translation.render.plan_bridge import (  # noqa: E402
+    build_preservation_items,
+    merge_into_complex_content,
+)
+from academic_pdf_translation.render.preserved_region_renderer import (  # noqa: E402
+    MIN_RASTER_DPI,
+    PDF_BASE_DPI,
+)
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
 from reportlab.lib.styles import ParagraphStyle
@@ -36,7 +54,7 @@ from reportlab.platypus import (
     TableStyle,
 )
 
-import perf_trace
+import perf_trace  # noqa: E402
 from _common import (
     SkillError,
     _complex_item_source_pages,
@@ -4643,6 +4661,92 @@ def _localized_image_label_flowables(
     return result
 
 
+#: 保留区域最多占版心高度的这个比例。留一点余地给图题和上下文。
+PRESERVED_REGION_MAX_HEIGHT_RATIO = 0.9
+
+
+def _preserved_source_region_image(
+    source_document: Any,
+    *,
+    page_number: int,
+    bbox: list[float] | None,
+    available_width: float,
+    maximum_height: float,
+    dpi: int = MIN_RASTER_DPI,
+) -> Image:
+    """把原文的一块区域栅格化成一个图片流。
+
+    渲染计划把某个元素定到保留级，意思是"重建这块不可靠"。到了这一步，
+    好看已经不是目标了，**不丢内容**才是。所以这里不重画任何东西，
+    只把原文那一块原样搬过来。
+
+    两条不肯让步的地方：
+
+    - 分辨率不低于 MIN_RASTER_DPI。低于它图里的数字就开始糊，
+      而保留区域的全部意义就是那些数字还能看清。
+    - 不放大。原区域在版面上占多少点就画多少点，放不下才等比缩小；
+      放大不会凭空补出像素，只会把每个像素摊得更大。
+    """
+
+    fitz = import_fitz()
+    page = source_document[page_number - 1]
+    clip = (
+        fitz.Rect(*map(float, bbox))
+        if isinstance(bbox, (list, tuple)) and len(bbox) == 4
+        else page.rect
+    )
+    scale = max(int(dpi), MIN_RASTER_DPI) / PDF_BASE_DPI
+    pixmap = page.get_pixmap(
+        matrix=fitz.Matrix(scale, scale), clip=clip, alpha=False
+    )
+    natural_width = max(float(clip.width), 1.0)
+    natural_height = max(float(clip.height), 1.0)
+    ratio = min(
+        1.0,
+        available_width / natural_width,
+        maximum_height / natural_height,
+    )
+    image = Image(
+        io.BytesIO(pixmap.tobytes("png")),
+        width=natural_width * ratio,
+        height=natural_height * ratio,
+    )
+    image.hAlign = "CENTER"
+    return image
+
+
+def _preserved_region_flowables(
+    item: dict[str, Any],
+    *,
+    source_document: Any,
+    available_width: float,
+    available_height: float,
+) -> list[Flowable]:
+    """渲染计划定到保留级的元素，走这里。"""
+
+    payload = item.get("payload") if isinstance(item.get("payload"), dict) else {}
+    result: list[Flowable] = []
+    for region in payload.get("regions", []):
+        if not isinstance(region, dict):
+            continue
+        page_number = int(region.get("page") or item.get("page") or 0)
+        if not 1 <= page_number <= source_document.page_count:
+            continue
+        result.append(
+            _preserved_source_region_image(
+                source_document,
+                page_number=page_number,
+                bbox=None if region.get("full_page") else region.get("bbox"),
+                available_width=available_width,
+                maximum_height=(
+                    available_height * PRESERVED_REGION_MAX_HEIGHT_RATIO
+                ),
+            )
+        )
+        result.append(Spacer(1, 6))
+    return result
+
+
 def _complex_flowables(
     item: dict[str, Any],
     *,
@@ -4758,6 +4862,16 @@ def _complex_flowables(
                 )
             result.append(Spacer(1, 8))
         return prefix + result
+    if method in {
+        FALLBACK_PRESERVE_ELEMENT_REGION,
+        FALLBACK_PRESERVE_FULL_PAGE,
+    }:
+        return prefix + _preserved_region_flowables(
+            item,
+            source_document=source_document,
+            available_width=available_width,
+            available_height=available_height,
+        )
     if method in {"image-text-localization", "ocr-region-rebuild"}:
         return prefix + _image_flowables(
                 item,
@@ -5854,6 +5968,29 @@ def _adaptive_page_expansion_limit(
     )
 
 
+def _merge_render_plan_preservations(
+    job_dir: Path,
+    complex_content: dict[str, Any],
+) -> dict[str, Any]:
+    """把渲染计划里的保留级决定并进复杂内容。
+
+    没有渲染计划就原样返回——老作业不该因为多了这一步而跑不动。
+    元素清单缺失同理：翻译需要坐标，没有清单就取不到坐标。
+    """
+
+    plan_path = job_dir / "render_plan.json"
+    elements_path = job_dir / "source_elements.json"
+    if not plan_path.is_file() or not elements_path.is_file():
+        return complex_content
+
+    plan = load_json(plan_path)
+    elements = load_json(elements_path).get("elements") or []
+    bridged = build_preservation_items(plan, elements)
+    if not bridged.items and not bridged.skipped:
+        return complex_content
+    return merge_into_complex_content(complex_content, bridged)
+
+
 def _timed_build_candidate(
     job_dir: Path,
     output_pdf: Path,
@@ -5885,6 +6022,11 @@ def _timed_build_candidate(
             "items": [],
         }
     )
+    # 渲染计划里定到保留级的元素，翻成生成器认识的条目再并进来。
+    # 阶段 15 的基准查出：不做这一步，返修算出来的降级生成器根本看不见，
+    # 重建出来的候选与返修前一字不差。
+    complex_content = _merge_render_plan_preservations(job_dir, complex_content)
+
     retained_path = internal_job_path(
         job_dir,
         job["files"]["retained_source"],
