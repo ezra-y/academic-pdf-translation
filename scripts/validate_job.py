@@ -18,6 +18,9 @@ from academic_pdf_translation.contracts.enums import (  # noqa: E402
     QUALITY_MODE_TO_REVIEW_MODE,
     QualityMode,
 )
+from academic_pdf_translation.verify.render_contract import (  # noqa: E402
+    complex_view_is_current,
+)
 
 import perf_trace  # noqa: E402
 from _common import (  # noqa: E402
@@ -655,6 +658,12 @@ def _validate_complex_content_payload(
         return
     if data.get("classification_complete") is not True:
         errors.append("复杂内容载荷尚未完成分类")
+    # 视图是否由当前渲染计划派生。派生视图里，计划就是权威：
+    # 计划补进的保留条目和重建表会让页码多于人工确认页，这不是错。
+    plan_path = job_dir / "render_plan.json"
+    derived_current = plan_path.is_file() and complex_view_is_current(
+        data, sha256_file(plan_path)
+    )
     expected = {
         int(item["page"]): item
         for item in route.get("complex_content", {}).get(
@@ -668,16 +677,33 @@ def _validate_complex_content_payload(
         for item in data.get("items", [])
         if isinstance(item, dict) and isinstance(item.get("page"), int)
     }
-    if set(expected) != set(actual):
+    if derived_current:
+        # 人工确认过的复杂页一页都不能少；计划派生的多出来的页是合法的。
+        missing_pages = set(expected) - set(actual)
+        if missing_pages:
+            errors.append(
+                "确认过的复杂页在派生载荷里缺失: "
+                + "、".join(str(page) for page in sorted(missing_pages))
+            )
+    elif set(expected) != set(actual):
         errors.append("复杂内容载荷页码与确认复杂页不一致")
     for page, route_item in expected.items():
         item = actual.get(page)
         if not item:
             continue
-        if item.get("kind") != route_item.get("kind"):
-            errors.append(f"第 {page} 页复杂内容载荷类型不一致")
-        if item.get("method") != route_item.get("method"):
-            errors.append(f"第 {page} 页复杂内容载荷处理方式不一致")
+        if not derived_current:
+            # 派生视图里 kind/method 由渲染计划决定，与旧确认表不逐字比对；
+            # 非派生（手写）载荷仍按旧规矩逐项对齐。
+            if item.get("kind") != route_item.get("kind"):
+                errors.append(f"第 {page} 页复杂内容载荷类型不一致")
+            if item.get("method") != route_item.get("method"):
+                errors.append(f"第 {page} 页复杂内容载荷处理方式不一致")
+    # 每个条目的内容质量检查对派生与否一视同仁：ready 状态与载荷合法性
+    # 是产出门槛，一条都不放松。
+    for item in data.get("items", []):
+        if not isinstance(item, dict) or not isinstance(item.get("page"), int):
+            continue
+        page = int(item["page"])
         if item.get("status") != "ready":
             errors.append(f"第 {page} 页复杂内容载荷尚未 ready")
             continue

@@ -44,6 +44,9 @@ from academic_pdf_translation.render.reference_renderer import (  # noqa: E402
     normalize_reference_text,
     repair_baked_line_artifacts,
 )
+from academic_pdf_translation.verify.render_contract import (  # noqa: E402
+    derive_complex_view,
+)
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
 from reportlab.lib.styles import ParagraphStyle
@@ -6431,6 +6434,15 @@ def _timed_build_candidate(
     complex_content = _merge_render_plan_preservations(
         job_dir, complex_content, translation
     )
+    # 复杂内容从此是**派生视图**：并完计划立刻写回磁盘并盖上计划哈希。
+    # 预渲染检查对的是这份落盘文件——生成器消化了什么、文件里就是什么，
+    # 旧手写条目数再也不能把一版合法的新计划错误地拦下来。
+    _plan_file = job_dir / "render_plan.json"
+    if _plan_file.is_file():
+        complex_content = derive_complex_view(
+            complex_content, sha256_file(_plan_file)
+        )
+        write_json(complex_path, complex_content)
 
     retained_path = internal_job_path(
         job_dir,

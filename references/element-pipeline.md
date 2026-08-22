@@ -101,12 +101,26 @@ academic_pdf_translation/
 source.pdf
   └─ analysis            → source_elements.json + unit_bindings.json
        └─ planning       → render_plan.json（含降级链）
-            └─ plan_bridge → 并进 complex_content
+            └─ plan_bridge → 并进 complex_content（派生视图，写回磁盘）
                  └─ build_candidate.py → candidate.pdf
                       └─ verify        → 映射 / 对账 / 视觉检查
                            └─ repair   → 重算渲染计划 → 重建（最多一轮）
                                 └─ 再核查 → delivered / handover / blocked
 ```
+
+### 派生视图与迁移
+
+`complex_content.json` 与 `figure_inventory.json` 从此是**自动派生视图**，
+不再手写：
+
+- 生成器每次构建都会把渲染计划并进复杂内容并写回磁盘，戳上
+  `derived_from.render_plan_sha256`；哈希对不上就是旧视图，不作数。
+- `build_render_plan.py` 每次都同步写回程序派生的 `figure_inventory.json`。
+- 旧作业首次用新版本构建时自动升级，无需手动迁移；带手写载荷的旧作业
+  仍按旧规矩逐项校验（`validate_job.py` 按有无派生戳区分）。
+- 元素级对账以 `source_elements.json` + `render_plan.json` +
+  候选映射派生的 `candidate-elements.json` 为准（`verify/render_contract.py`），
+  复杂条目数量只剩视图一致性的辅助角色。
 
 ## 命令用法
 

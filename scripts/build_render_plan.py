@@ -59,7 +59,7 @@ def main() -> int:
     parser.add_argument(
         "--write-figure-inventory",
         action="store_true",
-        help="同时把程序派生的图表清单写回 figure_inventory.json",
+        help="兼容保留：图表清单现在默认自动写回，此开关不再需要",
     )
     args = parser.parse_args()
     job_dir = args.job_dir.resolve()
@@ -77,11 +77,11 @@ def main() -> int:
             inventory, quality_mode, forced_strategies=forced
         )
         path = write_plan(job_dir, plan)
-        if args.write_figure_inventory:
-            write_json(
-                job_dir / "figure_inventory.json",
-                build_figure_inventory(inventory, plan),
-            )
+        # 图表清单是计划的派生视图，默认自动写回——不再手写、不再漂移。
+        write_json(
+            job_dir / "figure_inventory.json",
+            build_figure_inventory(inventory, plan),
+        )
     except (SkillError, OSError, ValueError) as exc:
         print(f"错误: {exc}")
         return 1

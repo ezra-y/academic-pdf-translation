@@ -34,6 +34,10 @@ from academic_pdf_translation.analysis.source_elements import (  # noqa: E402
 from academic_pdf_translation.contracts.migration import (  # noqa: E402
     derive_quality_mode,
 )
+from academic_pdf_translation.delivery.evidence import (  # noqa: E402
+    attempt_dir,
+    read_current_run,
+)
 from academic_pdf_translation.delivery.first_delivery import (  # noqa: E402
     STATUS_BLOCKED,
     STATUS_DELIVERED,
@@ -155,6 +159,51 @@ def make_builder(job_dir: Path, output: Path | None):
     return build
 
 
+def make_resume_builder(delivery_dir: Path):
+    """--resume 用的构建器：不重建，取当前运行的候选原样核查。
+
+    典型用法：第一遍交付停在 WAITING_FOR_VISUAL_REVIEW，评审看完页、
+    录完结果后带 --visual-result 重跑。重建会改变文件字节，让刚录的
+    结果立刻 STALE——所以续跑必须复用同一份候选。
+    """
+
+    def build(round_index: int) -> BuildOutcome:
+        if round_index > 0:
+            raise SkillError("--resume 只核查，不做返修重建")
+        identity = read_current_run(delivery_dir)
+        if identity is None:
+            raise SkillError(
+                "没有 current-run.json；先跑一次完整交付再 --resume"
+            )
+        directory = attempt_dir(
+            delivery_dir, identity.run_id, identity.attempt_id
+        )
+        candidate = directory / "candidate.pdf"
+        if not candidate.is_file():
+            raise SkillError(f"当前运行没有候选副本: {candidate}")
+        if file_sha256(candidate) != identity.candidate_sha256:
+            raise SkillError(
+                "EVIDENCE_STALE: 候选副本与 current-run.json 指纹不一致"
+            )
+        record = {}
+        record_path = (
+            directory / f"round-{identity.attempt_id}-build.json"
+        )
+        if record_path.is_file():
+            record = load_json(record_path)
+        return BuildOutcome(
+            status=str(record.get("status") or "READY_TO_REGISTER"),
+            candidate_path=candidate,
+            issues=list(record.get("issues") or []),
+            candidate_sha256=identity.candidate_sha256,
+            renderer_build_id=identity.renderer_build_id,
+            run_id=identity.run_id,
+            attempt_id=f"attempt-{identity.attempt_id}",
+        )
+
+    return build
+
+
 def make_repair_applier(job_dir: Path):
     """把返修计划落成渲染计划能读的降级指定。"""
 
@@ -200,6 +249,11 @@ def main() -> int:
         help="只核查，不执行那一轮返修",
     )
     parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="不重建，对当前运行的候选直接核查（配合 --visual-result 用）",
+    )
+    parser.add_argument(
         "--visual-result",
         type=Path,
         default=None,
@@ -221,9 +275,15 @@ def main() -> int:
             elements,
             units,
             bindings,
-            build=make_builder(job_dir, args.output),
+            build=(
+                make_resume_builder(delivery_dir)
+                if args.resume
+                else make_builder(job_dir, args.output)
+            ),
             apply_repair=(
-                None if args.no_repair else make_repair_applier(job_dir)
+                None
+                if args.no_repair or args.resume
+                else make_repair_applier(job_dir)
             ),
             output_dir=delivery_dir,
             page_budget=args.page_budget,
@@ -232,6 +292,11 @@ def main() -> int:
                 file_sha256(job_dir / "render_plan.json")
                 if (job_dir / "render_plan.json").is_file()
                 else ""
+            ),
+            render_plan=(
+                load_json(job_dir / "render_plan.json")
+                if (job_dir / "render_plan.json").is_file()
+                else None
             ),
         )
     except (

@@ -49,6 +49,10 @@ from academic_pdf_translation.verify.candidate_mapping import (
     element_texts_from_units,
     verify_mapping,
 )
+from academic_pdf_translation.verify.render_contract import (
+    contract_from_documents,
+    derive_candidate_elements,
+)
 from academic_pdf_translation.verify.repair import (
     MAX_REPAIR_ROUNDS,
     RepairPlan,
@@ -305,9 +309,11 @@ def _bind_attempt(
     directory = attempt_dir(output_dir, run_id, attempt_id)
     directory.mkdir(parents=True, exist_ok=True)
     if outcome.candidate_path is not None and outcome.candidate_path.is_file():
-        import shutil
+        bundled = directory / "candidate.pdf"
+        if outcome.candidate_path.resolve() != bundled.resolve():
+            import shutil
 
-        shutil.copy2(outcome.candidate_path, directory / "candidate.pdf")
+            shutil.copy2(outcome.candidate_path, bundled)
     write_current_run(output_dir, identity)
     result.run_id = run_id
     result.attempt_id = attempt_id
@@ -382,6 +388,39 @@ def _apply_visual_gate(
     return gate
 
 
+def _apply_render_contract(
+    result: DeliveryResult,
+    mapping: Any,
+    elements: list[dict[str, Any]],
+    render_plan: dict[str, Any] | None,
+    evidence_dir: Path,
+    label: str,
+) -> bool:
+    """按元素 ID 对账三份清单，证据落盘。
+
+    候选元素视图由映射派生（没有手写字段）；有渲染计划才做完整对账。
+    返回合同是否通过——没有计划时视为通过（老作业兼容）。
+    """
+
+    candidate_view = derive_candidate_elements(mapping)
+    result.evidence[f"{label}-candidate-elements"] = _write_json(
+        evidence_dir / "candidate-elements.json", candidate_view
+    )
+    if render_plan is None:
+        return True
+    contract = contract_from_documents(
+        {"elements": elements}, render_plan, candidate_view
+    )
+    result.evidence[f"{label}-render-contract"] = _write_json(
+        evidence_dir / "render-contract.json", contract.as_dict()
+    )
+    if not contract.passed:
+        result.problems.extend(
+            f"[render-contract] {problem}" for problem in contract.problems
+        )
+    return contract.passed
+
+
 def run_first_delivery(
     source_path: Path,
     elements: list[dict[str, Any]],
@@ -395,6 +434,7 @@ def run_first_delivery(
     render_pages: bool = True,
     visual_result: VisualReviewResult | None = None,
     render_plan_sha256: str = "",
+    render_plan: dict[str, Any] | None = None,
 ) -> DeliveryResult:
     """跑完首次交付，给出唯一结论。
 
@@ -492,6 +532,9 @@ def run_first_delivery(
             f"{len(first.audit.problems)} 条结构问题",
         )
     )
+    first_contract_ok = _apply_render_contract(
+        result, first.mapping, elements, render_plan, evidence_dir, "round-1"
+    )
     first_gate = _apply_visual_gate(
         result, first.review, visual_result, candidate_path, label="round-1",
         output_dir=evidence_dir,
@@ -505,6 +548,10 @@ def run_first_delivery(
             return result
         if not first_gate.passed:
             # 计划不是结果。该看的页没看完（或看出了问题），不许交付。
+            result.status = STATUS_HANDOVER
+            return result
+        if not first_contract_ok:
+            # 元素级合同没对上：有必需元素没计划、被计两次或非法省略。
             result.status = STATUS_HANDOVER
             return result
         result.status = STATUS_DELIVERED
@@ -633,6 +680,9 @@ def run_first_delivery(
 
     # 返修产生的是**新候选**，round-1 的视觉结果对它天然无效——
     # 门槛按新候选的哈希重新判定（旧结果会得到 STALE）。
+    second_contract_ok = _apply_render_contract(
+        result, second.mapping, elements, render_plan, evidence_dir, "round-2"
+    )
     second_gate = _apply_visual_gate(
         result, second.review, visual_result, repaired_path, label="round-2",
         output_dir=evidence_dir,
@@ -654,7 +704,9 @@ def run_first_delivery(
         # 剩下的矛盾交给人；视觉门没过同样不许交付。
         result.status = (
             STATUS_DELIVERED
-            if not rebuild_needs_repair and second_gate.passed
+            if not rebuild_needs_repair
+            and second_gate.passed
+            and second_contract_ok
             else STATUS_HANDOVER
         )
     else:

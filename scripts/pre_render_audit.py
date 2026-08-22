@@ -1,15 +1,25 @@
 from __future__ import annotations
 
-import argparse
-import hashlib
-import json
-import re
+import sys
 from pathlib import Path
-from typing import Any
 
-from reportlab.pdfbase.ttfonts import TTFont
+# 按 README 的写法 `python3 scripts/X.py` 运行时，sys.path 里只有 scripts/，
+# 没有仓库根，academic_pdf_translation 包就 import 不到。先把根加进去。
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import perf_trace
+import argparse  # noqa: E402
+import hashlib  # noqa: E402
+import json  # noqa: E402
+import re  # noqa: E402
+from typing import Any  # noqa: E402
+
+from academic_pdf_translation.verify.render_contract import (  # noqa: E402
+    complex_view_is_current,
+    planning_issues,
+)
+from reportlab.pdfbase.ttfonts import TTFont  # noqa: E402
+
+import perf_trace  # noqa: E402
 from _common import (
     SkillError,
     internal_job_path,
@@ -331,6 +341,8 @@ def _layout_contract_issues(
     retained: dict[str, Any],
     target_language: str,
     selected_fonts: Any,
+    *,
+    complex_view_current: bool = True,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     issues: list[dict[str, Any]] = []
     if layout_log.get("renderer") == "academic-pdf-layout":
@@ -418,18 +430,35 @@ def _layout_contract_issues(
         or contract.get("complex_item_count") != len(complex_ids)
         or contract.get("complex_item_ids_sha256") != expected_complex_hash
     ):
-        issues.append(
-            {
-                "code": "RENDER_COMPLEX_CONTENT_NOT_CONSUMED",
-                "message": (
-                    "排版器没有证明全部复杂页载荷已真正进入候选版式。"
-                ),
-                "expected_complex_item_count": len(complex_ids),
-                "actual_complex_item_count": contract.get(
-                    "complex_item_count"
-                ),
-            }
-        )
+        if complex_view_current:
+            issues.append(
+                {
+                    "code": "RENDER_COMPLEX_CONTENT_NOT_CONSUMED",
+                    "message": (
+                        "排版器没有证明全部复杂页载荷已真正进入候选版式。"
+                    ),
+                    "expected_complex_item_count": len(complex_ids),
+                    "actual_complex_item_count": contract.get(
+                        "complex_item_count"
+                    ),
+                }
+            )
+        else:
+            # 视图不是当前计划派生的：错在视图旧了，不在排版器。
+            # 旧手写条目数不许再顶着"没消化"的名义拦一版合法的新计划。
+            issues.append(
+                {
+                    "code": "COMPLEX_CONTENT_VIEW_STALE",
+                    "message": (
+                        "complex_content.json 不是由当前渲染计划派生的视图，"
+                        "重新构建候选即可自动再生；它的条目数不作为消化判据。"
+                    ),
+                    "view_complex_item_count": len(complex_ids),
+                    "generator_complex_item_count": contract.get(
+                        "complex_item_count"
+                    ),
+                }
+            )
     if contract.get("heading_checks_performed") is not True:
         issues.append(
             {
@@ -625,6 +654,20 @@ def _audit_context(job_dir: Path) -> dict[str, Any]:
             }
         )
 
+    # 元素级合同：必需元素每个都要有处理计划。这是核心判据，
+    # 复杂条目"数量"只剩视图一致性的辅助角色。
+    element_plan_issues: list[dict[str, Any]] = []
+    complex_view_current = True
+    plan_path = job_dir / "render_plan.json"
+    elements_path = job_dir / "source_elements.json"
+    if plan_path.is_file() and elements_path.is_file():
+        element_plan_issues = planning_issues(
+            load_json(elements_path), load_json(plan_path)
+        )
+        complex_view_current = complex_view_is_current(
+            complex_content, sha256_file(plan_path)
+        )
+
     context = {
         "job": job,
         "files": files,
@@ -645,6 +688,8 @@ def _audit_context(job_dir: Path) -> dict[str, Any]:
         "text_issues": text_issues,
         "inventory_issues": inventory_issues,
         "completeness_issues": completeness_issues,
+        "element_plan_issues": element_plan_issues,
+        "complex_view_current": complex_view_current,
     }
     return context
 
@@ -742,7 +787,9 @@ def build_render_contract_audit(job_dir: Path) -> dict[str, Any]:
         retained,
         str(current_job["translation"]["target_language"]),
         current_job.get("quality", {}).get("selected_fonts"),
+        complex_view_current=context["complex_view_current"],
     )
+    issues = [*context["element_plan_issues"], *issues]
     report = {
         "schema_version": "1.0",
         "generated_at": utc_now(),
@@ -783,10 +830,12 @@ def build_pre_render_audit(job_dir: Path) -> dict[str, Any]:
         retained,
         str(current_job["translation"]["target_language"]),
         current_job.get("quality", {}).get("selected_fonts"),
+        complex_view_current=context["complex_view_current"],
     )
     issues: list[dict[str, Any]] = [
         *context["validation_issues"],
         *context["text_issues"],
+        *context["element_plan_issues"],
         *contract_issues,
         *context["inventory_issues"],
         *context["completeness_issues"],
