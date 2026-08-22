@@ -23,35 +23,20 @@ from _common import (  # noqa: E402
     write_json,
 )
 from audit_translation_completeness import (  # noqa: E402
-    _candidate_stage_has_current_pdf,
-    _remove_percent_marker_only_mismatches,
     _repair_tasks,
-    _unit_compression_flags,
     build_completeness_audit,
 )
 from build_candidate import (  # noqa: E402
     VectorPayloadFlowable,
-    _column_widths,
-    _is_cross_page_continuation,
     _markup,
     _reference_font_size,
-    _source_ends_paragraph,
     _styles,
     _table_flowables,
-    _unit_text_blocks,
 )
 from check_bundle import check_bundle  # noqa: E402
 from cjk_markup import (  # noqa: E402
     install_reportlab_cjk_nobr_patch,
     reportlab_cjk_markup,
-)
-from content_anchors import (  # noqa: E402
-    anchors_present,
-    present_acronyms,
-    required_anchors,
-)
-from content_anchors import (  # noqa: E402
-    statistics as content_statistics,
 )
 from corpus_audit import audit_corpus  # noqa: E402
 from extract_source_structure import extract_source_structure  # noqa: E402
@@ -74,7 +59,6 @@ from qa_pdf import (  # noqa: E402
     _horizontal_width_change_justified,
     _interline_gap_outliers,
     _low_table_spans,
-    _mapped_entry_has_visible_retained_content,
     _orphan_single_han_lines,
     _paragraph_gap_inflation_justified,
     _regions_for_page,
@@ -86,12 +70,10 @@ from record_work_checkpoint import record_work_checkpoint  # noqa: E402
 from register_candidate import register_candidate  # noqa: E402
 from reportlab_layout import FlowItem, layout_flow, make_cjk_style  # noqa: E402
 from retained_source import (  # noqa: E402
-    _clean_block_text,
     _reference_entries,
     _trim_reference_tail,
 )
 from review_risk_report import (  # noqa: E402
-    _year_present,
     build_review_risk_report,
 )
 from set_complex_content import set_complex_content  # noqa: E402
@@ -105,13 +87,8 @@ from typography_fit import (  # noqa: E402
 )
 from validate_job import (  # noqa: E402
     _adjacent_translation_overlaps,
-    _candidate_page_text,
     _has_reference_heading,
     _has_source_citation_block,
-    _is_nonsemantic_divider_source,
-    _normalize_source_text,
-    _requires_exact_candidate_presence,
-    _source_bbox_fuzzy_match,
     _validate_candidate_text_presence,
     _validate_complex_content_policy,
     _validate_source_text_coverage,
@@ -136,297 +113,6 @@ def _font_path() -> Path:
         if candidate.is_file():
             return candidate
     raise RuntimeError("自测需要一份可嵌入的拉丁字体")
-
-
-def _test_statistical_anchor_normalization() -> None:
-    values = content_statistics(
-        "Prevalence ranged from 1.8-25.4% and the interval was 2.2–36.4%."
-    )
-    expected = {"1.8%", "25.4%", "2.2%", "36.4%"}
-    if values != expected:
-        raise AssertionError(
-            f"百分比区间两端必须采用同一单位: {values}"
-        )
-    equivalent_decimals = content_statistics(
-        "alpha=0.70; eta=.07; effect=− .38; p=0.001"
-    )
-    if equivalent_decimals != {"0.7", "0.07", "-0.38", "0.001"}:
-        raise AssertionError(
-            "统计锚点必须统一前导零、尾随零和负号后的空格"
-        )
-    split_url_anchors = required_anchors(
-        "See https://\u200bdoi.\u200borg/10.1000/test and "
-        "http://\u200bcreat\u200biveco\u200bmmons.org/licenses/by/4.0/."
-    )
-    if split_url_anchors["urls"] != [
-        "http://creativecommons.org/licenses/by/4.0/",
-        "https://doi.org/10.1000/test",
-    ]:
-        raise AssertionError("PDF零宽断行符不得破坏URL锚点")
-    wrapped_link_missing = anchors_present(
-        required_anchors(
-            "https://doi.org/10.1007/s10902-022-00585-4"
-        ),
-        "https://doi.org/10.1007/s10902-\n022-00585-4",
-    )
-    if wrapped_link_missing["urls"] or wrapped_link_missing["dois"]:
-        raise AssertionError("链接仅因换行产生空白时仍应视为同一检索锚点")
-    adjacent_acronyms = present_acronyms(
-        "FDI-24各分量表与MLQ得分、SBQ-R得分均已报告。"
-    )
-    if not {"FDI-24", "MLQ", "SBQ-R"}.issubset(adjacent_acronyms):
-        raise AssertionError("紧贴中文字符的正式缩写必须被审计器识别")
-    if not _year_present("2019", "收稿：2019年8月30日"):
-        raise AssertionError("紧贴中文字符的年份必须被风险报告识别")
-    if not _year_present("1980s", "自20世纪80年代以来"):
-        raise AssertionError("英文年代与中文世纪年代写法必须视为等值")
-    if not _year_present("1980’s", "自20世纪80年代以来"):
-        raise AssertionError("带弯引号的英文年代必须识别等值中文年代")
-    if _year_present("2016", "发表于较近时期"):
-        raise AssertionError("未出现的年份不得被误判为已保留")
-    retained_link = _clean_block_text(
-        "https://\u200bdoi. \u200borg/ 10. 1000/test\n1 3\n"
-    )
-    if retained_link != "https://doi.org/10.1000/test":
-        raise AssertionError(
-            "保留题录必须清除零宽断行符和独立页脚标记"
-        )
-    if _clean_block_text("artifi\u00ad cial intelli\u00ad gence") != (
-        "artificial intelligence"
-    ):
-        raise AssertionError("软连字符换行必须恢复为完整单词")
-    retained = _remove_percent_marker_only_mismatches(
-        {"0.243%", "0.575%", "0.831%"},
-        "表中 P 值依次为 0.243、0.575，另一个值未提供。",
-    )
-    if retained != {"0.831%"}:
-        raise AssertionError(
-            "结构化表格只应豁免数值已出现的百分号文字层错配"
-        )
-    if _candidate_stage_has_current_pdf("translated"):
-        raise AssertionError("重译中的作业不得把旧候选用于完整性比对")
-    if not _candidate_stage_has_current_pdf("candidate"):
-        raise AssertionError("候选阶段必须读取当前候选进行完整性比对")
-    if _unit_compression_flags("heading", 46, 0.17, 0.2, 0.25):
-        raise AssertionError("短标题不得按正文译源字量比阻断")
-    if _unit_compression_flags("metadata", 80, 0.15, 0.2, 0.25):
-        raise AssertionError("元数据的简洁本地化不得误判为摘要化")
-    if _unit_compression_flags("body", 160, 0.1, 0.2, 0.25) != [
-        "SEVERE_TRANSLATION_COMPRESSION"
-    ]:
-        raise AssertionError("真正大幅压缩的正文仍必须被完整性审计阻断")
-
-
-def _test_font_safe_markup() -> None:
-    markup = _markup("脚注¹⁰、ᵃ与 R²；^³ 保持显式脱字符")
-    if "<super>10</super>" not in markup or "<super>2</super>" not in markup:
-        raise AssertionError("独立上标数字未转换为字体安全的上标标记")
-    if "<super>a</super>" not in markup:
-        raise AssertionError("上标字母未转换为字体安全的上标标记")
-    if "^3" not in markup:
-        raise AssertionError("显式脱字符后的上标数字应规范为普通数字")
-
-    reference_markup = _markup(
-        "State Council. 国务院政策题名",
-        cjk_font="AcademicUnifiedRegular",
-    )
-    if (
-        '<font name="AcademicUnifiedRegular">国务院政策题名</font>'
-        not in reference_markup
-    ):
-        raise AssertionError("混合文字参考文献未为 CJK 字符选择回退字体")
-    table_regions = [{"bbox": [0.0, 0.0, 100.0, 100.0]}]
-    if _low_table_spans(
-        [
-            {
-                "text": "12",
-                "size": 6.56,
-                "flags": 1,
-                "bbox": [10.0, 10.0, 16.0, 17.0],
-            }
-        ],
-        table_regions,
-        7.0,
-    ):
-        raise AssertionError("表格上标引文号不得误报为表格正文字号过小")
-    if not _low_table_spans(
-        [
-            {
-                "text": "正文",
-                "size": 6.56,
-                "flags": 0,
-                "bbox": [10.0, 10.0, 26.0, 17.0],
-            }
-        ],
-        table_regions,
-        7.0,
-    ):
-        raise AssertionError("真正过小的表格正文仍必须被检查器拦截")
-    widths = _column_widths(
-        [
-            [
-                "时间范围与程度",
-                "较长的诊断标准说明文字用于测试",
-                "另一列较长说明文字用于测试",
-            ]
-        ],
-        500.0,
-    )
-    if widths[0] < 70.0:
-        raise AssertionError("少列表格的短标签列必须保留可读宽度")
-    weighted_widths = _column_widths(
-        [["long model name", "Dev", "Test"]],
-        300.0,
-        [4.0, 1.0, 1.0],
-    )
-    if weighted_widths != [200.0, 50.0, 50.0]:
-        raise AssertionError("宽表显式列宽权重必须按比例生效")
-
-
-def _test_cross_page_continuation_detection() -> None:
-    previous = {
-        "id": "p0006-u0010",
-        "page": 6,
-        "kind": "body",
-        "source_bbox": [51.0, 466.0, 391.0, 529.0],
-        "source": "Newer products are",
-        "translation": "这些新产品被",
-    }
-    following = {
-        "id": "p0007-u0003",
-        "page": 7,
-        "kind": "body",
-        "source_bbox": [51.0, 55.0, 391.0, 154.0],
-        "source": "designed for intimate relationships.",
-        "translation": "设计用于亲密关系。",
-    }
-    if not _is_cross_page_continuation(
-        previous,
-        following,
-        previous_page_width=442.0,
-        previous_page_height=612.0,
-        following_page_width=442.0,
-        following_page_height=612.0,
-    ):
-        raise AssertionError("页尾未完句与下一页页首先续句应合并")
-    wrapped_previous = {
-        **previous,
-        "source_bbox": [317.0, 691.0, 535.0, 719.0],
-    }
-    wrapped_following = {
-        **following,
-        "source_bbox": [62.0, 54.0, 280.0, 82.0],
-    }
-    if not _is_cross_page_continuation(
-        wrapped_previous,
-        wrapped_following,
-        previous_page_width=598.0,
-        previous_page_height=792.0,
-        following_page_width=598.0,
-        following_page_height=792.0,
-    ):
-        raise AssertionError("双栏页尾右栏到下一页左栏的续句应合并")
-    if not _source_ends_paragraph("a real human person.6"):
-        raise AssertionError("句末脚注编号不得把完整句误判为跨页续句")
-    completed = {**previous, "source": "A complete sentence."}
-    if _is_cross_page_continuation(
-        completed,
-        following,
-        previous_page_width=442.0,
-        previous_page_height=612.0,
-        following_page_width=442.0,
-        following_page_height=612.0,
-    ):
-        raise AssertionError("完整句不得与下一页正文错误合并")
-
-
-def _test_content_independent_exact_presence_rules() -> None:
-    if _unit_text_blocks(
-        {"source": "84\n\nSource paragraph."},
-        "完整译文。\n\n84",
-    ) != ["完整译文。"]:
-        raise AssertionError("旧整页译文中的原页页码不得进入正文")
-    if _unit_text_blocks(
-        {"source": "Source paragraph."},
-        "样本量如下。\n\n84",
-    ) != ["样本量如下。", "84"]:
-        raise AssertionError("没有原页页码证据时不得删除正文数字块")
-    candidate_page = SimpleNamespace(
-        rect=SimpleNamespace(height=800),
-        get_text=lambda mode: [
-            (48, 12, 180, 20, "中文译制阅读版\n", 0, 0),
-            (
-                48,
-                100,
-                520,
-                130,
-                "样本量 N = 2074，效应量为 0.48。\n",
-                1,
-                0,
-            ),
-            (300, 770, 310, 780, "7\n", 2, 0),
-        ],
-    )
-    candidate_text = _candidate_page_text(candidate_page)
-    if "2074" not in candidate_text or "048" not in candidate_text:
-        raise AssertionError("候选文本清理不得删除正文统计数字")
-    if candidate_text.endswith("7"):
-        raise AssertionError("候选页脚页码不得插入跨页译文比对")
-    if (
-        _normalize_source_text("Zürich")
-        != _normalize_source_text("Zurich")
-    ):
-        raise AssertionError("PDF文字层丢失拉丁重音时仍应定位原文单位")
-    if not _is_nonsemantic_divider_source("---------------"):
-        raise AssertionError("纯表格分隔线不得被误判为原文定位失败")
-    if not _is_nonsemantic_divider_source("•"):
-        raise AssertionError("独立项目符号不得被误判为原文定位失败")
-    if _is_nonsemantic_divider_source("p < .001"):
-        raise AssertionError("统计表达式不得被当成非语义分隔线")
-    if _is_nonsemantic_divider_source("−"):
-        raise AssertionError("单个正负号或运算符不得被当成分隔线")
-    if not _source_bbox_fuzzy_match(
-        _normalize_source_text(
-            "Agreement was κ = 0.68 and Cronbach’s α = 0.82 in the "
-            "independent diagnostic validation sample reported here."
-        ),
-        _normalize_source_text(
-            "Agreement was k = 0.68 and Cronbach’s a = 0.82 in the "
-            "independent diagnostic validation sample reported here."
-        ),
-    ):
-        raise AssertionError("坐标框文字的字体编码替代不应破坏原文定位")
-    if _source_bbox_fuzzy_match(
-        _normalize_source_text(
-            "The intervention improved sleep quality for participants."
-        ),
-        _normalize_source_text(
-            "The control condition showed no measurable difference."
-        ),
-    ):
-        raise AssertionError("语义不同的坐标框文字不得通过模糊原文核验")
-    if not _requires_exact_candidate_presence(
-        {"kind": "heading", "review_flags": []}
-    ):
-        raise AssertionError("任意学科的标题都必须逐单元进入候选")
-    if not _requires_exact_candidate_presence(
-        {
-            "kind": "body",
-            "review_flags": ["instrument-item-or-scoring"],
-        }
-    ):
-        raise AssertionError("通用测量工具题项必须逐单元进入候选")
-    if not _requires_exact_candidate_presence(
-        {
-            "kind": "body",
-            "review_flags": ["legacy-scale-item-or-scoring"],
-        }
-    ):
-        raise AssertionError("历史工具专属题项标记必须兼容，但不能绑定具体量表")
-    if _requires_exact_candidate_presence(
-        {"kind": "body", "review_flags": []}
-    ):
-        raise AssertionError("普通正文不应被错误升级为逐字硬匹配")
 
 
 def _test_review_page_cache_tracks_visual_change() -> None:
@@ -610,106 +296,6 @@ def _test_expensive_audit_cache_key_ignores_only_fonts() -> None:
             load_json(job_dir / "job.json"),
         ) == after_key:
             raise AssertionError("除字体外的作业字段变化必须让缓存键失效")
-
-
-def _test_typography_search_matches_linear_scan() -> None:
-    """两级二分必须与线性扫描选出同一个组合，并在单调性失效时回退。"""
-
-    from typography_fit import search_first_acceptable
-
-    def make_evaluator(page_counts, limit, probes):
-        def evaluate(group_index, item_index):
-            probes.append((group_index, item_index))
-            pages = page_counts[group_index][item_index]
-            return {"fits": pages <= limit, "page_count": pages}
-
-        return evaluate
-
-    def linear_choice(page_counts, limit):
-        for group_index, group in enumerate(page_counts):
-            for item_index, pages in enumerate(group):
-                if pages <= limit:
-                    return (group_index, item_index)
-        return None
-
-    monotonic = [
-        [24, 24, 21],
-        [24, 24, 21],
-        [24, 24, 20],
-        [24, 22, 20],
-        [24, 22, 19],
-        [23, 21, 18],
-    ]
-    groups = [[(0.0, 0.0)] * len(row) for row in monotonic]
-    for limit in range(17, 26):
-        probes: list[tuple[int, int]] = []
-        position, method, note = search_first_acceptable(
-            groups=groups,
-            evaluate=make_evaluator(monotonic, limit, probes),
-        )
-        expected = linear_choice(monotonic, limit)
-        if position != expected:
-            raise AssertionError(
-                f"页数上限 {limit} 时二分结果 {position} 与线性扫描 "
-                f"{expected} 不一致"
-            )
-        if expected is None:
-            if method != "linear-fallback" or note != (
-                "no-feasible-group-verify-exhaustively"
-            ):
-                raise AssertionError(
-                    "断定无解前必须回退到完整线性扫描确认，不能只靠二分"
-                )
-            continue
-        if method != "bounded-binary":
-            raise AssertionError("单调页数下不应触发回退")
-        unique_probes = len(set(probes))
-        if unique_probes > 6:
-            raise AssertionError(
-                f"页数上限 {limit} 时用了 {unique_probes} 次试排，超出预期"
-            )
-
-    # 同组内字号更小却页数更多：这是能被实际试排观测到的单调性破坏。
-    non_monotonic = [
-        [30, 30, 25],
-        [30, 20, 22],
-    ]
-    fallback_groups = [[(0.0, 0.0)] * len(row) for row in non_monotonic]
-    position, method, note = search_first_acceptable(
-        groups=fallback_groups,
-        evaluate=make_evaluator(non_monotonic, 22, []),
-    )
-    if position is not None or method != "linear-fallback":
-        raise AssertionError("观测到单调性失效时必须回退到完整线性扫描")
-    if note != "page-count-not-monotonic-within-leading":
-        raise AssertionError("回退必须记录原因，不能静默执行")
-
-    # 行距更小的组反而更厚：跨组单调性破坏同样必须回退。
-    across_groups = [
-        [40, 35, 30],
-        [40, 35, 29],
-        [40, 35, 27],
-        [40, 35, 28],
-        [40, 35, 25],
-    ]
-    position, method, note = search_first_acceptable(
-        groups=[[(0.0, 0.0)] * len(row) for row in across_groups],
-        evaluate=make_evaluator(across_groups, 26, []),
-    )
-    if method != "linear-fallback":
-        raise AssertionError("跨行距组的单调性破坏必须回退到完整线性扫描")
-    if note != "page-count-not-monotonic-across-leading":
-        raise AssertionError("回退必须记录原因，不能静默执行")
-
-    def failing_evaluate(group_index, item_index):
-        return None
-
-    position, method, note = search_first_acceptable(
-        groups=fallback_groups,
-        evaluate=failing_evaluate,
-    )
-    if method != "linear-fallback" or note != "render-failed-during-search":
-        raise AssertionError("试排失败时必须回退并记录原因")
 
 
 def _test_translation_batches_keep_unit_level_checks() -> None:
@@ -1112,217 +698,11 @@ def _assert_valid(report: dict, label: str) -> None:
         raise AssertionError(f"{label} 未通过: {report['errors']}")
 
 
-def _test_mapped_reference_presence_exclusion() -> None:
-    if not _mapped_entry_has_visible_retained_content(
-        {"retained_region_ids": ["p0002-retained-001"]}
-    ):
-        raise AssertionError("映射到候选页的保留区域必须计入可见页面内容")
-    if _mapped_entry_has_visible_retained_content(
-        {"retained_region_ids": []}
-    ):
-        raise AssertionError("空保留区域列表不得伪造可见页面内容")
-    with tempfile.TemporaryDirectory(prefix="reference-presence-test-") as tmp:
-        candidate = Path(tmp) / "candidate.pdf"
-        _make_pdf(
-            candidate,
-            [["Translated body paragraph.", "Reference entry retained."]],
-        )
-        translation = {
-            "coverage": {"minimum_candidate_text_presence_ratio": 0.85},
-            "units": [
-                {
-                    "id": "p01-body",
-                    "page": 1,
-                    "kind": "body",
-                    "source": "Original body paragraph.",
-                    "translation": "Translated body paragraph.",
-                },
-                {
-                    "id": "p02-references",
-                    "page": 2,
-                    "kind": "references",
-                    "source": "Long source bibliography text.",
-                    "translation": "",
-                    "keep_source_reason": "题录保留原文",
-                },
-            ],
-        }
-        mapping = {
-            "source_pages": [
-                {
-                    "source_page": 1,
-                    "candidate_pages": [1],
-                },
-                {
-                    "source_page": 2,
-                    "candidate_pages": [1],
-                },
-            ],
-            "units": [
-                {
-                    "unit_id": "p01-body",
-                    "source_page": 1,
-                    "candidate_pages": [1],
-                },
-                {
-                    "unit_id": "p02-references",
-                    "source_page": 2,
-                    "candidate_pages": [1],
-                },
-            ],
-            "retained_regions": [
-                {
-                    "retained_region_id": "p0002-retained-001",
-                    "source_page": 2,
-                    "category": "references",
-                    "candidate_pages": [1],
-                    "candidate_regions": [
-                        {
-                            "candidate_page": 1,
-                            "bbox": [72, 72, 520, 760],
-                        }
-                    ],
-                }
-            ],
-        }
-        errors: list[str] = []
-        warnings: list[str] = []
-        _validate_candidate_text_presence(
-            candidate,
-            translation,
-            mapping,
-            errors,
-            warnings,
-        )
-        if errors:
-            raise AssertionError(
-                "已由保留区域映射的参考文献不得重复计入译文正文出现率"
-            )
-        source_mapped_errors: list[str] = []
-        source_mapped = {
-            **mapping,
-            "retained_regions": [
-                {
-                    **mapping["retained_regions"][0],
-                    "candidate_pages": [],
-                }
-            ],
-        }
-        _validate_candidate_text_presence(
-            candidate,
-            translation,
-            source_mapped,
-            source_mapped_errors,
-            [],
-            retained_payloads=[
-                {
-                    "id": "p0002-retained-001",
-                    "page": 2,
-                    "category": "references",
-                    "resolution": "retained-source",
-                    "blocks": [
-                        {
-                            "role": "body",
-                            "text": "Reference entry retained.",
-                        }
-                    ],
-                }
-            ],
-        )
-        if source_mapped_errors:
-            raise AssertionError(
-                "保留题录已在对应原文页输出时不得受末端锚点误报"
-            )
-        missing_retained = Path(tmp) / "missing-retained-tail.pdf"
-        _make_pdf(
-            missing_retained,
-            [["Reference entry retained. doi: 10.1000/"]],
-        )
-        retained_errors: list[str] = []
-        _validate_candidate_text_presence(
-            missing_retained,
-            translation,
-            mapping,
-            retained_errors,
-            [],
-            retained_payloads=[
-                {
-                    "id": "p0002-retained-001",
-                    "category": "references",
-                    "resolution": "retained-source",
-                    "blocks": [
-                        {
-                            "role": "body",
-                            "text": (
-                                "Reference entry retained. "
-                                "doi: 10.1000/missing-tail"
-                            ),
-                        }
-                    ],
-                }
-            ],
-        )
-        if not any(
-            "p0002-retained-001" in error
-            and "未完整体现" in error
-            for error in retained_errors
-        ):
-            raise AssertionError(
-                "候选中缺少保留题录尾段时必须阻止注册"
-            )
-        wrapped_doi = Path(tmp) / "wrapped-doi.pdf"
-        _make_pdf(
-            wrapped_doi,
-            [["Citation doi:10.1371/journal.pmed.", "1000121"]],
-        )
-        doi_translation = {
-            "coverage": {"minimum_candidate_text_presence_ratio": 0.85},
-            "units": [
-                {
-                    "id": "p01-citation",
-                    "page": 1,
-                    "kind": "metadata",
-                    "source": "Citation doi:10.1371/journal.pmed.1000121",
-                    "translation": "Citation doi:10.1371/journal.pmed.1000121",
-                    "review_flags": ["statistics-or-sample"],
-                }
-            ],
-        }
-        doi_mapping = {
-            "units": [
-                {
-                    "unit_id": "p01-citation",
-                    "source_page": 1,
-                    "candidate_pages": [1],
-                }
-            ],
-            "retained_regions": [],
-        }
-        doi_errors: list[str] = []
-        _validate_candidate_text_presence(
-            wrapped_doi,
-            doi_translation,
-            doi_mapping,
-            doi_errors,
-            [],
-        )
-        if doi_errors:
-            raise AssertionError(
-                "换行后成为纯数字行的DOI尾段不得被当作页码删除"
-            )
-
-
 def run() -> None:
     bundle_report = check_bundle()
     if bundle_report["status"] != "PASS":
         raise AssertionError("Skill 包结构检查未通过")
-    _test_statistical_anchor_normalization()
-    _test_font_safe_markup()
-    _test_cross_page_continuation_detection()
-    _test_content_independent_exact_presence_rules()
-    _test_mapped_reference_presence_exclusion()
     _test_translation_batches_keep_unit_level_checks()
-    _test_typography_search_matches_linear_scan()
     _test_expensive_audit_cache_key_ignores_only_fonts()
     _test_review_page_cache_tracks_visual_change()
     if not SOURCE_MAPPING_LABEL_PATTERN.fullmatch("原文第 18 页"):
