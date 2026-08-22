@@ -291,11 +291,20 @@ def build_preservation_items(
                 cy = (ubox[1] + ubox[3]) / 2
                 if not (rx0 <= cx <= rx1 and ry0 <= cy <= ry1):
                     continue
-                if _is_formula_fragment(unit):
+                # 抑制优先看结构：绑定到这个公式元素的单元必是它的碎片。
+                # 文本启发式只给没有绑定信息的旧作业兜底；
+                # 有中文译文的完整句子在 _is_formula_fragment 里被保住。
+                bound_here = (
+                    str(unit.get("_element_id") or "")
+                    == str(planned.element_id)
+                )
+                if bound_here or _is_formula_fragment(unit):
                     text = str(
                         unit.get("translation") or unit.get("source") or ""
                     ).strip()
-                    if text:
+                    if text and not CJK_RE.search(
+                        str(unit.get("translation") or "")
+                    ):
                         suppress.append(text)
         caption = caption_text_for(element, by_id, texts)
         labels: list[dict[str, Any]] = []

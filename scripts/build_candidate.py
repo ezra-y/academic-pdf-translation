@@ -3379,6 +3379,12 @@ def _unit_flowables(
         ),
         suppress_texts,
     )
+    if unit.get("_suppressed_reason"):
+        # 结构化抑制：单元照常入映射（锚点还在），但不排任何文字。
+        # 名单与理由记录在 generator-layout-log.json 的 suppressed_units。
+        text = ""
+    elif unit.get("_decoded_math") and text_override is None:
+        text = str(unit["_decoded_math"])
     result: list[Flowable] = []
     keep_end_with_next = False
     if include_start:
@@ -3719,6 +3725,11 @@ def _joined_unit_flowables(
                 str(unit.get("translation") or unit.get("source") or ""),
                 suppress_texts,
             )
+            # 结构化抑制的单元（数学字体残渣、标题续行重复）不进合并文本；
+            # 解码过的数学字形用解码结果。锚点都发过，映射不受影响。
+            if not unit.get("_suppressed_reason")
+            and not unit.get("_decoded_math")
+            else str(unit.get("_decoded_math") or "")
             for unit in units
         ),
         target_language=target_language,
@@ -6369,6 +6380,26 @@ def _merge_render_plan_preservations(
                 if item is not None:
                     table_items.append(item)
                     rebuilt_tables.add(element_id)
+            # 结构化抑制标注：数学字体残渣、标题续行重复。
+            # 需要查原文字形字体，趁文档开着做。清单随译文对象带给渲染日志。
+            formula_boxes: dict[int, list[list[float]]] = {}
+            for element in elements:
+                if (
+                    isinstance(element, dict)
+                    and str(element.get("type") or "") == "display-formula"
+                    and isinstance(element.get("bbox"), list)
+                ):
+                    fb = [float(v) for v in element["bbox"]]
+                    # 紧框加碎片垫，与桥接层的坐标吞一致
+                    fb = [fb[0] - 28.0, fb[1] - 5.0, fb[2] + 28.0, fb[3] + 5.0]
+                    formula_boxes.setdefault(
+                        int(element.get("page") or 0), []
+                    ).append(fb)
+            translation["_suppression_manifest"] = (
+                _annotate_structural_suppressions(
+                    _doc, translation, formula_boxes
+                )
+            )
             # 公式裁切三步法要做边缘墨迹检查，需要页对象在手，
             # 所以桥接在文档还开着时完成。
             source_pages = {
@@ -6405,6 +6436,149 @@ def _merge_render_plan_preservations(
     return merged
 
 
+MATH_FONT_RE = re.compile(
+    r"CMSY|CMEX|CMMI|MSAM|MSBM|Math|Symbol", re.IGNORECASE
+)
+
+#: 数学符号字体里少数能确定解码的字形：CMSY/CMEX 的 'p' 是根号。
+#: 解码不是翻译——它是按字体编码把源字形读对，√(2/N) 的根号就是这么丢的。
+MATH_GLYPH_DECODE = {"p": "√"}
+
+
+def _annotate_structural_suppressions(
+    document: Any,
+    translation: dict[str, Any],
+    formula_boxes: dict[int, list[list[float]]] | None = None,
+) -> list[dict[str, Any]]:
+    """结构化判定哪些单元不该以文字形式渲染。
+
+    两类，判据都是结构不是猜测：
+
+    1. **数学字体残渣。** 源文只有一两个字符、没有译文，且原文对应
+       位置的字形全部来自数学符号字体（CMSY 里的 'p' 其实是根号）。
+       把它当拉丁字母排出来只会得到一个孤立的 'p'。
+    2. **标题续行重复。** 原文标题折行被拆成两个单元，模型在第一个
+       单元里已译出完整标题，续行单元的译文是它的子串——再排一遍
+       就是"…卷积网络图像分割"这种重复。
+
+    返回抑制清单（写进渲染日志），并在单元上打 ``_suppressed_reason``。
+    """
+
+    manifest: list[dict[str, Any]] = []
+    units = [
+        unit
+        for unit in translation.get("units", [])
+        if isinstance(unit, dict)
+    ]
+
+    for unit in units:
+        source = str(unit.get("source") or "").strip()
+        # keep_source 不豁免：模型标了"根号符号"保源，但源字形在数学
+        # 符号字体里，按拉丁字母排出来只是个 'p'——字体检查才是判据。
+        if (
+            str(unit.get("translation") or "").strip()
+            or not source
+            or len(source) > 3
+        ):
+            continue
+        bbox = unit.get("source_bbox")
+        page_number = unit.get("page")
+        if (
+            not isinstance(bbox, list)
+            or len(bbox) != 4
+            or not isinstance(page_number, int)
+            or not 1 <= page_number <= document.page_count
+        ):
+            continue
+        import fitz
+
+        # 邻字会蹭进精确 bbox 的 clip；只认文字与本单元源文一致、
+        # 且中心落在 bbox 内的那个 span 的字体。
+        clip = fitz.Rect(*bbox)
+        fonts: set[str] = set()
+        for block in document[page_number - 1].get_text(
+            "dict", clip=clip
+        ).get("blocks", []):
+            for line in block.get("lines", []):
+                for span in line.get("spans", []):
+                    span_text = str(span.get("text") or "").strip()
+                    sb = span.get("bbox") or (0, 0, 0, 0)
+                    cx = (sb[0] + sb[2]) / 2
+                    cy = (sb[1] + sb[3]) / 2
+                    if (
+                        span_text
+                        and span_text == source
+                        and bbox[0] <= cx <= bbox[2]
+                        and bbox[1] <= cy <= bbox[3]
+                    ):
+                        fonts.add(str(span.get("font") or ""))
+        if fonts and all(MATH_FONT_RE.search(font) for font in fonts):
+            cx = (bbox[0] + bbox[2]) / 2
+            cy = (bbox[1] + bbox[3]) / 2
+            inside_formula = any(
+                fb[0] <= cx <= fb[2] and fb[1] <= cy <= fb[3]
+                for fb in (formula_boxes or {}).get(page_number, [])
+            )
+            decoded = MATH_GLYPH_DECODE.get(source)
+            if decoded and not inside_formula:
+                # 行内符号且能确定解码：按字体编码读对它，不是删掉它。
+                unit["_decoded_math"] = decoded
+                manifest.append(
+                    {
+                        "unit_id": str(unit.get("id") or ""),
+                        "text": source,
+                        "fonts": sorted(fonts),
+                        "decoded": decoded,
+                        "reason": (
+                            f"数学字体字形按编码解码为 {decoded!r}，"
+                            "保留在行内"
+                        ),
+                    }
+                )
+            else:
+                unit["_suppressed_reason"] = "math-font-residue"
+                manifest.append(
+                    {
+                        "unit_id": str(unit.get("id") or ""),
+                        "text": source,
+                        "fonts": sorted(fonts),
+                        "reason": (
+                            "源文只是数学符号字体里的字形，且其内容已随"
+                            "公式保留区域整块保留，不按拉丁字母重复排版"
+                            if inside_formula
+                            else "源文只是数学符号字体里的字形，无法确定"
+                            "解码，不按拉丁字母排版"
+                        ),
+                    }
+                )
+
+    previous: dict[str, Any] | None = None
+    for unit in units:
+        translation_text = str(unit.get("translation") or "").strip()
+        if previous is not None and translation_text:
+            previous_text = str(previous.get("translation") or "").strip()
+            if (
+                str(previous.get("_element_role") or "") == "document-title"
+                and unit.get("page") == previous.get("page")
+                and translation_text != previous_text
+                and translation_text in previous_text
+            ):
+                unit["_suppressed_reason"] = "title-continuation-duplicate"
+                manifest.append(
+                    {
+                        "unit_id": str(unit.get("id") or ""),
+                        "text": translation_text,
+                        "reason": (
+                            "标题续行的译文已包含在整题译文里，再排一遍"
+                            "就是重复"
+                        ),
+                    }
+                )
+        if translation_text or str(unit.get("source") or "").strip():
+            previous = unit
+    return manifest
+
+
 def _annotate_element_roles(
     job_dir: Path,
     translation: dict[str, Any],
@@ -6430,11 +6604,22 @@ def _annotate_element_roles(
     }
     if not roles:
         return
+    element_ids = {
+        str(binding.get("unit_id") or ""): str(
+            binding.get("element_id") or ""
+        )
+        for binding in bindings
+        if isinstance(binding, dict) and binding.get("unit_id")
+    }
     for unit in translation.get("units", []):
         if isinstance(unit, dict):
-            role = roles.get(str(unit.get("id") or ""))
+            unit_id = str(unit.get("id") or "")
+            role = roles.get(unit_id)
             if role:
                 unit["_element_role"] = role
+            element_id = element_ids.get(unit_id)
+            if element_id:
+                unit["_element_id"] = element_id
 
 
 def _timed_build_candidate(
@@ -6933,6 +7118,10 @@ def _timed_build_candidate(
             ],
             "candidate_page_map_complete": True,
         },
+        # 结构化抑制名单：哪些单元没有按文字排、为什么。给人核对用。
+        "suppressed_units": list(
+            translation.get("_suppression_manifest") or []
+        ),
         "elapsed_seconds": round(time.monotonic() - started, 3),
     }
     write_json(job_dir / "generator-layout-log.json", layout_log)
