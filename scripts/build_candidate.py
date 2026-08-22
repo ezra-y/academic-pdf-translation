@@ -157,67 +157,20 @@ def _common_page_size(source_path: Path) -> tuple[float, float]:
     return max(counts, key=lambda value: counts[value])
 
 
-def _split_blocks(text: str) -> list[str]:
-    blocks = [
-        block.strip()
-        for block in re.split(r"\n\s*\n", text or "")
-        if block.strip()
-    ]
-    return blocks or ([text.strip()] if text and text.strip() else [])
-
-
-def _unit_text_blocks(unit: dict[str, Any], text: str) -> list[str]:
-    blocks = _split_blocks(text)
-    if len(blocks) <= 1:
-        return blocks
-    source_lines = [
-        line.strip()
-        for line in str(unit.get("source") or "").splitlines()
-        if line.strip()
-    ]
-    edge_page_numbers = {
-        line
-        for line in (
-            source_lines[:1] + source_lines[-1:]
-            if source_lines
-            else []
-        )
-        if re.fullmatch(r"\d{1,4}", line)
-    }
-    while (
-        len(blocks) > 1
-        and blocks[0].strip() in edge_page_numbers
-    ):
-        blocks.pop(0)
-    while (
-        len(blocks) > 1
-        and blocks[-1].strip() in edge_page_numbers
-    ):
-        blocks.pop()
-    return blocks
-
-
-def _role_may_head(unit: dict[str, Any]) -> bool:
-    """这个单元有没有资格当标题。
-
-    单元冻结时带的 kind / heading_level 是当年抽取启发式打的标签，
-    和"看着像标题就算标题"是同一个来源。绑定的元素角色来自结构分析，
-    它说不是标题（作者单位、arXiv 戳、正文句子），冻结标签就不作数。
-    角色未知时不否决，维持原行为。
-    """
-
-    role = str(unit.get("_element_role") or "")
-    return role in ("", "heading", "document-title")
-
-
-def _looks_like_heading(text: str) -> bool:
-    compact = " ".join(text.split())
-    if not compact or len(compact) > 42 or "\n" in text:
-        return False
-    return not compact.endswith(
-        ("。", "！", "？", "；", "，", ".", "!", "?", ";", ",")
-    )
-
+# 文本分块与标题资格判定已移入 academic_pdf_translation.render.text_blocks。
+# 这里按旧名再导出，本模块内的调用与既有测试引用路径不变。
+from academic_pdf_translation.render.text_blocks import (  # noqa: E402,F401
+    looks_like_heading as _looks_like_heading,
+)
+from academic_pdf_translation.render.text_blocks import (  # noqa: E402,F401
+    role_may_head as _role_may_head,
+)
+from academic_pdf_translation.render.text_blocks import (  # noqa: E402,F401
+    split_blocks as _split_blocks,
+)
+from academic_pdf_translation.render.text_blocks import (  # noqa: E402,F401
+    unit_text_blocks as _unit_text_blocks,
+)
 
 @dataclass(frozen=True)
 class MappingEvent:
@@ -3638,50 +3591,12 @@ def _unit_fully_covered_by_retained(
     return False
 
 
-def _reference_unit_parts(unit: dict[str, Any]) -> tuple[str, str]:
-    text = str(
-        unit.get("translation")
-        or unit.get("source")
-        or ""
-    ).strip()
-    blocks = _split_blocks(text)
-    if not blocks:
-        return "", ""
-    first = re.sub(r"\s+", "", blocks[0]).casefold()
-    heading_tokens = (
-        "参考文献",
-        "參考文獻",
-        "references",
-        "bibliography",
-        "参考資料",
-        "참고문헌",
-    )
-    if any(first.startswith(token.casefold()) for token in heading_tokens):
-        return blocks[0], "\n\n".join(blocks[1:])
-    return "", text
-
-
-def _is_reference_heading_unit(unit: dict[str, Any]) -> bool:
-    kind = str(unit.get("kind") or "").lower()
-    if kind not in HEADING_KINDS:
-        return False
-    text = re.sub(
-        r"\s+",
-        "",
-        str(unit.get("translation") or unit.get("source") or ""),
-    ).casefold()
-    return any(
-        text.startswith(token.casefold())
-        for token in (
-            "参考文献",
-            "參考文獻",
-            "references",
-            "bibliography",
-            "参考資料",
-            "참고문헌",
-        )
-    )
-
+# 参考文献的数据判定已移入 academic_pdf_translation.render.reference_data。
+from academic_pdf_translation.render.reference_data import (  # noqa: E402,F401
+    _is_reference_heading_unit,
+    _reference_font_size,
+    _reference_unit_parts,
+)
 
 def _retained_heading_label(target_language: str) -> str:
     return message(target_language, "retained_references")
@@ -4031,22 +3946,6 @@ def _table_flowables(
         if table_index + 1 < len(item.get("payload", {}).get("tables", [])):
             result.append(Spacer(1, 10))
     return result
-
-
-def _reference_font_size(job: dict[str, Any], body_font_pt: float) -> float:
-    quality = job.get("quality", {})
-    search = quality.get("typography_search") or {}
-    configured = search.get("reference_font_range_pt", [8.2, 10.5])
-    if not (
-        isinstance(configured, list)
-        and len(configured) == 2
-        and all(isinstance(value, (int, float)) for value in configured)
-    ):
-        configured = [8.2, 10.5]
-    lower, upper = sorted(map(float, configured))
-    lower = max(lower, float(quality.get("body_font_min_pt", 8.0)))
-    upper = max(upper, lower)
-    return round(min(max(body_font_pt * 0.9, lower), upper), 2)
 
 
 def _image_clip_bbox(region: dict[str, Any]) -> list[float] | None:
