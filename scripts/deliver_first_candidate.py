@@ -54,6 +54,10 @@ from academic_pdf_translation.verify.repair import (  # noqa: E402
     ACTION_PRESERVE_REGION,
     RepairPlan,
 )
+from academic_pdf_translation.verify.visual_result import (  # noqa: E402
+    VisualResultError,
+    result_from_dict,
+)
 
 from _common import (  # noqa: E402
     SkillError,
@@ -194,12 +198,22 @@ def main() -> int:
         action="store_true",
         help="只核查，不执行那一轮返修",
     )
+    parser.add_argument(
+        "--visual-result",
+        type=Path,
+        default=None,
+        help="真实视觉检查结果（visual-review-result.json）；"
+        "有风险页而不提供时，结论最多到 handover，不会是 delivered",
+    )
     parser.add_argument("--json", action="store_true", help="只输出 JSON")
     args = parser.parse_args()
 
     job_dir = args.job_dir.resolve()
     delivery_dir = (args.delivery_dir or job_dir / "delivery").resolve()
     try:
+        visual_result = None
+        if args.visual_result is not None:
+            visual_result = result_from_dict(load_json(args.visual_result))
         elements, units, bindings = _job_inputs(job_dir)
         result = run_first_delivery(
             job_dir / "source.pdf",
@@ -212,8 +226,15 @@ def main() -> int:
             ),
             output_dir=delivery_dir,
             page_budget=args.page_budget,
+            visual_result=visual_result,
         )
-    except (SkillError, FirstDeliveryError, OSError, ValueError) as exc:
+    except (
+        SkillError,
+        FirstDeliveryError,
+        VisualResultError,
+        OSError,
+        ValueError,
+    ) as exc:
         print(f"错误: {exc}")
         return 1
 

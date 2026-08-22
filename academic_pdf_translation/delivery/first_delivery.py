@@ -35,6 +35,7 @@ from academic_pdf_translation.delivery.gates import (
 from academic_pdf_translation.delivery.models import (
     BUILD_READY,
     BuildOutcome,
+    file_sha256,
 )
 from academic_pdf_translation.verify.candidate_mapping import (
     CandidateMapping,
@@ -52,6 +53,11 @@ from academic_pdf_translation.verify.structural_audit import (
     StructuralAudit,
     audit_structure,
 )
+from academic_pdf_translation.verify.visual_gate import (
+    VisualGateResult,
+    check_visual_gate,
+)
+from academic_pdf_translation.verify.visual_result import VisualReviewResult
 from academic_pdf_translation.verify.visual_review import (
     DEFAULT_PAGE_BUDGET,
     VisualReviewPlan,
@@ -260,6 +266,55 @@ def _record_build(
     )
 
 
+def _apply_visual_gate(
+    result: DeliveryResult,
+    plan: VisualReviewPlan,
+    visual_result: VisualReviewResult | None,
+    candidate_path: Path,
+    *,
+    label: str,
+    output_dir: Path,
+) -> VisualGateResult:
+    """算视觉门、落证据、写阶段记录。
+
+    没有真实结果时 ``ok`` 必须为 False——"已生成检查任务"不是
+    "检查已通过"。FAIL 条目转成给人的返修任务。
+    """
+
+    gate = check_visual_gate(
+        plan, visual_result, candidate_sha256=file_sha256(candidate_path)
+    )
+    if visual_result is not None:
+        result.evidence[f"{label}-visual-result"] = _write_json(
+            output_dir / f"{label}-visual-result.json",
+            visual_result.as_dict(),
+        )
+    result.stages.append(
+        StageRecord(
+            STAGE_REVIEW,
+            gate.passed,
+            f"视觉门 {gate.code}：计划细看 {len(plan.selected)} 页，"
+            f"{len(plan.skipped)} 页超预算",
+        )
+    )
+    if not gate.passed:
+        result.problems.extend(
+            f"[{gate.code}] {reason}" for reason in gate.reasons
+        )
+    for item in gate.failed_items:
+        result.manual_items.append(
+            {
+                "element_id": "",
+                "signal": "visual-fail",
+                "reason": (
+                    f"视觉检查不通过：第 {item.candidate_page} 页 "
+                    f"{item.check_code}（{item.detail or '无说明'}），需要返修"
+                ),
+            }
+        )
+    return gate
+
+
 def run_first_delivery(
     source_path: Path,
     elements: list[dict[str, Any]],
@@ -271,6 +326,7 @@ def run_first_delivery(
     apply_repair: Callable[[RepairPlan], None] | None = None,
     page_budget: int = DEFAULT_PAGE_BUDGET,
     render_pages: bool = True,
+    visual_result: VisualReviewResult | None = None,
 ) -> DeliveryResult:
     """跑完首次交付，给出唯一结论。
 
@@ -360,19 +416,19 @@ def run_first_delivery(
             f"{len(first.audit.problems)} 条结构问题",
         )
     )
-    result.stages.append(
-        StageRecord(
-            STAGE_REVIEW,
-            True,
-            f"挑出 {len(first.review.selected)} 页待人工细看，"
-            f"另有 {len(first.review.skipped)} 页超预算",
-        )
+    first_gate = _apply_visual_gate(
+        result, first.review, visual_result, candidate_path, label="round-1",
+        output_dir=output_dir,
     )
 
     if first.clean:
         if build_needs_repair:
             # 核查层没查出可修的点，但生成器自己说要修——两边说法对不上，
             # 这种矛盾要人看，不能当没听见直接交付。
+            result.status = STATUS_HANDOVER
+            return result
+        if not first_gate.passed:
+            # 计划不是结果。该看的页没看完（或看出了问题），不许交付。
             result.status = STATUS_HANDOVER
             return result
         result.status = STATUS_DELIVERED
@@ -382,7 +438,9 @@ def run_first_delivery(
     result.evidence["repair-plan"] = _write_json(
         output_dir / "repair-plan.json", repair.as_dict()
     )
-    result.manual_items = [item.as_dict() for item in repair.manual]
+    result.manual_items = result.manual_items + [
+        item.as_dict() for item in repair.manual
+    ]
 
     if not repair.actions:
         result.stages.append(
@@ -490,6 +548,13 @@ def run_first_delivery(
     ).allowed:
         raise FirstDeliveryError("返修轮数上限失效，流程必须停下")
 
+    # 返修产生的是**新候选**，round-1 的视觉结果对它天然无效——
+    # 门槛按新候选的哈希重新判定（旧结果会得到 STALE）。
+    second_gate = _apply_visual_gate(
+        result, second.review, visual_result, repaired_path, label="round-2",
+        output_dir=output_dir,
+    )
+
     result.problems = result.problems + _collect_problems(second)
     if unchanged:
         result.problems.insert(0, REPAIR_MADE_NO_DIFFERENCE)
@@ -503,9 +568,11 @@ def run_first_delivery(
         result.status = STATUS_BLOCKED
     elif second.clean:
         # 重建那一轮生成器若仍报 NEEDS_REPAIR，唯一的返修已经用掉，
-        # 剩下的矛盾交给人。
+        # 剩下的矛盾交给人；视觉门没过同样不许交付。
         result.status = (
-            STATUS_HANDOVER if rebuild_needs_repair else STATUS_DELIVERED
+            STATUS_DELIVERED
+            if not rebuild_needs_repair and second_gate.passed
+            else STATUS_HANDOVER
         )
     else:
         result.status = STATUS_HANDOVER

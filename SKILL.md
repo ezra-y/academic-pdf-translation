@@ -425,6 +425,19 @@ python3 scripts/deliver_first_candidate.py /path/to/job
 核查证据（映射、对账、返修前后对比、待人细看的页面图片）写在
 `<作业目录>/delivery/`，复审直接看这里。
 
+核查挑出高风险页时，必须**真的看**（快速档也不例外，只是每页只答
+计划列出的固定问题）：打开 `delivery/round-*-pages/` 里的页面图，
+逐页逐项写下 PASS/FAIL，录成结果再交付——计划不是结果，没有结果
+最多到 `handover`：
+
+```bash
+python3 scripts/record_targeted_visual_review.py /path/to/job --result answers.json
+python3 scripts/deliver_first_candidate.py /path/to/job --visual-result /path/to/job/delivery/visual-review-result.json
+```
+
+结果绑定候选文件哈希；候选一换，旧结果自动作废。没有高风险页时
+结论记 `NOT_REQUIRED`，不需要以上两步。
+
 前置：作业需要先有 `source_elements.json` 与 `unit_bindings.json`。
 
 ```bash
