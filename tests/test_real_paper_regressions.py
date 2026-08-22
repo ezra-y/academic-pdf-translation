@@ -141,17 +141,25 @@ def test_font_coverage_gap_is_reported_before_rendering(
             "selected_font_evidence"
         ]
     ]
+    # 私用区字符没有任何字体会去覆盖，这个判据在哪台机器上都成立。
+    # 换成具体的数学符号（比如 ⊂）会看运气：macOS 的雅黑画不出，
+    # Linux 的 uming 画得出，测试就会随环境飘。
+    uncovered = "\ue0ff"
     document = {
         "units": [
-            {"id": "p0001-u0001", "translation": "样本包含 Ω⊂Z2 的子集。"},
+            {
+                "id": "p0001-u0001",
+                "translation": f"样本包含 Ω{uncovered}Z2 的子集。",
+            },
             {"id": "p0001-u0002", "translation": "这一段字体都画得出来。"},
         ]
     }
     issues = _font_coverage_issues(fonts, document)
-    assert issues, "⊂ 没有任何字体覆盖，本应报出来"
+    assert issues, "私用区字符没有任何字体覆盖，本应报出来"
     characters = {item["character"] for item in issues[0]["characters"]}
-    assert "⊂" in characters
+    assert uncovered in characters
     assert issues[0]["code"] == "FONT_CHARACTER_COVERAGE_GAP"
+    assert "样" not in characters, "画得出来的字不该被报成缺口"
 
     # 排版器会自己处理掉的字符不重复报，否则检查和渲染互相矛盾。
     clean = {
