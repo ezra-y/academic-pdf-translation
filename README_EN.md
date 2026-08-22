@@ -183,6 +183,7 @@ path for every translated PDF.
 
 ## More
 
+- Changelog: [CHANGELOG.md](CHANGELOG.md)
 - Agent workflow: [SKILL.md](SKILL.md)
 - Element pipeline and verification layer:
   [references/element-pipeline.md](references/element-pipeline.md)

@@ -1,10 +1,17 @@
 from __future__ import annotations
 
-import ast
-import json
-import re
-import subprocess
-from pathlib import Path
+import sys
+
+# 这两个工具要审计"交付物里有没有字节码缓存"，可它们自己一导入模块就会生成
+# __pycache__——于是干净安装后按 README 跑一遍必然失败。先关掉字节码写入，
+# 别让检查工具弄脏它正在检查的目录。
+sys.dont_write_bytecode = True
+
+import ast  # noqa: E402
+import json  # noqa: E402
+import re  # noqa: E402
+import subprocess  # noqa: E402
+from pathlib import Path  # noqa: E402
 
 
 class BundleCheckError(RuntimeError):
@@ -320,7 +327,10 @@ def _check_no_cache_artifacts(root: Path) -> None:
 
 
 def _check_version_sync(root: Path) -> str:
-    """.claude-plugin/plugin.json 与 pyproject.toml 的版本必须一致。"""
+    """plugin.json、pyproject.toml 与 CHANGELOG 最新条目的版本必须一致。
+
+    版本号散在三个地方，改一处忘两处是迟早的事；忘了改 CHANGELOG，
+    用户拿到的就是一份说不清自己是哪一版的交付物。"""
 
     plugin = json.loads(
         (root / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8")
@@ -338,6 +348,22 @@ def _check_version_sync(root: Path) -> str:
         raise BundleCheckError(
             f"版本不一致: plugin.json {plugin_version} != "
             f"pyproject.toml {project_version}"
+        )
+
+    changelog = root / "CHANGELOG.md"
+    if not changelog.is_file():
+        raise BundleCheckError("缺少 CHANGELOG.md")
+    heading = re.search(
+        r"^##\s+(\d+\.\d+\.\d+)\s*$",
+        changelog.read_text(encoding="utf-8"),
+        re.MULTILINE,
+    )
+    if heading is None:
+        raise BundleCheckError("CHANGELOG.md 里没有版本小节")
+    if heading.group(1) != plugin_version:
+        raise BundleCheckError(
+            f"版本不一致: CHANGELOG 最新条目 {heading.group(1)} != "
+            f"plugin.json {plugin_version}"
         )
     return plugin_version
 

@@ -26,6 +26,7 @@ README = ROOT / "README.md"
 README_EN = ROOT / "README_EN.md"
 PIPELINE_DOC = ROOT / "references" / "element-pipeline.md"
 VALIDATION = ROOT / "references" / "validation.md"
+CHANGELOG = ROOT / "CHANGELOG.md"
 
 #: 声称做得到某件事的说法。写下它们就得有实测撑着。
 CLAIM_WORDS = ("首版成功率", "可交付", "deliverable")
@@ -131,7 +132,7 @@ def _local_links(text: str, base: Path) -> list[Path]:
 
 @pytest.mark.parametrize(
     "document",
-    [README, README_EN, PIPELINE_DOC, VALIDATION, REPORT],
+    [README, README_EN, PIPELINE_DOC, VALIDATION, REPORT, CHANGELOG],
     ids=lambda path: path.name,
 )
 def test_every_local_link_resolves(document: Path) -> None:
@@ -191,3 +192,39 @@ def test_the_pipeline_doc_exit_codes_match_the_cli() -> None:
     text = PIPELINE_DOC.read_text(encoding="utf-8")
     for status in (STATUS_DELIVERED, STATUS_HANDOVER, STATUS_BLOCKED):
         assert f"`{status}`" in text, status
+
+
+# --- 变更记录 ---------------------------------------------------------------
+
+
+def test_the_changelog_version_matches_the_package() -> None:
+    """版本号散在三个地方，改一处忘两处是迟早的事。"""
+
+    import json as _json
+
+    plugin = _json.loads(
+        (ROOT / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8")
+    )
+    heading = re.search(
+        r"^##\s+(\d+\.\d+\.\d+)\s*$",
+        CHANGELOG.read_text(encoding="utf-8"),
+        re.MULTILINE,
+    )
+    assert heading is not None, "CHANGELOG 里没有版本小节"
+    assert heading.group(1) == plugin["version"]
+
+
+def test_the_changelog_states_the_measured_delivery_rate() -> None:
+    summary = _summary()
+    delivered = _delivered_count(summary)
+    text = CHANGELOG.read_text(encoding="utf-8")
+    assert f"{delivered}/{summary['case_count']}" in text
+
+
+def test_the_changelog_lists_the_known_limits() -> None:
+    """新增能力要写，做不到的也要写。只写一半就是广告。"""
+
+    text = CHANGELOG.read_text(encoding="utf-8")
+    assert "已知限制" in text
+    for limit in ("栅格", "xref", "未验证", "合成译文"):
+        assert limit in text, limit

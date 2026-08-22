@@ -12,8 +12,10 @@
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -93,3 +95,57 @@ def test_package_users_bootstrap_the_repo_root(script: Path) -> None:
         f"{script.name} 引用了 academic_pdf_translation，"
         "但没有把仓库根加进 sys.path"
     )
+
+
+# --- 检查工具不许弄脏它正在检查的目录 ---------------------------------------
+
+
+def _clean_copy(target: Path) -> None:
+    """按 git 跟踪清单复制一份干净副本，模拟用户拿到的交付物。"""
+
+    # 已跟踪的加上"还没提交但不被忽略的"——后者也会随下一次提交一起发出去，
+    # 只看已跟踪清单，新加的文件在这条测试里永远是缺的。
+    listing = subprocess.run(
+        ["git", "ls-files", "--cached", "--others", "--exclude-standard"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    if listing.returncode != 0:
+        pytest.skip("不在 git 仓库里，无法取交付清单")
+    for name in listing.stdout.splitlines():
+        source = ROOT / name
+        if not source.is_file():
+            continue
+        destination = target / name
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, destination)
+
+
+@pytest.mark.parametrize("script", ["check_bundle.py", "self_test.py"])
+def test_the_audit_tools_leave_no_bytecode_behind(script: str) -> None:
+    """干净安装后按 README 跑一遍，两项都得 PASS。
+
+    这两个工具要审计"交付物里有没有字节码缓存"，可它们自己一导入模块就会
+    生成 __pycache__——真在干净环境里跑过一次才发现，新用户照 README 走
+    必然看到 SELF TEST FAIL。
+    """
+
+    with tempfile.TemporaryDirectory() as raw:
+        target = Path(raw) / "bundle"
+        target.mkdir()
+        _clean_copy(target)
+        result = subprocess.run(
+            [sys.executable, str(target / "scripts" / script)],
+            cwd=target,
+            capture_output=True,
+            text=True,
+            timeout=600,
+        )
+        leftovers = sorted(
+            path.relative_to(target)
+            for path in target.rglob("__pycache__")
+        )
+        assert result.returncode == 0, result.stdout[-800:] + result.stderr[-800:]
+        assert leftovers == [], f"{script} 留下了字节码缓存: {leftovers}"

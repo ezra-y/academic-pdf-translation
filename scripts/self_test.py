@@ -1,14 +1,21 @@
 from __future__ import annotations
 
-import base64
-import hashlib
-import json
-import re
-import tempfile
-from pathlib import Path
-from types import SimpleNamespace
+import sys
 
-from _common import (
+# 这两个工具要审计"交付物里有没有字节码缓存"，可它们自己一导入模块就会生成
+# __pycache__——于是干净安装后按 README 跑一遍必然失败。先关掉字节码写入，
+# 别让检查工具弄脏它正在检查的目录。
+sys.dont_write_bytecode = True
+
+import base64  # noqa: E402
+import hashlib  # noqa: E402
+import json  # noqa: E402
+import re  # noqa: E402
+import tempfile  # noqa: E402
+from pathlib import Path  # noqa: E402
+from types import SimpleNamespace  # noqa: E402
+
+from _common import (  # noqa: E402
     SkillError,
     complex_payload_replaced_unit_ids,
     complex_payload_replaces_unit,
@@ -20,7 +27,7 @@ from _common import (
     utc_now,
     write_json,
 )
-from audit_translation_completeness import (
+from audit_translation_completeness import (  # noqa: E402
     _candidate_stage_has_current_pdf,
     _coordinate_filtered_source_text,
     _heading_expectations,
@@ -29,7 +36,7 @@ from audit_translation_completeness import (
     _unit_compression_flags,
     build_completeness_audit,
 )
-from build_candidate import (
+from build_candidate import (  # noqa: E402
     MappingTracker,
     VectorPayloadFlowable,
     _adaptive_page_expansion_limit,
@@ -56,37 +63,37 @@ from build_candidate import (
     _unit_fully_covered_by_retained,
     _unit_text_blocks,
 )
-from check_bundle import check_bundle
-from cjk_markup import (
+from check_bundle import check_bundle  # noqa: E402
+from cjk_markup import (  # noqa: E402
     install_reportlab_cjk_nobr_patch,
     reportlab_cjk_markup,
 )
-from content_anchors import (
+from content_anchors import (  # noqa: E402
     anchors_present,
     present_acronyms,
     required_anchors,
 )
-from content_anchors import (
+from content_anchors import (  # noqa: E402
     statistics as content_statistics,
 )
-from corpus_audit import audit_corpus
-from extract_source_structure import extract_source_structure
-from font_preparation import fonts_are_current, prepare_job_fonts
-from i18n import message
-from init_job import (
+from corpus_audit import audit_corpus  # noqa: E402
+from extract_source_structure import extract_source_structure  # noqa: E402
+from font_preparation import fonts_are_current, prepare_job_fonts  # noqa: E402
+from i18n import message  # noqa: E402
+from init_job import (  # noqa: E402
     _existing_job_dirs,
     _existing_workspace_job,
     _merge_structure_candidates,
     initialize_job,
 )
-from make_review_sheet import make_review_sheet
-from pre_render_audit import build_pre_render_audit
-from preflight_candidate import (
+from make_review_sheet import make_review_sheet  # noqa: E402
+from pre_render_audit import build_pre_render_audit  # noqa: E402
+from preflight_candidate import (  # noqa: E402
     _candidate_content_fingerprint,
     _preflight_cycle,
     preflight_candidate,
 )
-from qa_pdf import (
+from qa_pdf import (  # noqa: E402
     SOURCE_MAPPING_LABEL_PATTERN,
     _all_complex_candidate_pages,
     _allowed_latin_corpus,
@@ -115,11 +122,11 @@ from qa_pdf import (
     _unit_is_substantive_body_prose,
     run_qa,
 )
-from record_review_round import record_review_round
-from record_work_checkpoint import record_work_checkpoint
-from register_candidate import register_candidate
-from reportlab_layout import FlowItem, layout_flow, make_cjk_style
-from retained_source import (
+from record_review_round import record_review_round  # noqa: E402
+from record_work_checkpoint import record_work_checkpoint  # noqa: E402
+from register_candidate import register_candidate  # noqa: E402
+from reportlab_layout import FlowItem, layout_flow, make_cjk_style  # noqa: E402
+from retained_source import (  # noqa: E402
     _clean_block_text,
     _is_page_furniture,
     _records_have_reference_signal,
@@ -128,26 +135,26 @@ from retained_source import (
     extract_retained_regions,
     retained_regions_by_page,
 )
-from review_policy import (
+from review_policy import (  # noqa: E402
     PRECISE_KEY_CHECKS,
     validate_post_repair_confirmation,
 )
-from review_risk_report import (
+from review_risk_report import (  # noqa: E402
     _running_values,
     _year_present,
     build_review_risk_report,
 )
-from semantic_markers import infer_review_flags, validate_terminology
-from set_complex_content import set_complex_content
-from set_complex_payload import validate_complex_payload_item
-from set_review_mode import set_review_mode
-from translation_truthfulness import refresh_coverage
-from typography_fit import (
+from semantic_markers import infer_review_flags, validate_terminology  # noqa: E402
+from set_complex_content import set_complex_content  # noqa: E402
+from set_complex_payload import validate_complex_payload_item  # noqa: E402
+from set_review_mode import set_review_mode  # noqa: E402
+from translation_truthfulness import refresh_coverage  # noqa: E402
+from typography_fit import (  # noqa: E402
     PageFitMeasurement,
     PageTextProfile,
     select_document_typography,
 )
-from validate_job import (
+from validate_job import (  # noqa: E402
     _adjacent_translation_overlaps,
     _candidate_page_text,
     _has_reference_heading,
@@ -163,7 +170,7 @@ from validate_job import (
     _validate_translation,
     validate_job,
 )
-from workspace import (
+from workspace import (  # noqa: E402
     WORKSPACE_ROOT_NAME,
     create_workspace,
     ensure_workspace_root,

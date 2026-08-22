@@ -188,6 +188,7 @@ Workspace/
 
 ## 更多说明
 
+- 变更记录：[CHANGELOG.md](CHANGELOG.md)
 - Agent 执行流程：[SKILL.md](SKILL.md)
 - 元素管线与核查层：[references/element-pipeline.md](references/element-pipeline.md)
 - 首版交付实测：[benchmarks/results/first-delivery.md](benchmarks/results/first-delivery.md)

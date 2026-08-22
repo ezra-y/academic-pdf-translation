@@ -24,7 +24,7 @@
       "top_problems": [
         "候选生成失败: first 轮没有产出候选 PDF（BLOCKED_BEFORE_PREFLIGHT / input-readiness）: {'code': 'FONT_CHARACTER_COVERAGE_GAP', 'message': '冻结字体无法画出以下字符，候选里会退化成空字符。请改用覆盖这些字符的字体，或在译文中换用等价写法。', 'characters': [{'character': '∼', 'codepoint': 'U+223C', 'unit_ids': ['p0005-u0330', 'p0006-u0049', 'p0007-u0020', 'p0008-u0011', 'p0009-u0005', 'p0009-u0006', 'p0009-u0007', 'p0009-u0008', 'p0009-u0099', 'p0010-u0013'], 'occurrences': 11}, {'character': '✓', 'codepoint': 'U+2713', 'unit_ids': ['p0006-u0042', 'p0006-u0043', 'p0006-u0045', 'p0006-u0046', 'p0006-u0048'], 'occurrences': 6}]}"
       ],
-      "elapsed_seconds": 1.45,
+      "elapsed_seconds": 1.5,
       "note": ""
     },
     {
@@ -39,7 +39,7 @@
       "top_problems": [
         "候选生成失败: first 轮没有产出候选 PDF（BLOCKED_BEFORE_PREFLIGHT / input-readiness）: {'code': 'FONT_CHARACTER_COVERAGE_GAP', 'message': '冻结字体无法画出以下字符，候选里会退化成空字符。请改用覆盖这些字符的字体，或在译文中换用等价写法。', 'characters': [{'character': '∗', 'codepoint': 'U+2217', 'unit_ids': ['p0001-u0002', 'p0001-u0013', 'p0008-u0013'], 'occurrences': 6}, {'character': '∼', 'codepoint': 'U+223C', 'unit_ids': ['p0021-u0002', 'p0024-u0005', 'p0026-u0007', 'p0026-u0009', 'p0026-u0013', 'p0027-u0008', 'p0046-u0027', 'p0046-u0028', 'p0047-u0011', 'p0048-u0011'], 'occurrences': 15}]}"
       ],
-      "elapsed_seconds": 2.08,
+      "elapsed_seconds": 2.09,
       "note": ""
     },
     {
@@ -58,7 +58,7 @@
         "p0009-image-001（raster-figure，原文第 9 页）在候选里找不到: 图像字节哈希 4a6a42002dc3 在候选里找不到",
         "p0001-body-020: 在候选第 [2, 15] 页都疑似命中，定位不唯一"
       ],
-      "elapsed_seconds": 2.79,
+      "elapsed_seconds": 2.81,
       "note": ""
     },
     {
@@ -73,7 +73,7 @@
       "top_problems": [
         "候选生成失败: first 轮没有产出候选 PDF（BLOCKED_BEFORE_PREFLIGHT / input-readiness）: {'code': 'FONT_CHARACTER_COVERAGE_GAP', 'message': '冻结字体无法画出以下字符，候选里会退化成空字符。请改用覆盖这些字符的字体，或在译文中换用等价写法。', 'characters': [{'character': '∈', 'codepoint': 'U+2208', 'unit_ids': ['p0005-u0010', 'p0005-u0012', 'p0005-u0014', 'p0006-u0011'], 'occurrences': 5}, {'character': '∗', 'codepoint': 'U+2217', 'unit_ids': ['p0001-u0004', 'p0001-u0007', 'p0001-u0010', 'p0001-u0013', 'p0001-u0014', 'p0001-u0017', 'p0001-u0019', 'p0001-u0022', 'p0001-u0027'], 'occurrences': 9}]}"
       ],
-      "elapsed_seconds": 0.94,
+      "elapsed_seconds": 1.07,
       "note": ""
     },
     {
@@ -92,7 +92,7 @@
         "p0005-body-004（body，原文第 5 页）在候选里找不到: 可用文字只有 1 个字符（'!'），不足 2 个，无法定位",
         "p0005-body-008（body，原文第 5 页）在候选里找不到: 可用文字只有 1 个字符（'p'），不足 2 个，无法定位"
       ],
-      "elapsed_seconds": 4.61,
+      "elapsed_seconds": 4.54,
       "note": ""
     },
     {
@@ -107,7 +107,7 @@
       "top_problems": [
         "候选生成失败: first 轮没有产出候选 PDF（BLOCKED_BEFORE_PREFLIGHT / input-readiness）: {'code': 'FONT_CHARACTER_COVERAGE_GAP', 'message': '冻结字体无法画出以下字符，候选里会退化成空字符。请改用覆盖这些字符的字体，或在译文中换用等价写法。', 'characters': [{'character': '∈', 'codepoint': 'U+2208', 'unit_ids': ['p0010-u0017'], 'occurrences': 1}, {'character': '\\uf8ee', 'codepoint': 'U+F8EE', 'unit_ids': ['p0005-u0011', 'p0005-u0016', 'p0005-u0021', 'p0005-u0034', 'p0005-u0039', 'p0005-u0044', 'p0005-u0057', 'p0005-u0062', 'p0005-u0067', 'p0005-u0080'], 'occurrences': 12}, {'character': '\\uf8f0', 'codepoint': 'U+F8F0', 'unit_ids': ['p0005-u0012', 'p0005-u0017', 'p0005-u0022', 'p0005-u0035', 'p0005-u0040', 'p0005-u0045', 'p0005-u0058', 'p0005-u0063', 'p0005-u0068', 'p0005-u0081'], 'occurrences': 12}, {'character': '\\uf8f9', 'codepoint': 'U+F8F9', 'unit_ids': ['p0005-u0014', 'p0005-u0019', 'p0005-u0024', 'p0005-u0037', 'p0005-u0042', 'p0005-u0047', 'p0005-u0060', 'p0005-u0065', 'p0005-u0070', 'p0005-u0083'], 'occurrences': 12}, {'character': '\\uf8fb', 'codepoint': 'U+F8FB', 'unit_ids': ['p0005-u0015', 'p0005-u0020', 'p0005-u0025', 'p0005-u0038', 'p0005-u0043', 'p0005-u0048', 'p0005-u0061', 'p0005-u0066', 'p0005-u0071', 'p0005-u0084'], 'occurrences': 12}]}"
       ],
-      "elapsed_seconds": 1.06,
+      "elapsed_seconds": 1.01,
       "note": ""
     }
   ]
