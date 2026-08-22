@@ -25,9 +25,12 @@ from academic_pdf_translation.planning.render_plan import (  # noqa: E402
     build_render_plan,
 )
 from academic_pdf_translation.render.plan_bridge import (  # noqa: E402
+    FIGURE_CAPTION_KEY,
     KIND_PRESERVED,
     PlanBridgeError,
+    attach_figure_captions,
     build_preservation_items,
+    caption_text_for,
     merge_into_complex_content,
 )
 
@@ -249,3 +252,134 @@ def test_real_forced_downgrades_become_real_regions() -> None:
         source = by_id[item["source_element_id"]]
         assert region["page"] == source["page"]
         assert region["bbox"] == [float(value) for value in source["bbox"]]
+
+
+# --- 图题跟着图走 -----------------------------------------------------------
+
+
+def test_a_caption_is_looked_up_through_the_relation() -> None:
+    element = {"id": "f1", "relations": {"caption": ["c1"]}}
+    by_id = {"c1": {"id": "c1"}}
+    assert caption_text_for(element, by_id, {"c1": "图 3. 说明"}) == "图 3. 说明"
+
+
+def test_a_caption_falls_back_to_the_source_excerpt() -> None:
+    """译文取不到时用原文摘录，总好过什么都不挂。"""
+
+    element = {"id": "f1", "relations": {"caption": ["c1"]}}
+    by_id = {"c1": {"id": "c1", "text_excerpt": "Fig. 3. HeLa cells"}}
+    assert caption_text_for(element, by_id, {}) == "Fig. 3. HeLa cells"
+
+
+def test_no_relation_means_no_caption() -> None:
+    assert caption_text_for({"id": "f1"}, {}, {}) == ""
+
+
+def test_a_preserved_item_carries_its_caption() -> None:
+    element = _element(relations={"caption": ["c1"]})
+    result = build_preservation_items(
+        _plan(FALLBACK_PRESERVE_ELEMENT_REGION),
+        [element, {"id": "c1"}],
+        unit_texts_by_element={"c1": "图 1. 网络结构"},
+    )
+    region = result.items[0]["payload"]["regions"][0]
+    assert region["translation"] == "图 1. 网络结构"
+
+
+def test_a_figure_caption_is_attached_by_xref() -> None:
+    complex_content = {
+        "items": [
+            {"id": "i1", "page": 5, "payload": {"regions": [{"xref": 119}]}}
+        ]
+    }
+    elements = [
+        {
+            "id": "img",
+            "detail": {"xref": 119},
+            "relations": {"caption": ["c1"]},
+        },
+        {"id": "c1"},
+    ]
+    merged, attached = attach_figure_captions(
+        complex_content, elements, {"c1": "图 3. 说明"}
+    )
+    assert attached == ["i1"]
+    assert merged["items"][0]["payload"][FIGURE_CAPTION_KEY] == "图 3. 说明"
+
+
+def test_an_existing_figure_caption_is_not_overwritten() -> None:
+    complex_content = {
+        "items": [
+            {
+                "id": "i1",
+                "payload": {
+                    "regions": [{"xref": 119}],
+                    FIGURE_CAPTION_KEY: "已有的图题",
+                },
+            }
+        ]
+    }
+    elements = [
+        {"id": "img", "detail": {"xref": 119}, "relations": {"caption": ["c1"]}},
+        {"id": "c1"},
+    ]
+    merged, attached = attach_figure_captions(
+        complex_content, elements, {"c1": "新的图题"}
+    )
+    assert attached == []
+    assert merged["items"][0]["payload"][FIGURE_CAPTION_KEY] == "已有的图题"
+
+
+def test_an_item_without_a_matching_xref_gets_nothing() -> None:
+    """矢量图没有 xref，这里认不出来。不按页码猜——猜错会挂到别的图上。"""
+
+    complex_content = {"items": [{"id": "i1", "payload": {"regions": [{}]}}]}
+    elements = [
+        {"id": "img", "detail": {"xref": 9}, "relations": {"caption": ["c1"]}},
+        {"id": "c1"},
+    ]
+    merged, attached = attach_figure_captions(
+        complex_content, elements, {"c1": "图 3."}
+    )
+    assert attached == []
+    assert FIGURE_CAPTION_KEY not in merged["items"][0]["payload"]
+
+
+def test_real_subfigure_groups_get_their_figure_level_caption() -> None:
+    """样本论文的两组四联子图，图级图题必须挂上。"""
+
+    _, elements = _real_job()
+    complex_path = REAL_JOB / "complex_content.json"
+    bindings_path = REAL_JOB / "unit_bindings.json"
+    translation_path = REAL_JOB / "translation.json"
+    if not all(
+        path.is_file()
+        for path in (complex_path, bindings_path, translation_path)
+    ):
+        pytest.skip("缺少真实作业的复杂内容或绑定")
+
+    units = {
+        unit["id"]: unit
+        for unit in json.loads(
+            translation_path.read_text(encoding="utf-8")
+        )["units"]
+    }
+    texts: dict[str, list[str]] = {}
+    for binding in json.loads(bindings_path.read_text(encoding="utf-8"))[
+        "bindings"
+    ]:
+        unit = units.get(binding["unit_id"])
+        value = str((unit or {}).get("translation") or "").strip()
+        if value:
+            texts.setdefault(binding["element_id"], []).append(value)
+
+    merged, attached = attach_figure_captions(
+        json.loads(complex_path.read_text(encoding="utf-8")),
+        elements,
+        {key: " ".join(value) for key, value in texts.items()},
+    )
+    assert len(attached) >= 2, attached
+    for item in merged["items"]:
+        caption = (item.get("payload") or {}).get(FIGURE_CAPTION_KEY)
+        if caption:
+            assert caption.strip()

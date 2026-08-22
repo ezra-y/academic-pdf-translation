@@ -42,6 +42,9 @@ STATUS_READY = "ready"
 #: 保留的是原文那一块，放在译文之前，读者先看到实物再看译文。
 RENDER_POLICY = "insert-before"
 
+#: 元素指向它图题的关系名。
+CAPTION_RELATION = "caption"
+
 
 class PlanBridgeError(RuntimeError):
     """渲染计划翻不成生成器条目。"""
@@ -90,11 +93,44 @@ def _planned_preservations(render_plan: dict[str, Any]) -> list[_Planned]:
     return planned
 
 
+def caption_text_for(
+    element: dict[str, Any],
+    by_id: dict[str, dict[str, Any]],
+    unit_texts_by_element: dict[str, str],
+) -> str:
+    """这个元素的图题译文。
+
+    图题必须跟着图走：图在第 4 页、图题在第 5 页，两样东西都废了。
+    把图题挂在保留条目上，生成器就能把它和图锁成一块，
+    正文里那一份也会被自动抑制，不会印两遍。
+    """
+
+    for caption_id in (element.get("relations") or {}).get(
+        CAPTION_RELATION, []
+    ):
+        text = unit_texts_by_element.get(str(caption_id), "").strip()
+        if text:
+            return text
+        caption_element = by_id.get(str(caption_id))
+        if caption_element is None:
+            continue
+        excerpt = str(caption_element.get("text_excerpt") or "").strip()
+        if excerpt:
+            return excerpt
+    return ""
+
+
 def build_preservation_items(
     render_plan: dict[str, Any],
     elements: list[dict[str, Any]],
+    *,
+    unit_texts_by_element: dict[str, str] | None = None,
 ) -> BridgeResult:
-    """把计划里定到保留级的元素翻成复杂内容条目。"""
+    """把计划里定到保留级的元素翻成复杂内容条目。
+
+    ``unit_texts_by_element`` 是元素到译文的映射，用来取图题。
+    取不到就不带图题——宁可图题留在正文里，也不要凭空造一句。
+    """
 
     if not isinstance(render_plan, dict):
         raise PlanBridgeError("渲染计划必须是字典")
@@ -104,6 +140,7 @@ def build_preservation_items(
         for element in elements
         if isinstance(element, dict)
     }
+    texts = unit_texts_by_element or {}
     result = BridgeResult()
 
     for planned in _planned_preservations(render_plan):
@@ -133,6 +170,7 @@ def build_preservation_items(
             continue
 
         full_page = planned.strategy == FALLBACK_PRESERVE_FULL_PAGE
+        caption = caption_text_for(element, by_id, texts)
         result.items.append(
             {
                 "id": f"plan-{planned.element_id}",
@@ -156,6 +194,9 @@ def build_preservation_items(
                             "bbox": None if full_page else list(box or ()),
                             "full_page": full_page,
                             "source_element_id": planned.element_id,
+                            # 生成器认这个键当图题：它会把图题和图锁成一块，
+                            # 并把正文里重复的那一份抑制掉。
+                            "translation": caption,
                         }
                     ],
                 },
@@ -201,3 +242,71 @@ def merge_into_complex_content(
         "skipped": list(bridged.skipped),
     }
     return merged
+
+
+#: 复杂条目里挂图级图题用的键。
+FIGURE_CAPTION_KEY = "figure_caption"
+
+
+def _item_xrefs(item: dict[str, Any]) -> set[int]:
+    payload = item.get("payload") if isinstance(item.get("payload"), dict) else {}
+    found: set[int] = set()
+    for region in payload.get("regions", []):
+        if not isinstance(region, dict):
+            continue
+        xref = region.get("xref")
+        if isinstance(xref, int):
+            found.add(xref)
+    return found
+
+
+def attach_figure_captions(
+    complex_content: dict[str, Any],
+    elements: list[dict[str, Any]],
+    unit_texts_by_element: dict[str, str],
+) -> tuple[dict[str, Any], list[str]]:
+    """把图级图题挂到它那个复杂条目上。
+
+    四联子图里每一格自己的 (a)(b)(c)(d) 说明本来就内嵌在条目里，跟着图走。
+    但整张图的图题（"图 3. ……"）是一条独立的译文单元，排在正文流里，
+    随时可能被分到上一页或下一页去。
+
+    挂上之后，生成器会把它和图锁成一块，并把正文里重复的那一份抑制掉。
+
+    按图像 xref 对应。矢量图没有 xref，这里认不出来——如实返回，
+    不按页码猜，猜错会把图题挂到别的图上。
+    """
+
+    merged = dict(complex_content or {})
+    items = [item for item in merged.get("items", []) if isinstance(item, dict)]
+    by_id = {
+        str(element.get("id") or ""): element
+        for element in elements
+        if isinstance(element, dict)
+    }
+
+    caption_by_xref: dict[int, str] = {}
+    for element in elements:
+        if not isinstance(element, dict):
+            continue
+        xref = (element.get("detail") or {}).get("xref")
+        if not isinstance(xref, int):
+            continue
+        text = caption_text_for(element, by_id, unit_texts_by_element)
+        if text:
+            caption_by_xref[xref] = text
+
+    attached: list[str] = []
+    for item in items:
+        payload = item.get("payload")
+        if not isinstance(payload, dict) or payload.get(FIGURE_CAPTION_KEY):
+            continue
+        for xref in sorted(_item_xrefs(item)):
+            caption = caption_by_xref.get(xref)
+            if caption:
+                payload[FIGURE_CAPTION_KEY] = caption
+                attached.append(str(item.get("id") or ""))
+                break
+
+    merged["items"] = items
+    return (merged, attached)

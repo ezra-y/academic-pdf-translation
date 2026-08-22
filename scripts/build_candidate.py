@@ -26,6 +26,8 @@ from academic_pdf_translation.planning.mode_policy import (  # noqa: E402
     FALLBACK_PRESERVE_FULL_PAGE,
 )
 from academic_pdf_translation.render.plan_bridge import (  # noqa: E402
+    FIGURE_CAPTION_KEY,
+    attach_figure_captions,
     build_preservation_items,
     merge_into_complex_content,
 )
@@ -4718,11 +4720,17 @@ def _preserved_source_region_image(
 def _preserved_region_flowables(
     item: dict[str, Any],
     *,
+    styles: dict[str, ParagraphStyle],
     source_document: Any,
     available_width: float,
     available_height: float,
 ) -> list[Flowable]:
-    """渲染计划定到保留级的元素，走这里。"""
+    """渲染计划定到保留级的元素，走这里。
+
+    图题和图用 KeepTogether 锁成一块。图在第 4 页、图题在第 5 页，
+    两样东西都废了——读者既不知道这张图讲什么，也不知道这句话说的是哪张图。
+    锁在一起后，放不下就整块换页，不会被拆开。
+    """
 
     payload = item.get("payload") if isinstance(item.get("payload"), dict) else {}
     result: list[Flowable] = []
@@ -4732,7 +4740,11 @@ def _preserved_region_flowables(
         page_number = int(region.get("page") or item.get("page") or 0)
         if not 1 <= page_number <= source_document.page_count:
             continue
-        result.append(
+        caption = str(region.get("translation") or "").strip()
+        # 图题要占位置，所以图能用的高度得先扣掉它，否则两者加起来放不下，
+        # KeepTogether 会把整块推到下一页，白白空掉半页。
+        caption_reserve = min(available_height * 0.2, 90.0) if caption else 0.0
+        block: list[Flowable] = [
             _preserved_source_region_image(
                 source_document,
                 page_number=page_number,
@@ -4740,9 +4752,14 @@ def _preserved_region_flowables(
                 available_width=available_width,
                 maximum_height=(
                     available_height * PRESERVED_REGION_MAX_HEIGHT_RATIO
+                    - caption_reserve
                 ),
             )
-        )
+        ]
+        if caption:
+            block.append(Spacer(1, 4))
+            block.append(Paragraph(_markup(caption), styles["caption"]))
+        result.append(KeepTogether(block))
         result.append(Spacer(1, 6))
     return result
 
@@ -4868,20 +4885,57 @@ def _complex_flowables(
     }:
         return prefix + _preserved_region_flowables(
             item,
+            styles=styles,
             source_document=source_document,
             available_width=available_width,
             available_height=available_height,
         )
     if method in {"image-text-localization", "ocr-region-rebuild"}:
-        return prefix + _image_flowables(
+        return prefix + _with_figure_caption(
+            _image_flowables(
                 item,
                 source_document=source_document,
                 styles=styles,
                 available_width=available_width,
                 available_height=available_height,
                 target_language=target_language,
-            )
+            ),
+            item,
+            styles=styles,
+        )
     return prefix
+
+
+def _with_figure_caption(
+    body: list[Flowable],
+    item: dict[str, Any],
+    *,
+    styles: dict[str, ParagraphStyle],
+) -> list[Flowable]:
+    """把图级图题和图锁成一块。
+
+    四联子图里每格自己的 (a)(b)(c)(d) 说明本来就跟着图走。但整张图的图题
+    是一条独立的译文单元，排在正文流里，随时可能被分到上一页或下一页去——
+    图在第 6 页、图题在第 7 页，读者既不知道这张图讲什么，也不知道这句话
+    说的是哪张图。
+
+    锁在一起后，放不下就整块换页。真放不下时 ReportLab 仍会拆，
+    那是它自己的降级，好过一开始就不锁。
+    """
+
+    payload = item.get("payload") if isinstance(item.get("payload"), dict) else {}
+    caption = str(payload.get(FIGURE_CAPTION_KEY) or "").strip()
+    if not caption or not body:
+        return body
+    return [
+        KeepTogether(
+            [
+                *body,
+                Spacer(1, 4),
+                Paragraph(_markup(caption), styles["caption"]),
+            ]
+        )
+    ]
 
 
 def _complex_render_policy(item: dict[str, Any]) -> str:
@@ -4902,6 +4956,10 @@ def _complex_embedded_texts(item: dict[str, Any]) -> list[str]:
         for value in payload.get("suppress_texts", [])
         if str(value).strip()
     ]
+    # 图级图题已经跟着图一起排了，正文里那一份要抑制掉，否则印两遍。
+    figure_caption = str(payload.get(FIGURE_CAPTION_KEY) or "").strip()
+    if figure_caption:
+        texts.append(figure_caption)
     texts.extend(
         [
         str(region.get("translation") or region.get("caption") or "")
@@ -5968,9 +6026,39 @@ def _adaptive_page_expansion_limit(
     )
 
 
+def _element_unit_texts(job_dir: Path, translation: dict[str, Any]) -> dict[str, str]:
+    """元素到译文的映射，用来给保留区域取图题。
+
+    单元归属取 unit_bindings.json——元素清单自己的 translation_unit_ids
+    是空的，那是另一个阶段算出来的结果，没有回填进清单。
+    """
+
+    bindings_path = job_dir / "unit_bindings.json"
+    if not bindings_path.is_file():
+        return {}
+    units = {
+        str(unit.get("id") or ""): unit
+        for unit in translation.get("units", [])
+        if isinstance(unit, dict)
+    }
+    texts: dict[str, list[str]] = {}
+    for binding in load_json(bindings_path).get("bindings", []):
+        if not isinstance(binding, dict):
+            continue
+        element_id = str(binding.get("element_id") or "")
+        unit = units.get(str(binding.get("unit_id") or ""))
+        if not element_id or unit is None:
+            continue
+        value = str(unit.get("translation") or "").strip()
+        if value:
+            texts.setdefault(element_id, []).append(value)
+    return {key: " ".join(value) for key, value in texts.items()}
+
+
 def _merge_render_plan_preservations(
     job_dir: Path,
     complex_content: dict[str, Any],
+    translation: dict[str, Any],
 ) -> dict[str, Any]:
     """把渲染计划里的保留级决定并进复杂内容。
 
@@ -5985,10 +6073,18 @@ def _merge_render_plan_preservations(
 
     plan = load_json(plan_path)
     elements = load_json(elements_path).get("elements") or []
-    bridged = build_preservation_items(plan, elements)
-    if not bridged.items and not bridged.skipped:
-        return complex_content
-    return merge_into_complex_content(complex_content, bridged)
+    unit_texts = _element_unit_texts(job_dir, translation)
+    bridged = build_preservation_items(
+        plan, elements, unit_texts_by_element=unit_texts
+    )
+    merged = (
+        merge_into_complex_content(complex_content, bridged)
+        if (bridged.items or bridged.skipped)
+        else complex_content
+    )
+    # 图级图题挂到它那个复杂条目上，让它跟着图走。
+    merged, _attached = attach_figure_captions(merged, elements, unit_texts)
+    return merged
 
 
 def _timed_build_candidate(
@@ -6025,7 +6121,9 @@ def _timed_build_candidate(
     # 渲染计划里定到保留级的元素，翻成生成器认识的条目再并进来。
     # 阶段 15 的基准查出：不做这一步，返修算出来的降级生成器根本看不见，
     # 重建出来的候选与返修前一字不差。
-    complex_content = _merge_render_plan_preservations(job_dir, complex_content)
+    complex_content = _merge_render_plan_preservations(
+        job_dir, complex_content, translation
+    )
 
     retained_path = internal_job_path(
         job_dir,

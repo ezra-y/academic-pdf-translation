@@ -311,3 +311,58 @@ def test_a_clean_candidate_passes() -> None:
     assert audit.passed is True
     assert audit.problems == []
     assert audit.inversion_ratio == 0.0
+
+
+# --- 量不到坐标就别排序 -----------------------------------------------------
+
+
+def test_same_page_pairs_without_coordinates_are_not_comparable() -> None:
+    """拿 0 顶替纵坐标，等于宣称"它在这一页最上面"——那是编出来的。"""
+
+    elements = [
+        {"id": "a", "page": 1, "bbox": [0, 100, 10, 110]},
+        {"id": "b", "page": 1, "bbox": [0, 200, 10, 210]},
+    ]
+    mapping = CandidateMapping(
+        locations=[
+            _location("a", "body", 1, [1]),
+            _location("b", "body", 1, [1], bbox=[0, 50, 10, 60]),
+        ]
+    )
+    _, total, comparable = reading_order_inversions(mapping, elements)
+    assert comparable == 0
+    assert total == 0
+
+
+def test_same_page_pairs_with_coordinates_are_compared() -> None:
+    elements = [
+        {"id": "a", "page": 1, "bbox": [0, 100, 10, 110]},
+        {"id": "b", "page": 1, "bbox": [0, 200, 10, 210]},
+    ]
+    mapping = CandidateMapping(
+        locations=[
+            _location("a", "body", 1, [1], bbox=[0, 300, 10, 310]),
+            _location("b", "body", 1, [1], bbox=[0, 50, 10, 60]),
+        ]
+    )
+    _, total, comparable = reading_order_inversions(mapping, elements)
+    assert comparable == 1
+    assert total == 1
+
+
+def test_cross_page_pairs_need_no_coordinates() -> None:
+    """页码不同的一对，按页码比就够了。"""
+
+    elements = [
+        {"id": "a", "page": 1, "bbox": [0, 100, 10, 110]},
+        {"id": "b", "page": 1, "bbox": [0, 200, 10, 210]},
+    ]
+    mapping = CandidateMapping(
+        locations=[
+            _location("a", "body", 1, [5]),
+            _location("b", "body", 1, [2]),
+        ]
+    )
+    _, total, comparable = reading_order_inversions(mapping, elements)
+    assert comparable == 1
+    assert total == 1

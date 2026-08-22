@@ -171,9 +171,15 @@ def _source_key(element: dict[str, Any]) -> tuple[float, float, float]:
     return (float(element.get("page") or 0), box[1], box[0])
 
 
-def _candidate_key(item: ElementLocation) -> tuple[float, float]:
+def _candidate_key(item: ElementLocation) -> tuple[float, float | None]:
+    """元素在候选里的位置。量不到纵坐标时返回 None，不拿 0 顶替。
+
+    拿 0 顶替等于宣称"它在这一页最上面"，而那是编出来的。同一页里
+    只要有一个元素量不到坐标，这一对就谈不上谁先谁后。
+    """
+
     box = normalize_bbox(item.candidate_bbox)
-    return (float(item.candidate_pages[0]), box[1] if box else 0.0)
+    return (float(item.candidate_pages[0]), box[1] if box else None)
 
 
 def reading_order_inversions(
@@ -185,8 +191,10 @@ def reading_order_inversions(
     """数逆序对。
 
     只比**定位唯一**的元素：落点说不清的两个元素之间，谈不上谁先谁后。
-    同一页内没有坐标时按页比较，页相同就算不出先后，跳过——
-    宁可少数几对，也不要拿猜出来的顺序去指控排版。
+
+    同一页内两个元素，只要有一个量不到纵坐标，这一对就跳过，
+    既不算逆序也不进分母——宁可少数几对，也不要拿编出来的顺序去指控排版。
+    页码不同的一对，按页码比就够了，不需要坐标。
     """
 
     by_id = {str(element.get("id") or ""): element for element in elements}
@@ -204,13 +212,18 @@ def reading_order_inversions(
     comparable = 0
     for index, earlier in enumerate(ordered):
         for later in ordered[index + 1:]:
-            earlier_key = _candidate_key(earlier)
-            later_key = _candidate_key(later)
-            if earlier_key == later_key:
-                continue
-            comparable += 1
-            if earlier_key <= later_key:
-                continue
+            earlier_page, earlier_y = _candidate_key(earlier)
+            later_page, later_y = _candidate_key(later)
+            if earlier_page == later_page:
+                if earlier_y is None or later_y is None or earlier_y == later_y:
+                    continue
+                comparable += 1
+                if earlier_y <= later_y:
+                    continue
+            else:
+                comparable += 1
+                if earlier_page <= later_page:
+                    continue
             total += 1
             if len(examples) < limit:
                 examples.append(
