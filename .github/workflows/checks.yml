@@ -21,16 +21,18 @@ jobs:
           pip install -r requirements.txt
           pip install pytest ruff
 
-      # 真实论文与作业受版权保护、不入库，依赖它们的用例会自行 skip。
-      # 其余用例（含合成语料与纯函数）在 CI 上必须全绿。
-      - name: 测试
-        run: python -m pytest tests/ -q
+      # 打包完整性必须在跑测试之前：pytest 会生成 __pycache__，
+      # 而这项检查的判据之一正是"交付物里没有字节码缓存"。
+      - name: 打包完整性
+        run: python scripts/check_bundle.py
 
       - name: 代码风格
         run: ruff check academic_pdf_translation
 
-      - name: 打包完整性
-        run: python scripts/check_bundle.py
+      # 真实论文与作业受版权保护、不入库，依赖它们的用例会自行 skip。
+      # 其余用例（含合成语料与纯函数）在 CI 上必须全绿。
+      - name: 测试
+        run: python -m pytest tests/ -q
 
       - name: 自检
         run: python scripts/self_test.py
