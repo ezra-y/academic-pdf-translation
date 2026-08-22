@@ -12,7 +12,6 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
-sys.path.insert(0, str(ROOT / "audit" / "tools"))
 
 from fake_translate import fake_translate  # noqa: E402
 from make_repro_paper import build as build_repro_paper  # noqa: E402

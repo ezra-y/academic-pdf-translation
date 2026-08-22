@@ -1,3 +1,0 @@
-完整性审计: READY
-JSON: /Users/ezra/Downloads/my_output_skills/academic-pdf-translation/audit/evidence/before/p0-1-completeness.json
-Markdown: /Users/ezra/Downloads/my_output_skills/academic-pdf-translation/audit/evidence/before/p0-1-completeness.md

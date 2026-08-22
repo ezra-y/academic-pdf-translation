@@ -58,26 +58,6 @@ README 全宽显示，也可以点击查看原始尺寸。中文版以阅读和�
 
 示例只展示局部版式，不随 Skill 分发原论文或完整译本。
 
-## 质量怎么保证
-
-翻译本身由模型完成——Skill 不替模型翻译，它负责两件事：
-把复杂版式（表格、结构图、公式、脚注）拆成模型能稳定处理的任务，
-以及在交付前用程序逐项核查产物，而不是听生成器自称通过。
-
-自动核查兜住的底线：
-
-- 逐元素核对产出的 PDF：图、表、公式、图题是不是真的都在、都在该在的页；
-- 重建不可靠的内容自动退到"原样保留原文那一块"，宁可不好看也不丢内容；
-- 图题锁在它说明的图旁边，不会被分到两页；
-- 机器判不了的地方点名列出，并渲染出该看的页面，交给按档位安排的复审。
-
-一条边界如实说明：翻译耗时与 Token **未测量**，不提供任何估计。
-
-仓库里另有一份压力测试
-（[benchmarks/results/first-delivery.md](benchmarks/results/first-delivery.md)）：
-把模型完全拿掉、只让确定性脚手架**机器单独**跑。那份数据衡量的是
-自动化部分的底线，**不代表正常使用（模型在环、按档位复审）的翻译效果**。
-
 ## 快速开始
 
 ### 1. 安装 Skill
@@ -186,8 +166,6 @@ Workspace/
 
 - 变更记录：[CHANGELOG.md](CHANGELOG.md)
 - Agent 执行流程：[SKILL.md](SKILL.md)
-- 元素管线与核查层：[references/element-pipeline.md](references/element-pipeline.md)
-- 首版交付实测：[benchmarks/results/first-delivery.md](benchmarks/results/first-delivery.md)
 - 质量门槛：[references/quality-contract.md](references/quality-contract.md)
 - 工作区和输出：[references/workspace.md](references/workspace.md)
 - 已验证范围：[references/validation.md](references/validation.md)

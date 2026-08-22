@@ -46,33 +46,6 @@ licensed under
 Only the representative comparison image is included here; the source paper is
 not redistributed with this Skill.
 
-## How Quality Is Enforced
-
-Translation itself is done by the model — the Skill does not translate for it.
-The Skill does two things: it breaks complex layout (tables, diagrams,
-formulas, footnotes) into tasks a model can handle reliably, and before
-delivery it verifies the output programmatically instead of trusting the
-generator's own "ready" verdict.
-
-What the automated checks guarantee:
-
-- every element of the output PDF is verified independently — figures,
-  tables, formulas and captions are really there, on the right pages;
-- content that cannot be rebuilt reliably falls back to preserving the
-  original region as-is — plain beats missing;
-- every caption stays on the same page as the figure it describes;
-- anything the machine cannot judge is named explicitly, with the relevant
-  pages rendered for the tier-appropriate human review.
-
-One boundary stated plainly: translation time and token cost are
-**unmeasured**, and no estimate is given.
-
-The repository also ships a stress test
-([benchmarks/results/first-delivery.md](benchmarks/results/first-delivery.md)):
-the deterministic scaffolding running **machine-only**, with the model removed
-entirely. That number measures the automation floor — it does **not** reflect
-normal usage, where the model is in the loop with tiered review.
-
 ## Quick Start
 
 ### 1. Install the Skill
@@ -180,11 +153,6 @@ path for every translated PDF.
 ## More
 
 - Changelog: [CHANGELOG.md](CHANGELOG.md)
-- Agent workflow: [SKILL.md](SKILL.md)
-- Element pipeline and verification layer:
-  [references/element-pipeline.md](references/element-pipeline.md)
-- First-delivery measurements:
-  [benchmarks/results/first-delivery.md](benchmarks/results/first-delivery.md)
 
 ## License
 

@@ -162,27 +162,6 @@ python3 scripts/set_complex_payload.py /path/to/job \
 先确认术语表，再编排批次。`translation.terminology_reviewed` 不是 `true`
 时命令会拒绝正式编排；只想看分批结果用 `--preview`，它不写任何文件。
 
-## 首次交付：唯一入口
-
-候选生成之后，用这一个命令跑完核查、最多一轮返修、再核查，并给出唯一结论：
-
-```bash
-python3 scripts/deliver_first_candidate.py /path/to/job
-```
-
-退出码就是结论：`0` 可以交付，`2` 交给人处理，`1` 停下别交。
-证据（两轮的映射、对账、视觉检查计划、返修计划与前后对比、待人细看的页面
-图片）写在 `<作业目录>/delivery/`。**没有证据的结论不算结论。**
-
-前置：作业需要先有 `source_elements.json` 与 `unit_bindings.json`。
-
-```bash
-python3 scripts/analyze_source_elements.py /path/to/job
-python3 scripts/bind_translation_units.py /path/to/job
-```
-
-详见 [references/element-pipeline.md](references/element-pipeline.md)。
-
 ```bash
 python3 scripts/plan_translation_batches.py /path/to/job --model <实际模型标识>
 ```
@@ -433,6 +412,27 @@ python3 scripts/audit_translation_completeness.py /path/to/job
 统一生成器登记的正文和参考文献字号属于候选证据。字号一致性检查以该锁定值
 为准，并排除参考文献、脚注和正式出版元数据的专用字号；不得用整篇字符多数
 反推正文字号。最后一页内容完整且沿用全篇锁定字号时允许自然收尾留白。
+
+### 交付前核查
+
+候选生成之后，用这一个命令跑完核查、最多一轮返修、再核查，并给出唯一结论：
+
+```bash
+python3 scripts/deliver_first_candidate.py /path/to/job
+```
+
+退出码就是结论：`0` 可以交付，`2` 交给人处理，`1` 停下别交。
+核查证据（映射、对账、返修前后对比、待人细看的页面图片）写在
+`<作业目录>/delivery/`，复审直接看这里。
+
+前置：作业需要先有 `source_elements.json` 与 `unit_bindings.json`。
+
+```bash
+python3 scripts/analyze_source_elements.py /path/to/job
+python3 scripts/bind_translation_units.py /path/to/job
+```
+
+详见 [references/element-pipeline.md](references/element-pipeline.md)。
 
 ## 第四步：一次审查与收尾
 
