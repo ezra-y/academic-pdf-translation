@@ -28,6 +28,14 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+from academic_pdf_translation.delivery.gates import (
+    GATE_REPAIR,
+    check_build_gate,
+)
+from academic_pdf_translation.delivery.models import (
+    BUILD_READY,
+    BuildOutcome,
+)
 from academic_pdf_translation.verify.candidate_mapping import (
     CandidateMapping,
     build_mapping,
@@ -100,6 +108,8 @@ class DeliveryResult:
     manual_items: list[dict[str, Any]] = field(default_factory=list)
     evidence: dict[str, str] = field(default_factory=dict)
     candidate_path: str = ""
+    #: 每一轮生成的完整构建状态（含构建报告哈希），一轮一条。
+    builds: list[dict[str, Any]] = field(default_factory=list)
 
     @property
     def delivered(self) -> bool:
@@ -118,6 +128,7 @@ class DeliveryResult:
             "manual_count": len(self.manual_items),
             "manual_items": list(self.manual_items),
             "evidence": dict(self.evidence),
+            "builds": list(self.builds),
         }
 
 
@@ -223,13 +234,39 @@ def _collect_problems(round_result: VerifyRound) -> list[str]:
     )
 
 
+def _as_outcome(value: Any) -> BuildOutcome:
+    """把构建回调的返回值规整成 :class:`BuildOutcome`。
+
+    正式调用方（CLI）必须返回带真实状态的 ``BuildOutcome``。裸路径
+    只留给测试里的合成候选用——返回裸路径等于调用方**显式声明**这一轮
+    是 READY_TO_REGISTER，声明错了责任在调用方，不在门槛。
+    """
+
+    if isinstance(value, BuildOutcome):
+        return value
+    return BuildOutcome(status=BUILD_READY, candidate_path=Path(value))
+
+
+def _record_build(
+    result: DeliveryResult, outcome: BuildOutcome, output_dir: Path, label: str
+) -> None:
+    """构建状态与报告哈希落进结论和证据，谁也删不掉。"""
+
+    record = outcome.as_dict()
+    record["report_sha256"] = outcome.report_sha256()
+    result.builds.append(record)
+    result.evidence[f"{label}-build"] = _write_json(
+        output_dir / f"{label}-build.json", record
+    )
+
+
 def run_first_delivery(
     source_path: Path,
     elements: list[dict[str, Any]],
     units: list[dict[str, Any]],
     bindings: list[dict[str, Any]],
     *,
-    build: Callable[[int], Path],
+    build: Callable[[int], BuildOutcome | Path],
     output_dir: Path,
     apply_repair: Callable[[RepairPlan], None] | None = None,
     page_budget: int = DEFAULT_PAGE_BUDGET,
@@ -237,8 +274,9 @@ def run_first_delivery(
 ) -> DeliveryResult:
     """跑完首次交付，给出唯一结论。
 
-    ``build(round_index)`` 由调用方提供，返回这一轮生成的候选 PDF 路径。
-    交付流程不关心是谁生成的，只关心生成出来的东西经不经得起核查。
+    ``build(round_index)`` 由调用方提供，返回这一轮的 :class:`BuildOutcome`。
+    交付流程不关心是谁生成的，但**关心生成器自己怎么说**：生成器说
+    BLOCKED，这里就是 blocked，候选文件存在与否都改变不了这一点。
     """
 
     if not elements:
@@ -251,17 +289,51 @@ def run_first_delivery(
     source_document = _open(Path(source_path))
 
     try:
-        candidate_path = Path(build(0))
+        outcome = _as_outcome(build(0))
     except Exception as exc:  # noqa: BLE001 - 生成失败要变成结论，不是崩溃
         result.stages.append(StageRecord(STAGE_BUILD, False, f"生成失败: {exc}"))
         result.problems.append(f"候选生成失败: {exc}")
         result.status = STATUS_BLOCKED
         return result
 
-    result.candidate_path = str(candidate_path)
+    _record_build(result, outcome, output_dir, "round-1")
+    if outcome.candidate_path is not None:
+        # 候选留作证据——它是不是"能交付的候选"由门槛说了算。
+        result.candidate_path = str(outcome.candidate_path)
+
+    build_gate = check_build_gate(outcome)
     result.stages.append(
-        StageRecord(STAGE_BUILD, True, f"生成候选 {candidate_path.name}")
+        StageRecord(
+            STAGE_BUILD,
+            build_gate.passed,
+            f"生成器状态 {outcome.status}"
+            + (
+                f"，候选 {outcome.candidate_path.name}"
+                if outcome.candidate_path is not None
+                else "，没有候选文件"
+            ),
+        )
     )
+    if build_gate.blocked:
+        # 生成器自己说不行：不做候选映射，不生成视觉结论，立即停。
+        result.problems = list(build_gate.reasons)
+        result.status = STATUS_BLOCKED
+        return result
+
+    build_needs_repair = build_gate.verdict == GATE_REPAIR
+    if build_needs_repair:
+        result.problems.extend(build_gate.reasons)
+        if (
+            outcome.candidate_path is None
+            or not outcome.candidate_path.is_file()
+        ):
+            result.problems.append(
+                "生成器要求返修却没有留下候选文件，无从核查，停下"
+            )
+            result.status = STATUS_BLOCKED
+            return result
+
+    candidate_path = Path(outcome.candidate_path)
 
     first, evidence = verify_candidate(
         source_document,
@@ -298,6 +370,11 @@ def run_first_delivery(
     )
 
     if first.clean:
+        if build_needs_repair:
+            # 核查层没查出可修的点，但生成器自己说要修——两边说法对不上，
+            # 这种矛盾要人看，不能当没听见直接交付。
+            result.status = STATUS_HANDOVER
+            return result
         result.status = STATUS_DELIVERED
         return result
 
@@ -313,7 +390,7 @@ def run_first_delivery(
                 STAGE_REPAIR, False, "没有机器能安全执行的返修动作"
             )
         )
-        result.problems = _collect_problems(first)
+        result.problems = result.problems + _collect_problems(first)
         result.status = STATUS_HANDOVER
         return result
 
@@ -332,21 +409,47 @@ def run_first_delivery(
                 STAGE_REBUILD, False, "调用方没有提供返修执行器，不重建"
             )
         )
-        result.problems = _collect_problems(first)
+        result.problems = result.problems + _collect_problems(first)
         result.status = STATUS_HANDOVER
         return result
 
     try:
         apply_repair(repair)
-        repaired_path = Path(build(1))
+        repaired_outcome = _as_outcome(build(1))
     except Exception as exc:  # noqa: BLE001 - 返修失败同样要变成结论
         result.stages.append(
             StageRecord(STAGE_REBUILD, False, f"返修重建失败: {exc}")
         )
-        result.problems = _collect_problems(first) + [f"返修重建失败: {exc}"]
+        result.problems = (
+            result.problems
+            + _collect_problems(first)
+            + [f"返修重建失败: {exc}"]
+        )
         result.status = STATUS_BLOCKED
         return result
 
+    _record_build(result, repaired_outcome, output_dir, "round-2")
+    rebuild_gate = check_build_gate(repaired_outcome)
+    if rebuild_gate.blocked or repaired_outcome.candidate_path is None:
+        result.stages.append(
+            StageRecord(
+                STAGE_REBUILD,
+                False,
+                f"返修重建后生成器状态 {repaired_outcome.status}，停下",
+            )
+        )
+        result.problems = (
+            result.problems
+            + _collect_problems(first)
+            + list(rebuild_gate.reasons)
+        )
+        result.status = STATUS_BLOCKED
+        return result
+    rebuild_needs_repair = rebuild_gate.verdict == GATE_REPAIR
+    if rebuild_needs_repair:
+        result.problems.extend(rebuild_gate.reasons)
+
+    repaired_path = Path(repaired_outcome.candidate_path)
     result.rebuilds = 1
     result.candidate_path = str(repaired_path)
     unchanged = candidate_content_hash(candidate_path) == (
@@ -387,7 +490,7 @@ def run_first_delivery(
     ).allowed:
         raise FirstDeliveryError("返修轮数上限失效，流程必须停下")
 
-    result.problems = _collect_problems(second)
+    result.problems = result.problems + _collect_problems(second)
     if unchanged:
         result.problems.insert(0, REPAIR_MADE_NO_DIFFERENCE)
         result.status = STATUS_BLOCKED
@@ -399,7 +502,11 @@ def run_first_delivery(
         )
         result.status = STATUS_BLOCKED
     elif second.clean:
-        result.status = STATUS_DELIVERED
+        # 重建那一轮生成器若仍报 NEEDS_REPAIR，唯一的返修已经用掉，
+        # 剩下的矛盾交给人。
+        result.status = (
+            STATUS_HANDOVER if rebuild_needs_repair else STATUS_DELIVERED
+        )
     else:
         result.status = STATUS_HANDOVER
     return result

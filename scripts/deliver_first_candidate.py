@@ -21,6 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import argparse  # noqa: E402
 import json  # noqa: E402
+import uuid  # noqa: E402
 from pathlib import Path  # noqa: E402
 
 from academic_pdf_translation.analysis.element_overrides import (  # noqa: E402
@@ -40,6 +41,10 @@ from academic_pdf_translation.delivery.first_delivery import (  # noqa: E402
     FirstDeliveryError,
     format_result,
     run_first_delivery,
+)
+from academic_pdf_translation.delivery.models import (  # noqa: E402
+    BuildOutcome,
+    build_outcome_from_report,
 )
 from academic_pdf_translation.planning.render_plan import (  # noqa: E402
     build_render_plan,
@@ -119,9 +124,16 @@ def rebuild_render_plan(job_dir: Path) -> dict[str, str]:
 
 
 def make_builder(job_dir: Path, output: Path | None):
-    """把真实的候选生成器包成交付流程要的 build(round_index)。"""
+    """把真实的候选生成器包成交付流程要的 build(round_index)。
 
-    def build(round_index: int) -> Path:
+    返回 :class:`BuildOutcome`，把生成器自己报告的状态原样带给交付门槛。
+    之前这里只要 candidate 路径存在就当成功——生成器说 BLOCKED 也拦不住
+    交付流程。现在状态跟着产物一起出去，判定交给 ``check_build_gate``。
+    """
+
+    run_id = f"run-{uuid.uuid4().hex[:12]}"
+
+    def build(round_index: int) -> BuildOutcome:
         label = "first" if round_index == 0 else f"repair-{round_index}"
         if round_index > 0:
             # 返修那一轮必须先重算渲染计划，降级指令才有机会生效。
@@ -129,20 +141,11 @@ def make_builder(job_dir: Path, output: Path | None):
         report = build_first_candidate(
             job_dir, output, attempt_label=label
         )
-        # 生成器在输入没准备好时会走 BLOCKED_BEFORE_PREFLIGHT，
-        # 那一条分支的 candidate_pdf 是 None。把它的 issues 原样带出来，
-        # 比只说一句"没有产出候选"有用得多。
-        candidate = report.get("candidate_pdf")
-        if not candidate:
-            issues = report.get("issues") or []
-            detail = "；".join(str(item) for item in issues[:3])
-            raise SkillError(
-                f"{label} 轮没有产出候选 PDF"
-                f"（{report.get('status')}"
-                f"{' / ' + report.get('blocked_stage', '') if report.get('blocked_stage') else ''}）"
-                + (f": {detail}" if detail else "")
-            )
-        return Path(candidate)
+        return build_outcome_from_report(
+            report,
+            run_id=run_id,
+            attempt_id=f"attempt-{round_index + 1}",
+        )
 
     return build
 
