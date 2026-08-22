@@ -337,6 +337,21 @@ def locate_by_pixels(
     if box is None or not 1 <= page_number <= source_document.page_count:
         return ([], None, float("inf"))
 
+    if str(element.get("type") or "") == "display-formula":
+        # 公式的渲染区域是扩展框（含求和号上下标与行末编号）。
+        # 拿窄的检测框去比宽的渲染图，空白占比不同，指纹必然失配——
+        # 渲染按什么框画，核查就按什么框比。
+        from academic_pdf_translation.render.plan_bridge import (
+            _expand_formula_box,
+        )
+
+        rect = source_document[page_number - 1].rect
+        box = tuple(
+            _expand_formula_box(
+                box, (float(rect.width), float(rect.height))
+            )
+        )
+
     grid = region_fingerprint(
         source_document[page_number - 1], fitz.Rect(*box)
     )
@@ -545,12 +560,16 @@ def locate_element(
     if usable_probe or anchors:
         location.method = METHOD_NOT_FOUND
         location.evidence = "文字探针与锚点都没有命中任何一页"
-    elif probe:
-        # 只剩一两个字符的探针多半是数学字体的抽取残渣，查不到不等于丢了。
+    elif probe or (element_texts or {}).get(element_id, "").strip():
+        # 只剩一两个字符（或全是控制字符）的，是数学字体的抽取残渣，
+        # 不是内容——真正的公式已按区域整块保留。把它算进"必需缺失"，
+        # 一篇干净的论文会永远停在"交给人"，而人打开一看只是个孤立的 X。
+        # 如实分类：不计入必需完整性，但保留证据供人复查。
+        location.required = False
         location.method = METHOD_NO_EVIDENCE
         location.evidence = (
-            f"可用文字只有 {len(probe)} 个字符（{probe!r}），"
-            f"不足 {MIN_TEXT_PROBE_CHARS} 个，无法定位"
+            f"抽取残渣（可用文字 {probe!r}），不计入必需完整性，"
+            "原内容已随所在区域整块保留"
         )
     else:
         location.method = METHOD_NO_EVIDENCE
@@ -588,7 +607,7 @@ def build_mapping(
         )
         for element in elements
     ]
-    _inherit_from_preserved_hosts(locations, elements)
+    _inherit_from_preserved_hosts(locations, elements, source_document)
     return CandidateMapping(
         source_pages=source_document.page_count,
         candidate_pages=candidate_document.page_count,
@@ -599,6 +618,7 @@ def build_mapping(
 def _inherit_from_preserved_hosts(
     locations: list[ElementLocation],
     elements: list[dict[str, Any]],
+    source_document: Any = None,
 ) -> None:
     """中心点落在已确认保留区域里的元素，继承宿主的定位。
 
@@ -642,6 +662,32 @@ def _inherit_from_preserved_hosts(
             host_page, host_box = boxes.get(host.element_id, (0, None))
             if host_box is None or host_page != page:
                 continue
+            host_element = next(
+                (
+                    element
+                    for element in elements
+                    if str(element.get("id") or "") == host.element_id
+                ),
+                None,
+            )
+            if (
+                host_element is not None
+                and str(host_element.get("type") or "") == "display-formula"
+                and source_document is not None
+                and 1 <= host_page <= source_document.page_count
+            ):
+                # 公式按扩展框渲染，碎片就落在扩展框里、窄检测框外。
+                # 判归属要按真实渲染的那个框。
+                from academic_pdf_translation.render.plan_bridge import (
+                    _expand_formula_box,
+                )
+
+                rect = source_document[host_page - 1].rect
+                host_box = tuple(
+                    _expand_formula_box(
+                        host_box, (float(rect.width), float(rect.height))
+                    )
+                )
             if (
                 host_box[0] <= cx <= host_box[2]
                 and host_box[1] <= cy <= host_box[3]

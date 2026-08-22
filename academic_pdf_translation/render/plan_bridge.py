@@ -52,6 +52,12 @@ RENDER_POLICY = "insert-before"
 #: 元素指向它图题的关系名。
 CAPTION_RELATION = "caption"
 
+#: 公式区域的扩展量（点）。公式检测框常只框住主行，求和号的上下标、
+#: 左右紧贴的括号会溢出框外几到二十几点；行末的公式编号更远。
+#: 展示公式独占自己的竖向条带，横向扩展是安全的。
+FORMULA_PAD_X = 28.0
+FORMULA_PAD_Y = 5.0
+
 
 class PlanBridgeError(RuntimeError):
     """渲染计划翻不成生成器条目。"""
@@ -127,11 +133,59 @@ def caption_text_for(
     return ""
 
 
+def _expand_formula_box(
+    box: tuple, page_size: tuple[float, float] | None
+) -> list[float]:
+    """把公式框扩到能盖住碎片和行末编号。"""
+
+    x0 = box[0] - FORMULA_PAD_X
+    x1 = box[2] + FORMULA_PAD_X
+    y0 = box[1] - FORMULA_PAD_Y
+    y1 = box[3] + FORMULA_PAD_Y
+    if page_size:
+        width, height = page_size
+        # 行末编号靠版心右缘，右边直接扩到接近页缘。
+        x1 = max(x1, width - 100.0)
+        x0 = max(0.0, x0)
+        x1 = min(width, x1)
+        y0 = max(0.0, y0)
+        y1 = min(height, y1)
+    return [x0, y0, x1, y1]
+
+
+MATH_TOKEN_RE = __import__("re").compile(
+    r"[∑∈∏√≤≥±×∞∂∇Ωσℓ]|\(x\)|\blog\b|^\(?\d{1,2}\)?$"
+)
+CJK_RE = __import__("re").compile(r"[\u3400-\u9fff]")
+
+
+def _is_formula_fragment(unit: dict[str, Any]) -> bool:
+    """这个单元是不是公式的碎片。
+
+    公式整块保留后，它的碎片行要从正文里删掉；但同一竖向带里可能混着
+    真正文（原版式里公式和句子同行）。判据看语义不看坐标一刀切：
+    有中文译文的是句子，留下；没有中文、带数学记号或只是个编号的，
+    是公式的一部分，随图走。
+    """
+
+    translation = str(unit.get("translation") or "").strip()
+    if CJK_RE.search(translation):
+        return False
+    text = translation or str(unit.get("source") or "").strip()
+    if not text:
+        return True
+    if len(text) <= 3:
+        return True
+    return bool(MATH_TOKEN_RE.search(text))
+
+
 def build_preservation_items(
     render_plan: dict[str, Any],
     elements: list[dict[str, Any]],
     *,
     unit_texts_by_element: dict[str, str] | None = None,
+    page_sizes: dict[int, tuple[float, float]] | None = None,
+    units: list[dict[str, Any]] | None = None,
 ) -> BridgeResult:
     """把计划里定到保留级的元素翻成复杂内容条目。
 
@@ -177,6 +231,50 @@ def build_preservation_items(
             continue
 
         full_page = planned.strategy == FALLBACK_PRESERVE_FULL_PAGE
+        render_box = box
+        suppress: list[str] = []
+        if (
+            planned.strategy == "preserve-formula-region"
+            and box is not None
+        ):
+            # 画出来的图用扩展框：盖住求和号的上下标和行末编号。
+            render_box = tuple(
+                _expand_formula_box(box, (page_sizes or {}).get(page))
+            )
+            # 坐标吞只用紧框（原框加碎片垫，不到页缘）——同一竖向带里
+            # 可能有真正文（原版式公式与句子同行），页缘一刀切会误吞。
+            width_height = (page_sizes or {}).get(page)
+            box = (
+                max(0.0, box[0] - FORMULA_PAD_X),
+                max(0.0, box[1] - FORMULA_PAD_Y),
+                box[2] + FORMULA_PAD_X,
+                box[3] + FORMULA_PAD_Y,
+            )
+            if width_height:
+                box = (
+                    box[0],
+                    box[1],
+                    min(width_height[0], box[2]),
+                    min(width_height[1], box[3]),
+                )
+            # 扩展框内、语义上属于公式的碎片行，按文字删除。
+            rx0, ry0, rx1, ry1 = render_box
+            for unit in units or []:
+                if unit.get("page") != page:
+                    continue
+                ubox = unit.get("source_bbox")
+                if not isinstance(ubox, list) or len(ubox) != 4:
+                    continue
+                cx = (ubox[0] + ubox[2]) / 2
+                cy = (ubox[1] + ubox[3]) / 2
+                if not (rx0 <= cx <= rx1 and ry0 <= cy <= ry1):
+                    continue
+                if _is_formula_fragment(unit):
+                    text = str(
+                        unit.get("translation") or unit.get("source") or ""
+                    ).strip()
+                    if text:
+                        suppress.append(text)
         caption = caption_text_for(element, by_id, texts)
         result.items.append(
             {
@@ -202,10 +300,15 @@ def build_preservation_items(
                 ],
                 "payload": {
                     "render_policy": RENDER_POLICY,
+                    "suppress_texts": suppress,
                     "regions": [
                         {
                             "page": page,
-                            "bbox": None if full_page else list(box or ()),
+                            "bbox": (
+                                None
+                                if full_page
+                                else list(render_box or box or ())
+                            ),
                             # 生成器的坐标替换机制认的键是 source_bbox：
                             # 落在这块区域里的正文单元会被移出正文流，
                             # 不写它，保留的区域和压平的流水文字会同时出现。

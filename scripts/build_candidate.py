@@ -3381,7 +3381,11 @@ def _unit_flowables(
     kind = str(kind_override or unit.get("kind") or "").lower()
     layout_role = str(unit.get("_layout_role") or "").lower()
     for index, block in enumerate(blocks):
-        if layout_role in {
+        if unit.get("_element_role") == "footnote":
+            # 脚注不是正文：字号小一档、无缩进。分隔线由页面单元的
+            # 首个脚注前插入（见 _unit_flowables 调用侧）。
+            style = styles["table_note"]
+        elif layout_role in {
             "publication-metadata",
             "formal-citation-footer",
         }:
@@ -6154,8 +6158,32 @@ def _merge_render_plan_preservations(
     plan = load_json(plan_path)
     elements = load_json(elements_path).get("elements") or []
     unit_texts = _element_unit_texts(job_dir, translation)
+    page_sizes: dict[int, tuple[float, float]] = {}
+    source_path = job_dir / "source.pdf"
+    if source_path.is_file():
+        # 经计数通道打开：这次读页尺寸也计入性能基线的 PDF 打开次数。
+        handle = open_candidate_analysis(source_path, role="source")
+        try:
+            _doc = handle.document
+            page_sizes = {
+                index + 1: (
+                    float(_doc[index].rect.width),
+                    float(_doc[index].rect.height),
+                )
+                for index in range(_doc.page_count)
+            }
+        finally:
+            handle.close()
     bridged = build_preservation_items(
-        plan, elements, unit_texts_by_element=unit_texts
+        plan,
+        elements,
+        unit_texts_by_element=unit_texts,
+        page_sizes=page_sizes,
+        units=[
+            unit
+            for unit in translation.get("units", [])
+            if isinstance(unit, dict)
+        ],
     )
     merged = (
         merge_into_complex_content(complex_content, bridged)
