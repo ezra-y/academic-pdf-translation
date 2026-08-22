@@ -123,12 +123,37 @@ class PageRisk:
                 seen.append(item)
         return seen
 
+    @property
+    def checks(self) -> list[tuple[str, str, str]]:
+        """逐元素的检查项：(元素 ID, 检查码, 看什么)。
+
+        视觉门按 (页, 元素, 检查码) 对账，所以清单也必须写到元素这一级：
+        同一页两个表格触发同一个码，就是两条要分别回答的检查项。
+        """
+
+        seen: list[tuple[str, str, str]] = []
+        for signal in sorted(
+            self.signals, key=lambda item: item.weight, reverse=True
+        ):
+            entry = (
+                signal.element_id,
+                signal.code,
+                SIGNAL_CHECKLIST.get(signal.code, signal.code),
+            )
+            if entry not in seen:
+                seen.append(entry)
+        return seen
+
     def as_dict(self) -> dict[str, Any]:
         return {
             "candidate_page": self.candidate_page,
             "score": self.score,
             "element_ids": self.element_ids,
             "checklist": self.checklist,
+            "checks": [
+                {"element_id": item[0], "check_code": item[1], "look_for": item[2]}
+                for item in self.checks
+            ],
             "signals": [signal.as_dict() for signal in self.signals],
         }
 
@@ -309,8 +334,8 @@ def format_plan(plan: VisualReviewPlan) -> str:
     for item in plan.selected:
         lines.append("")
         lines.append(f"候选第 {item.candidate_page} 页（风险分 {item.score}）")
-        for check in item.checklist:
-            lines.append(f"  - {check}")
+        for element_id, code, look_for in item.checks:
+            lines.append(f"  - [{element_id}] {code}: {look_for}")
     if plan.truncated:
         lines.append("")
         lines.append(

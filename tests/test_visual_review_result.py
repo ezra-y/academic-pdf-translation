@@ -16,15 +16,21 @@ import fitz  # noqa: E402
 import pytest  # noqa: E402
 from academic_pdf_translation.delivery import first_delivery as fd  # noqa: E402
 from academic_pdf_translation.delivery.models import file_sha256  # noqa: E402
+from academic_pdf_translation.delivery.evidence import (  # noqa: E402
+    RunIdentity,
+)
 from academic_pdf_translation.verify.visual_gate import (  # noqa: E402
+    VISUAL_DUPLICATE_ANSWER,
     VISUAL_FAIL,
     VISUAL_INCOMPLETE,
     VISUAL_NOT_REQUIRED,
     VISUAL_PASS,
     VISUAL_STALE,
     VISUAL_TRUNCATED,
+    VISUAL_UNKNOWN_ELEMENT,
     VISUAL_WAITING,
     check_visual_gate,
+    required_answers,
 )
 from academic_pdf_translation.verify.visual_plan import (  # noqa: E402
     PLAN_NOT_REQUIRED,
@@ -49,24 +55,63 @@ ABSENT = "EpsilonZetaEtaTheta"
 
 SHA_A = "a" * 64
 SHA_B = "b" * 64
+PLAN_SHA_A = "c" * 64
+PLAN_SHA_B = "d" * 64
+BUILD_A = "renderer-2026.08.01"
+BUILD_B = "renderer-2026.08.02"
 
 
 def _plan(*pages: PageRisk, skipped: tuple[PageRisk, ...] = ()) -> VisualReviewPlan:
     return VisualReviewPlan(selected=list(pages), skipped=list(skipped))
 
 
-def _page(page: int, *codes: str) -> PageRisk:
+def _page(page: int, *codes: str, element: str = "") -> PageRisk:
+    element_id = element or f"e-{page}"
     return PageRisk(
         candidate_page=page,
-        signals=[RiskSignal(code, f"e-{page}", "") for code in codes],
+        signals=[RiskSignal(code, element_id, "") for code in codes],
+    )
+
+
+def _identity(
+    *,
+    run_id: str = "run-1",
+    attempt_id: int = 1,
+    sha: str = SHA_A,
+    plan_sha: str = PLAN_SHA_A,
+    renderer: str = BUILD_A,
+) -> RunIdentity:
+    return RunIdentity(
+        run_id=run_id,
+        attempt_id=attempt_id,
+        candidate_sha256=sha,
+        render_plan_sha256=plan_sha,
+        renderer_build_id=renderer,
     )
 
 
 def _result(
-    *items: ReviewItem, sha: str = SHA_A, reviewer: str = "targeted-agent"
+    *items: ReviewItem,
+    sha: str = SHA_A,
+    reviewer: str = "targeted-agent",
+    binding: RunIdentity | None = None,
 ) -> VisualReviewResult:
     return VisualReviewResult(
-        candidate_sha256=sha, reviewer_type=reviewer, items=list(items)
+        binding=binding if binding is not None else _identity(sha=sha),
+        reviewer_type=reviewer,
+        items=list(items),
+    )
+
+
+def _item(
+    page: int, code: str, decision: str, detail: str = "", element: str = ""
+) -> ReviewItem:
+    return ReviewItem(
+        candidate_page=page,
+        element_id=element or f"e-{page}",
+        check_code=code,
+        decision=decision,
+        detail=detail,
     )
 
 
@@ -96,7 +141,7 @@ def test_no_risk_pages_are_marked_not_required() -> None:
 def test_visual_result_must_cover_every_selected_page() -> None:
     plan = _plan(_page(2, SIGNAL_MISSING), _page(5, SIGNAL_MISSING))
     partial = _result(
-        ReviewItem(2, SIGNAL_MISSING, DECISION_PASS)
+        _item(2, SIGNAL_MISSING, DECISION_PASS)
     )
     gate = check_visual_gate(plan, partial, candidate_sha256=SHA_A)
     assert gate.code == VISUAL_INCOMPLETE
@@ -107,7 +152,7 @@ def test_visual_result_must_answer_every_check() -> None:
     """一页上有两个检查码，只答一个不算看过；总 PASS 更不算。"""
 
     plan = _plan(_page(2, SIGNAL_MISSING, SIGNAL_DRAWING_BOUND))
-    partial = _result(ReviewItem(2, SIGNAL_MISSING, DECISION_PASS))
+    partial = _result(_item(2, SIGNAL_MISSING, DECISION_PASS))
     gate = check_visual_gate(plan, partial, candidate_sha256=SHA_A)
     assert gate.code == VISUAL_INCOMPLETE
     assert any(SIGNAL_DRAWING_BOUND in reason for reason in gate.reasons)
@@ -115,7 +160,7 @@ def test_visual_result_must_answer_every_check() -> None:
 
 def test_stale_visual_result_is_rejected() -> None:
     plan = _plan(_page(2, SIGNAL_MISSING))
-    stale = _result(ReviewItem(2, SIGNAL_MISSING, DECISION_PASS), sha=SHA_B)
+    stale = _result(_item(2, SIGNAL_MISSING, DECISION_PASS), sha=SHA_B)
     gate = check_visual_gate(plan, stale, candidate_sha256=SHA_A)
     assert gate.code == VISUAL_STALE
     assert gate.passed is False
@@ -127,7 +172,7 @@ def test_truncated_review_plan_cannot_deliver() -> None:
     plan = _plan(
         _page(2, SIGNAL_MISSING), skipped=(_page(7, SIGNAL_MISSING),)
     )
-    full = _result(ReviewItem(2, SIGNAL_MISSING, DECISION_PASS))
+    full = _result(_item(2, SIGNAL_MISSING, DECISION_PASS))
     gate = check_visual_gate(plan, full, candidate_sha256=SHA_A)
     assert gate.code == VISUAL_TRUNCATED
     assert gate.passed is False
@@ -135,12 +180,12 @@ def test_truncated_review_plan_cannot_deliver() -> None:
 
 def test_visual_pass_and_fail_are_computed_from_items() -> None:
     plan = _plan(_page(2, SIGNAL_MISSING))
-    passed = _result(ReviewItem(2, SIGNAL_MISSING, DECISION_PASS))
+    passed = _result(_item(2, SIGNAL_MISSING, DECISION_PASS))
     assert (
         check_visual_gate(plan, passed, candidate_sha256=SHA_A).code
         == VISUAL_PASS
     )
-    failed = _result(ReviewItem(2, SIGNAL_MISSING, DECISION_FAIL, "图糊了"))
+    failed = _result(_item(2, SIGNAL_MISSING, DECISION_FAIL, "图糊了"))
     gate = check_visual_gate(plan, failed, candidate_sha256=SHA_A)
     assert gate.code == VISUAL_FAIL
     assert gate.failed_items
@@ -155,6 +200,7 @@ def test_handwritten_total_decision_is_ignored() -> None:
         "items": [
             {
                 "candidate_page": 2,
+                "element_id": "e-2",
                 "check_code": SIGNAL_MISSING,
                 "decision": "FAIL",
             }
@@ -163,6 +209,155 @@ def test_handwritten_total_decision_is_ignored() -> None:
     assert result_from_dict(data).decision == DECISION_FAIL
     with pytest.raises(VisualResultError):
         result_from_dict({"candidate_sha256": SHA_A, "items": "yes"})
+
+
+# --- 逐元素闭环 -------------------------------------------------------------
+
+
+def test_two_elements_with_same_page_and_code_need_two_answers() -> None:
+    """第 7 页两个表格都是同一个信号：答一条不算把这一页看完。
+
+    这是被评审抓到的洞。按"页 → 检查码"折叠时，table-001 的答案会
+    连 table-002 一起算作看过——而 table-002 可能根本没人看。
+    """
+
+    plan = _plan(
+        PageRisk(
+            candidate_page=7,
+            signals=[
+                RiskSignal(SIGNAL_DRAWING_BOUND, "table-001", ""),
+                RiskSignal(SIGNAL_DRAWING_BOUND, "table-002", ""),
+            ],
+        )
+    )
+    assert required_answers(plan) == {
+        (7, "table-001", SIGNAL_DRAWING_BOUND),
+        (7, "table-002", SIGNAL_DRAWING_BOUND),
+    }
+    half = _result(
+        _item(7, SIGNAL_DRAWING_BOUND, DECISION_PASS, element="table-001")
+    )
+    gate = check_visual_gate(plan, half, candidate_sha256=SHA_A)
+    assert gate.code == VISUAL_INCOMPLETE
+    assert any("table-002" in reason for reason in gate.reasons)
+
+    both = _result(
+        _item(7, SIGNAL_DRAWING_BOUND, DECISION_PASS, element="table-001"),
+        _item(7, SIGNAL_DRAWING_BOUND, DECISION_PASS, element="table-002"),
+    )
+    assert (
+        check_visual_gate(plan, both, candidate_sha256=SHA_A).code
+        == VISUAL_PASS
+    )
+
+
+def test_visual_item_requires_element_id() -> None:
+    """没有 element_id 的答案说明不了看的是哪一个元素，一律不收。"""
+
+    data = {
+        "candidate_sha256": SHA_A,
+        "items": [
+            {
+                "candidate_page": 7,
+                "check_code": SIGNAL_DRAWING_BOUND,
+                "decision": "PASS",
+            }
+        ],
+    }
+    with pytest.raises(VisualResultError) as excinfo:
+        result_from_dict(data)
+    assert "element_id" in str(excinfo.value)
+
+
+def test_unknown_visual_element_id_is_rejected() -> None:
+    """结果里冒出计划中不存在的元素：对不上任何检查对象，拒收。"""
+
+    plan = _plan(_page(7, SIGNAL_DRAWING_BOUND, element="table-001"))
+    result = _result(
+        _item(7, SIGNAL_DRAWING_BOUND, DECISION_PASS, element="table-001"),
+        _item(7, SIGNAL_DRAWING_BOUND, DECISION_PASS, element="table-999"),
+    )
+    gate = check_visual_gate(plan, result, candidate_sha256=SHA_A)
+    assert gate.code == VISUAL_UNKNOWN_ELEMENT
+    assert gate.passed is False
+    assert any("table-999" in reason for reason in gate.reasons)
+
+
+def test_duplicate_visual_answer_is_rejected() -> None:
+    """同一个 (页, 元素, 检查码) 答两次，会掩盖两条答案的矛盾。"""
+
+    plan = _plan(_page(7, SIGNAL_DRAWING_BOUND, element="table-001"))
+    result = _result(
+        _item(7, SIGNAL_DRAWING_BOUND, DECISION_PASS, element="table-001"),
+        _item(7, SIGNAL_DRAWING_BOUND, DECISION_PASS, element="table-001"),
+    )
+    gate = check_visual_gate(plan, result, candidate_sha256=SHA_A)
+    assert gate.code == VISUAL_DUPLICATE_ANSWER
+    assert gate.passed is False
+
+
+# --- 五元绑定 ---------------------------------------------------------------
+
+
+def _bound_case(**overrides):
+    """一份本来完全合格的结果，只在某一元上做手脚。"""
+
+    plan = _plan(_page(2, SIGNAL_MISSING))
+    result = _result(
+        _item(2, SIGNAL_MISSING, DECISION_PASS),
+        binding=_identity(**overrides),
+    )
+    return plan, result
+
+
+def test_full_binding_passes_the_visual_gate() -> None:
+    """五元全对才放行——这是下面四条否定用例的对照组。"""
+
+    plan, result = _bound_case()
+    gate = check_visual_gate(plan, result, identity=_identity())
+    assert gate.code == VISUAL_PASS
+
+
+def test_visual_result_rejects_wrong_run_id() -> None:
+    plan, result = _bound_case(run_id="run-other")
+    gate = check_visual_gate(plan, result, identity=_identity())
+    assert gate.code == VISUAL_STALE
+    assert any("run_id" in reason for reason in gate.reasons)
+
+
+def test_visual_result_rejects_wrong_attempt_id() -> None:
+    plan, result = _bound_case(attempt_id=2)
+    gate = check_visual_gate(plan, result, identity=_identity())
+    assert gate.code == VISUAL_STALE
+    assert any("attempt_id" in reason for reason in gate.reasons)
+
+
+def test_visual_result_rejects_wrong_render_plan_hash() -> None:
+    """候选字节可以一样，渲染计划换了，旧结论对新链路就不成立。"""
+
+    plan, result = _bound_case(plan_sha=PLAN_SHA_B)
+    gate = check_visual_gate(plan, result, identity=_identity())
+    assert gate.code == VISUAL_STALE
+    assert any("render_plan_sha256" in reason for reason in gate.reasons)
+
+
+def test_visual_result_rejects_wrong_renderer_build_id() -> None:
+    plan, result = _bound_case(renderer=BUILD_B)
+    gate = check_visual_gate(plan, result, identity=_identity())
+    assert gate.code == VISUAL_STALE
+    assert any("renderer_build_id" in reason for reason in gate.reasons)
+
+
+def test_visual_result_without_binding_is_stale() -> None:
+    """五元缺一即 EVIDENCE_STALE：空绑定不是"没要求"，是"证明不了"。"""
+
+    plan = _plan(_page(2, SIGNAL_MISSING))
+    result = VisualReviewResult(
+        binding=None, items=[_item(2, SIGNAL_MISSING, DECISION_PASS)]
+    )
+    gate = check_visual_gate(plan, result, identity=_identity())
+    assert gate.code == VISUAL_STALE
+    assert len(gate.reasons) == 5
 
 
 # --- 交付级行为 -------------------------------------------------------------
@@ -254,7 +449,7 @@ def test_failed_visual_item_creates_repair_task(
 ) -> None:
     good, _ = _run_with_risky_plan(tmp_path, monkeypatch, None)
     failed = _result(
-        ReviewItem(1, SIGNAL_DRAWING_BOUND, DECISION_FAIL, "图形对不上"),
+        _item(1, SIGNAL_DRAWING_BOUND, DECISION_FAIL, "图形对不上"),
         sha=file_sha256(good),
     )
     _, result = _run_with_risky_plan(tmp_path, monkeypatch, failed, good=good)
@@ -269,7 +464,7 @@ def test_passed_visual_result_allows_next_gate(
 ) -> None:
     good, _ = _run_with_risky_plan(tmp_path, monkeypatch, None)
     passed = _result(
-        ReviewItem(1, SIGNAL_DRAWING_BOUND, DECISION_PASS, "图形完整"),
+        _item(1, SIGNAL_DRAWING_BOUND, DECISION_PASS, "图形完整"),
         sha=file_sha256(good),
     )
     _, result = _run_with_risky_plan(tmp_path, monkeypatch, passed, good=good)

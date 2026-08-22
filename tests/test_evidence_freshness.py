@@ -82,8 +82,14 @@ def test_old_visual_result_cannot_validate_new_candidate() -> None:
         ]
     )
     old = VisualReviewResult(
-        candidate_sha256="d" * 64,
-        items=[ReviewItem(2, SIGNAL_MISSING, DECISION_PASS)],
+        binding=RunIdentity(
+            run_id="run-1",
+            attempt_id=1,
+            candidate_sha256="d" * 64,
+            render_plan_sha256="p" * 64,
+            renderer_build_id="renderer-1",
+        ),
+        items=[ReviewItem(2, "e1", SIGNAL_MISSING, DECISION_PASS)],
     )
     gate = check_visual_gate(plan, old, candidate_sha256="c" * 64)
     assert gate.code == VISUAL_STALE
