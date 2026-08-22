@@ -51,6 +51,9 @@ RENDER_POLICY = "insert-before"
 
 #: 元素指向它图题的关系名。
 CAPTION_RELATION = "caption"
+#: 图内嵌入标签的关系名。
+EMBEDDED_LABEL_RELATION = "embedded-label"
+CJK_TEXT_RE = __import__("re").compile(r"[\u3400-\u9fff]")
 
 #: 公式区域的扩展量（点）。公式检测框常只框住主行，求和号的上下标、
 #: 左右紧贴的括号会溢出框外几到二十几点；行末的公式编号更远。
@@ -280,6 +283,31 @@ def build_preservation_items(
                     if text:
                         suppress.append(text)
         caption = caption_text_for(element, by_id, texts)
+        labels: list[dict[str, Any]] = []
+        if planned.strategy in (
+            "preserve-geometry-with-label-overlay",
+            "preserve-geometry-with-numbered-legend",
+        ):
+            # 图内有中文译文的标签，坐标齐全就交给渲染层覆盖成中文；
+            # 数字尺寸、通道数没有译文，原样留在图里。
+            for label_id in (element.get("relations") or {}).get(
+                EMBEDDED_LABEL_RELATION, []
+            ):
+                label_element = by_id.get(str(label_id))
+                if label_element is None:
+                    continue
+                label_box = normalize_bbox(label_element.get("bbox"))
+                translation = texts.get(str(label_id), "").strip()
+                if label_box and CJK_TEXT_RE.search(translation):
+                    labels.append(
+                        {
+                            "bbox": list(label_box),
+                            "translation": translation,
+                            "source": str(
+                                label_element.get("text_excerpt") or ""
+                            ),
+                        }
+                    )
         result.items.append(
             {
                 "id": f"plan-{planned.element_id}",
@@ -320,6 +348,7 @@ def build_preservation_items(
                                 None if full_page else list(box or ())
                             ),
                             "full_page": full_page,
+                            "labels": labels,
                             "source_element_id": planned.element_id,
                             # 生成器认这个键当图题：它会把图题和图锁成一块，
                             # 并把正文里重复的那一份抑制掉。

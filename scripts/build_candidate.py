@@ -4738,6 +4738,71 @@ def _localized_image_label_flowables(
 PRESERVED_REGION_MAX_HEIGHT_RATIO = 0.9
 
 
+def _overlay_chinese_labels(
+    png_bytes: bytes,
+    labels: list[dict[str, Any]],
+    clip: Any,
+    scale: float,
+    font_path: str,
+) -> bytes:
+    """把有译文的图内标签覆盖成中文。
+
+    白底盖住原英文标签，再按格高写入中文——数字尺寸、通道数没有译文，
+    一个像素都不动。字号从格高起步，放不下就缩，缩到底还放不下就不画，
+    留着原文也比画出溢出图形的中文强。
+    """
+
+    import io as _io
+
+    from PIL import Image as PILImage
+    from PIL import ImageDraw, ImageFont
+
+    image = PILImage.open(_io.BytesIO(png_bytes)).convert("RGB")
+    draw = ImageDraw.Draw(image)
+    for label in labels:
+        box = label.get("bbox")
+        text = str(label.get("translation") or "").strip()
+        if not text or not isinstance(box, list) or len(box) != 4:
+            continue
+        x0 = (float(box[0]) - float(clip.x0)) * scale
+        y0 = (float(box[1]) - float(clip.y0)) * scale
+        x1 = (float(box[2]) - float(clip.x0)) * scale
+        y1 = (float(box[3]) - float(clip.y0)) * scale
+        if x1 <= x0 or y1 <= y0:
+            continue
+        # 中文比英文标签宽是常态，允许向右伸一点，但绝不许伸出图片
+        # 边界——"输出分割图"被裁成"输出分割"比留英文还糟。
+        edge = image.width - max(2.0, scale)
+        size = max(int((y1 - y0) * 0.92), 6)
+        font = None
+        while size >= 6:
+            font = ImageFont.truetype(font_path, size)
+            width_needed = draw.textlength(text, font=font)
+            if width_needed <= (x1 - x0) * 1.35 and x0 + width_needed <= edge:
+                break
+            if x0 + width_needed <= edge:
+                break
+            size -= 1
+        if font is None or size < 6:
+            continue
+        width_needed = draw.textlength(text, font=font)
+        draw_x = min(x0, max(0.0, edge - width_needed))
+        pad = max(1.0, scale)
+        draw.rectangle(
+            (
+                min(draw_x, x0) - pad,
+                y0 - pad,
+                max(x1, draw_x + width_needed) + pad,
+                y1 + pad,
+            ),
+            fill="white",
+        )
+        draw.text((draw_x, y0 - size * 0.08), text, fill="black", font=font)
+    output = _io.BytesIO()
+    image.save(output, "PNG")
+    return output.getvalue()
+
+
 def _preserved_source_region_image(
     source_document: Any,
     *,
@@ -4746,6 +4811,8 @@ def _preserved_source_region_image(
     available_width: float,
     maximum_height: float,
     dpi: int = MIN_RASTER_DPI,
+    labels: list[dict[str, Any]] | None = None,
+    label_font_path: str | None = None,
 ) -> Image:
     """把原文的一块区域栅格化成一个图片流。
 
@@ -4772,6 +4839,11 @@ def _preserved_source_region_image(
     pixmap = page.get_pixmap(
         matrix=fitz.Matrix(scale, scale), clip=clip, alpha=False
     )
+    png_bytes = pixmap.tobytes("png")
+    if labels and label_font_path:
+        png_bytes = _overlay_chinese_labels(
+            png_bytes, labels, clip, scale, label_font_path
+        )
     natural_width = max(float(clip.width), 1.0)
     natural_height = max(float(clip.height), 1.0)
     ratio = min(
@@ -4780,7 +4852,7 @@ def _preserved_source_region_image(
         maximum_height / natural_height,
     )
     image = Image(
-        io.BytesIO(pixmap.tobytes("png")),
+        io.BytesIO(png_bytes),
         width=natural_width * ratio,
         height=natural_height * ratio,
     )
@@ -4795,6 +4867,7 @@ def _preserved_region_flowables(
     source_document: Any,
     available_width: float,
     available_height: float,
+    label_font_path: str | None = None,
 ) -> list[Flowable]:
     """渲染计划定到保留级的元素，走这里。
 
@@ -4825,6 +4898,12 @@ def _preserved_region_flowables(
                     available_height * PRESERVED_REGION_MAX_HEIGHT_RATIO
                     - caption_reserve
                 ),
+                labels=(
+                    region.get("labels")
+                    if isinstance(region.get("labels"), list)
+                    else None
+                ),
+                label_font_path=label_font_path,
             )
         ]
         if caption:
@@ -4846,6 +4925,7 @@ def _complex_flowables(
     bold_font: str,
     body_font_pt: float,
     target_language: str = "zh-Hans",
+    label_font_path: str | None = None,
 ) -> list[Flowable]:
     method = str(item.get("method") or "")
     payload = item.get("payload") if isinstance(item.get("payload"), dict) else {}
@@ -4872,6 +4952,7 @@ def _complex_flowables(
                 bold_font=bold_font,
                 body_font_pt=body_font_pt,
                 target_language=target_language,
+                label_font_path=label_font_path,
             )
         )
         for index, component in enumerate(components):
@@ -4894,6 +4975,7 @@ def _complex_flowables(
                     bold_font=bold_font,
                     body_font_pt=body_font_pt,
                     target_language=target_language,
+                    label_font_path=label_font_path,
                 )
             )
         return result
@@ -4960,6 +5042,7 @@ def _complex_flowables(
             source_document=source_document,
             available_width=available_width,
             available_height=available_height,
+            label_font_path=label_font_path,
         )
     if method in {"image-text-localization", "ocr-region-rebuild"}:
         return prefix + _with_figure_caption(
@@ -5398,6 +5481,7 @@ def _story(
     bold_font: str,
     body_font_pt: float,
     target_language: str,
+    label_font_path: str | None = None,
 ) -> list[Flowable]:
     reference_state: dict[str, Any] = {}
 
@@ -5620,6 +5704,7 @@ def _story(
                     bold_font=bold_font,
                     body_font_pt=body_font_pt,
                     target_language=target_language,
+                    label_font_path=label_font_path,
                 )
             )
             result.append(
@@ -5912,6 +5997,7 @@ def _render_attempt(
     body_font_pt: float,
     leading_ratio: float,
     reference_font_pt: float,
+    label_font_path: str | None = None,
 ) -> tuple[MappingTracker, int]:
     """完整试排一次，结果写入给定路径。
 
@@ -5945,6 +6031,7 @@ def _render_attempt(
         bold_font=bold_font,
         body_font_pt=body_font_pt,
         target_language=str(job["translation"]["target_language"]),
+        label_font_path=label_font_path,
     )
     document = MappingDocTemplate(
         str(path),
@@ -6527,6 +6614,7 @@ def _timed_build_candidate(
                     body_font_pt=body_font,
                     leading_ratio=leading,
                     reference_font_pt=reference_font_pt,
+                    label_font_path=str(regular_path),
                 )
             except Exception as exc:
                 attempts.append(
