@@ -341,15 +341,12 @@ def locate_by_pixels(
         # 公式的渲染区域是扩展框（含求和号上下标与行末编号）。
         # 拿窄的检测框去比宽的渲染图，空白占比不同，指纹必然失配——
         # 渲染按什么框画，核查就按什么框比。
-        from academic_pdf_translation.render.plan_bridge import (
-            _expand_formula_box,
+        from academic_pdf_translation.render.formula_crop import (
+            formula_render_box,
         )
 
-        rect = source_document[page_number - 1].rect
         box = tuple(
-            _expand_formula_box(
-                box, (float(rect.width), float(rect.height))
-            )
+            formula_render_box(source_document[page_number - 1], box)
         )
 
     grid = region_fingerprint(
@@ -678,14 +675,13 @@ def _inherit_from_preserved_hosts(
             ):
                 # 公式按扩展框渲染，碎片就落在扩展框里、窄检测框外。
                 # 判归属要按真实渲染的那个框。
-                from academic_pdf_translation.render.plan_bridge import (
-                    _expand_formula_box,
+                from academic_pdf_translation.render.formula_crop import (
+                    formula_render_box,
                 )
 
-                rect = source_document[host_page - 1].rect
                 host_box = tuple(
-                    _expand_formula_box(
-                        host_box, (float(rect.width), float(rect.height))
+                    formula_render_box(
+                        source_document[host_page - 1], host_box
                     )
                 )
             if (

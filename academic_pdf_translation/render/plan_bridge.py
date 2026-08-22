@@ -190,6 +190,7 @@ def build_preservation_items(
     page_sizes: dict[int, tuple[float, float]] | None = None,
     units: list[dict[str, Any]] | None = None,
     skip_elements: set[str] | None = None,
+    source_pages: dict[int, Any] | None = None,
 ) -> BridgeResult:
     """把计划里定到保留级的元素翻成复杂内容条目。
 
@@ -240,14 +241,28 @@ def build_preservation_items(
         full_page = planned.strategy == FALLBACK_PRESERVE_FULL_PAGE
         render_box = box
         suppress: list[str] = []
+        formula_crop_info: dict[str, Any] | None = None
         if (
             planned.strategy == "preserve-formula-region"
             and box is not None
         ):
             # 画出来的图用扩展框：盖住求和号的上下标和行末编号。
-            render_box = tuple(
-                _expand_formula_box(box, (page_sizes or {}).get(page))
-            )
+            source_page = (source_pages or {}).get(page)
+            if source_page is not None:
+                # 三步法：内容并集 → 方向边距 → 边缘墨迹检查。
+                from academic_pdf_translation.render.formula_crop import (
+                    compute_formula_crop,
+                    formula_render_box,
+                )
+
+                crop = compute_formula_crop(source_page, box)
+                formula_crop_info = crop.as_dict()
+                render_box = tuple(formula_render_box(source_page, box))
+            else:
+                # 老作业没有页对象时的兼容路径：固定边距。
+                render_box = tuple(
+                    _expand_formula_box(box, (page_sizes or {}).get(page))
+                )
             # 坐标吞只用紧框（原框加碎片垫，不到页缘）——同一竖向带里
             # 可能有真正文（原版式公式与句子同行），页缘一刀切会误吞。
             width_height = (page_sizes or {}).get(page)
@@ -332,6 +347,8 @@ def build_preservation_items(
                 ],
                 "payload": {
                     "render_policy": RENDER_POLICY,
+                    # 公式裁切的最终框与扩展原因，供人核对（无则为 None）。
+                    "formula_crop": formula_crop_info,
                     "suppress_texts": suppress,
                     "regions": [
                         {

@@ -6369,16 +6369,31 @@ def _merge_render_plan_preservations(
                 if item is not None:
                     table_items.append(item)
                     rebuilt_tables.add(element_id)
+            # 公式裁切三步法要做边缘墨迹检查，需要页对象在手，
+            # 所以桥接在文档还开着时完成。
+            source_pages = {
+                index + 1: _doc[index] for index in range(_doc.page_count)
+            }
+            bridged = build_preservation_items(
+                plan,
+                elements,
+                unit_texts_by_element=unit_texts,
+                page_sizes=page_sizes,
+                units=translation_units,
+                skip_elements=rebuilt_tables,
+                source_pages=source_pages,
+            )
         finally:
             handle.release()
-    bridged = build_preservation_items(
-        plan,
-        elements,
-        unit_texts_by_element=unit_texts,
-        page_sizes=page_sizes,
-        units=translation_units,
-        skip_elements=rebuilt_tables,
-    )
+    else:
+        bridged = build_preservation_items(
+            plan,
+            elements,
+            unit_texts_by_element=unit_texts,
+            page_sizes=page_sizes,
+            units=translation_units,
+            skip_elements=rebuilt_tables,
+        )
     bridged.items.extend(table_items)
     merged = (
         merge_into_complex_content(complex_content, bridged)
