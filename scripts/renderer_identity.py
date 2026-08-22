@@ -18,6 +18,11 @@ RENDERER_INPUTS = (
     "scripts/set_complex_payload.py",
     "scripts/typography_fit.py",
     "assets/language-profiles.json",
+    # 生成器 import 的包文件也影响产出，必须进构建哈希，
+    # 否则改了它们基准还显示"同一版代码"。
+    "academic_pdf_translation/render/plan_bridge.py",
+    "academic_pdf_translation/render/preserved_region_renderer.py",
+    "academic_pdf_translation/planning/mode_policy.py",
 )
 
 

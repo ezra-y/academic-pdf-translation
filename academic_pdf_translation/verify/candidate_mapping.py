@@ -32,6 +32,7 @@ SCHEMA_VERSION = "1.0"
 
 METHOD_IMAGE_DIGEST = "image-digest"
 METHOD_REGION_PIXELS = "region-pixels"
+METHOD_INSIDE_PRESERVED = "inside-preserved-region"
 METHOD_TEXT_ANCHOR = "text-anchor"
 METHOD_TEXT_SEARCH = "text-search"
 METHOD_DRAWING_BOUND = "drawing-count-lower-bound"
@@ -97,8 +98,14 @@ class ElementLocation:
         """几何结构有没有跟着搬过来。
 
         元素本身没有绘图对象时返回 None——没有几何可谈，不是通过也不是失败。
+
+        按像素指纹定位到的元素直接算通过：指纹证明整块视觉内容原样在场，
+        而保留区域必然是栅格，绘图对象计数在这条路径上永远追不上原文——
+        再用它评几何只会制造永不消失的误报。
         """
 
+        if self.method == METHOD_REGION_PIXELS:
+            return True
         if self.source_drawing_count <= 0:
             return None
         return self.candidate_drawing_count >= self.source_drawing_count
@@ -255,20 +262,25 @@ def region_fingerprint(page: Any, rect: Any) -> list[int] | None:
     width, height, samples = pixmap.width, pixmap.height, pixmap.samples
     if width < FINGERPRINT_GRID or height < FINGERPRINT_GRID:
         return None
-    grid: list[int] = []
-    for row in range(FINGERPRINT_GRID):
-        for column in range(FINGERPRINT_GRID):
-            x0 = column * width // FINGERPRINT_GRID
-            x1 = max(x0 + 1, (column + 1) * width // FINGERPRINT_GRID)
-            y0 = row * height // FINGERPRINT_GRID
-            y1 = max(y0 + 1, (row + 1) * height // FINGERPRINT_GRID)
-            total = count = 0
-            for y in range(y0, y1, max(1, (y1 - y0) // 4)):
-                for x in range(x0, x1, max(1, (x1 - x0) // 4)):
-                    total += samples[y * width + x]
-                    count += 1
-            grid.append(total // max(count, 1))
-    return grid
+    # 整格求均值，不做稀疏点采样。表格这类内容由细线主导，
+    # 每格只抽十几个点会随机撞上或撞空线条，同一块内容的两次指纹
+    # 能差出 9 个灰度——比对就成了掷硬币。
+    grid_sums = [[0] * FINGERPRINT_GRID for _ in range(FINGERPRINT_GRID)]
+    grid_counts = [[0] * FINGERPRINT_GRID for _ in range(FINGERPRINT_GRID)]
+    for y in range(height):
+        gy = min(y * FINGERPRINT_GRID // height, FINGERPRINT_GRID - 1)
+        base = y * width
+        sums = grid_sums[gy]
+        counts = grid_counts[gy]
+        for x in range(width):
+            gx = min(x * FINGERPRINT_GRID // width, FINGERPRINT_GRID - 1)
+            sums[gx] += samples[base + x]
+            counts[gx] += 1
+    return [
+        grid_sums[gy][gx] // max(grid_counts[gy][gx], 1)
+        for gy in range(FINGERPRINT_GRID)
+        for gx in range(FINGERPRINT_GRID)
+    ]
 
 
 def fingerprint_contrast(grid: list[int]) -> float:
@@ -576,11 +588,74 @@ def build_mapping(
         )
         for element in elements
     ]
+    _inherit_from_preserved_hosts(locations, elements)
     return CandidateMapping(
         source_pages=source_document.page_count,
         candidate_pages=candidate_document.page_count,
         locations=locations,
     )
+
+
+def _inherit_from_preserved_hosts(
+    locations: list[ElementLocation],
+    elements: list[dict[str, Any]],
+) -> None:
+    """中心点落在已确认保留区域里的元素，继承宿主的定位。
+
+    一块区域按像素指纹确认原样在场后，它内部的标签、单元格、公式碎片
+    都跟着进了那张图——它们不再有独立的文字层，按探针找必然落空。
+    落空不等于丢了：内容就在宿主区域里，位置也随宿主一起确定。
+    """
+
+    boxes = {
+        str(element.get("id") or ""): (
+            int(element.get("page") or 0),
+            normalize_bbox(element.get("bbox")),
+        )
+        for element in elements
+        if isinstance(element, dict)
+    }
+    hosts = [
+        item
+        for item in locations
+        if item.method == METHOD_REGION_PIXELS and item.located
+    ]
+    if not hosts:
+        return
+    weak_methods = {
+        METHOD_NOT_FOUND,
+        METHOD_NO_EVIDENCE,
+        METHOD_TEXT_SEARCH,
+        METHOD_TEXT_ANCHOR,
+    }
+    for item in locations:
+        # 弱判据的命中也要重判：标签被移进保留区域后没有独立文字层，
+        # 文字探针在别处（比如参考文献页的年份数字）撞上的都是巧合。
+        if item.located and item.method not in weak_methods:
+            continue
+        page, box = boxes.get(item.element_id, (0, None))
+        if box is None:
+            continue
+        cx = (box[0] + box[2]) / 2
+        cy = (box[1] + box[3]) / 2
+        for host in hosts:
+            host_page, host_box = boxes.get(host.element_id, (0, None))
+            if host_box is None or host_page != page:
+                continue
+            if (
+                host_box[0] <= cx <= host_box[2]
+                and host_box[1] <= cy <= host_box[3]
+            ):
+                item.candidate_pages = list(host.candidate_pages)
+                item.candidate_bbox = (
+                    list(host.candidate_bbox) if host.candidate_bbox else None
+                )
+                item.method = METHOD_INSIDE_PRESERVED
+                item.confidence = 0.9
+                item.evidence = (
+                    f"位于已按像素指纹确认的保留区域 {host.element_id} 内"
+                )
+                break
 
 
 def element_texts_from_units(

@@ -28,10 +28,17 @@ from academic_pdf_translation.planning.mode_policy import (
 
 SCHEMA_VERSION = "1.0"
 
-#: 只有这两级需要翻译。别的策略生成器原来就会走。
+#: 渲染计划里所有"保留原文区域"一族的策略。
+#: 前两个是通用降级；后四个是按内容类型定的保留决定——表格网格不可靠、
+#: 公式不重排、矢量图不重画时，计划会选它们。生成器统一按区域保留执行。
+#: 注意不含 preserve-original-image：位图有自己的既有渲染路径。
 PRESERVATION_STRATEGIES = (
     FALLBACK_PRESERVE_ELEMENT_REGION,
     FALLBACK_PRESERVE_FULL_PAGE,
+    "preserve-table-region-with-translation-key",
+    "preserve-formula-region",
+    "preserve-geometry-with-label-overlay",
+    "preserve-geometry-with-numbered-legend",
 )
 
 #: 生成的条目走这个 kind，方便在产物里一眼认出它来自返修降级。
@@ -176,7 +183,14 @@ def build_preservation_items(
                 "id": f"plan-{planned.element_id}",
                 "page": page,
                 "kind": KIND_PRESERVED,
-                "method": planned.strategy,
+                # 生成器只认这两个保留方法；按类型定的保留策略统一落到
+                # 区域保留执行，原始策略记在 plan_strategy 里备查。
+                "method": (
+                    FALLBACK_PRESERVE_FULL_PAGE
+                    if full_page
+                    else FALLBACK_PRESERVE_ELEMENT_REGION
+                ),
+                "plan_strategy": planned.strategy,
                 "status": STATUS_READY,
                 "source_element_id": planned.element_id,
                 # source_evidence 是一串给人核对的字符串，不是结构体。
@@ -192,6 +206,12 @@ def build_preservation_items(
                         {
                             "page": page,
                             "bbox": None if full_page else list(box or ()),
+                            # 生成器的坐标替换机制认的键是 source_bbox：
+                            # 落在这块区域里的正文单元会被移出正文流，
+                            # 不写它，保留的区域和压平的流水文字会同时出现。
+                            "source_bbox": (
+                                None if full_page else list(box or ())
+                            ),
                             "full_page": full_page,
                             "source_element_id": planned.element_id,
                             # 生成器认这个键当图题：它会把图题和图锁成一块，
@@ -206,6 +226,51 @@ def build_preservation_items(
             }
         )
     return result
+
+
+def _region_overlap_ratio(first: list, second: list) -> float:
+    """两个 bbox 的交叠占较小者面积的比例。"""
+
+    x0 = max(float(first[0]), float(second[0]))
+    y0 = max(float(first[1]), float(second[1]))
+    x1 = min(float(first[2]), float(second[2]))
+    y1 = min(float(first[3]), float(second[3]))
+    if x1 <= x0 or y1 <= y0:
+        return 0.0
+    overlap = (x1 - x0) * (y1 - y0)
+    area = min(
+        max((first[2] - first[0]) * (first[3] - first[1]), 1e-6),
+        max((second[2] - second[0]) * (second[3] - second[1]), 1e-6),
+    )
+    return overlap / area
+
+
+def _covered_by_existing(
+    candidate: dict[str, Any], items: list[dict[str, Any]]
+) -> bool:
+    """同页已有条目的区域是否已经盖住了这个元素。
+
+    盖住了还再保留一次，同一块内容会在候选里出现两遍。
+    只有带坐标的区域才能判交叠；没坐标的条目不当作覆盖。
+    """
+
+    region = (candidate.get("payload") or {}).get("regions", [{}])[0]
+    box = region.get("bbox")
+    if not isinstance(box, list) or len(box) != 4:
+        return False
+    page = candidate.get("page")
+    for item in items:
+        if item.get("page") != page or item.get("status") != "ready":
+            continue
+        for other in (item.get("payload") or {}).get("regions", []):
+            other_box = other.get("bbox") if isinstance(other, dict) else None
+            if (
+                isinstance(other_box, list)
+                and len(other_box) == 4
+                and _region_overlap_ratio(box, other_box) >= 0.5
+            ):
+                return True
+    return False
 
 
 def merge_into_complex_content(
@@ -231,6 +296,14 @@ def merge_into_complex_content(
         if item["id"] in existing_ids:
             continue
         if item["source_element_id"] in existing_elements:
+            continue
+        if _covered_by_existing(item, items):
+            bridged.skipped.append(
+                {
+                    "element_id": item["source_element_id"],
+                    "reason": "同页已有复杂条目的区域盖住了它，不重复保留",
+                }
+            )
             continue
         items.append(item)
         added += 1

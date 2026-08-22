@@ -292,11 +292,17 @@ def plan_repair(
     if audit.inversion_ratio > 0 and any(
         "顺序乱了" in problem for problem in audit.problems
     ):
-        add_action(
-            "",
-            ACTION_RECOMPOSE_ORDER,
-            "order-inversion",
-            f"逆序对占比 {audit.inversion_ratio:.4f}，按原文顺序重排",
+        # 重排目前没有自动执行路径。发出一个执行不了的动作，
+        # 流程会空转一轮重建再报"毫无变化"——不如直接交给人。
+        manual.append(
+            ManualItem(
+                element_id="",
+                signal="order-inversion",
+                reason=(
+                    f"逆序对占比 {audit.inversion_ratio:.4f}，"
+                    "自动重排暂无执行路径，需人工确认阅读顺序"
+                ),
+            )
         )
 
     return RepairPlan(round_index=round_index, actions=actions, manual=manual)
