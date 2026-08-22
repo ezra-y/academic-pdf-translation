@@ -35,6 +35,12 @@ from academic_pdf_translation.render.preserved_region_renderer import (  # noqa:
     MIN_RASTER_DPI,
     PDF_BASE_DPI,
 )
+from academic_pdf_translation.render.reference_renderer import (  # noqa: E402
+    build_hyphenated_forms,
+    build_vocabulary,
+    normalize_reference_text,
+    repair_baked_line_artifacts,
+)
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
 from reportlab.lib.styles import ParagraphStyle
@@ -348,6 +354,19 @@ def _unit_text_blocks(unit: dict[str, Any], text: str) -> list[str]:
     ):
         blocks.pop()
     return blocks
+
+
+def _role_may_head(unit: dict[str, Any]) -> bool:
+    """这个单元有没有资格当标题。
+
+    单元冻结时带的 kind / heading_level 是当年抽取启发式打的标签，
+    和"看着像标题就算标题"是同一个来源。绑定的元素角色来自结构分析，
+    它说不是标题（作者单位、arXiv 戳、正文句子），冻结标签就不作数。
+    角色未知时不否决，维持原行为。
+    """
+
+    role = str(unit.get("_element_role") or "")
+    return role in ("", "heading", "document-title")
 
 
 def _looks_like_heading(text: str) -> bool:
@@ -3369,13 +3388,26 @@ def _unit_flowables(
             style = styles["metadata"]
         elif kind in REFERENCE_KINDS or unit.get("keep_source_reason"):
             style = styles["reference"]
-        elif kind == "title" and index == 0:
+        elif (
+            kind == "title"
+            and index == 0
+            and _role_may_head(unit)
+        ):
             style = styles["title"]
-        elif kind in HEADING_KINDS or unit.get("heading_level") == 1:
+        elif (
+            kind in HEADING_KINDS or unit.get("heading_level") == 1
+        ) and _role_may_head(unit):
             style = styles["h1"]
-        elif unit.get("heading_level") == 2:
+        elif unit.get("heading_level") == 2 and _role_may_head(unit):
             style = styles["h2"]
-        elif kind in {"", "text", "unknown"} and _looks_like_heading(block):
+        elif (
+            kind in {"", "text", "unknown"}
+            and _looks_like_heading(block)
+            and unit.get("_element_role")
+            in (None, "", "heading", "document-title")
+        ):
+            # 绑定角色已知且不是标题的，启发式没有提升权：
+            # 作者单位、arXiv 版本戳、图内标签长得再像标题也不是标题。
             style = styles["h2"]
         elif block.startswith(("图", "表", "注", "DOI", "doi")):
             style = styles["body_no_indent"]
@@ -3805,6 +3837,7 @@ def _retained_flowables(
     styles: dict[str, ParagraphStyle],
     target_language: str,
     include_reference_heading: bool,
+    reference_text_transform: Any = None,
 ) -> list[Flowable]:
     if payload.get("already_present_in_translation") is True:
         return []
@@ -3831,6 +3864,18 @@ def _retained_flowables(
         text = str(block.get("text") or "").strip()
         if not text:
             continue
+        if (
+            reference_text_transform is not None
+            and category in REFERENCE_CATEGORIES
+        ):
+            # 参考文献保留的是原文，但行末软断词（net-\nworks）和被折行
+            # 切断的 URL 是排版伪影，不是内容——按文档词表拼回去。
+            # 必须从 raw_text（带换行）判，清理后的文本已把伪影固化。
+            text = reference_text_transform(
+                str(block.get("raw_text") or "") or text
+            )
+            if not text:
+                continue
         if block.get("role") == "heading" and category in REFERENCE_CATEGORIES:
             if include_reference_heading:
                 result.append(
@@ -5328,6 +5373,40 @@ def _story(
     body_font_pt: float,
     target_language: str,
 ) -> list[Flowable]:
+    reference_state: dict[str, Any] = {}
+
+    def reference_text_transform(text: str) -> str:
+        """参考文献断词与折行 URL 的整理，词表按需建一次。
+
+        必须吃**原始文本**（带换行）：断词判定靠的就是行尾的 "-\n"，
+        换行一旦被上游折掉，net-works 是软断词还是真连字符就再也分不出来。
+        """
+
+        if "vocabulary" not in reference_state:
+            document_text = unicodedata.normalize(
+                "NFKC",
+                "\n".join(
+                    source_document[index].get_text("text")
+                    for index in range(source_document.page_count)
+                ),
+            )
+            reference_state["vocabulary"] = build_vocabulary(document_text)
+            reference_state["forms"] = build_hyphenated_forms(document_text)
+        value = unicodedata.normalize("NFKC", text or "")
+        value = re.sub(r"\u00ad\s*", "", value)
+        normalized, _decisions = normalize_reference_text(
+            value,
+            reference_state["vocabulary"],
+            reference_state["forms"],
+        )
+        # 上游有的管线在更早处就把换行折掉了，伪影已经拼死在文本里，
+        # 再补一遍按词表的固化修复。
+        return repair_baked_line_artifacts(
+            normalized,
+            reference_state["vocabulary"],
+            reference_state["forms"],
+        )
+
     units_by_page: dict[int, list[dict[str, Any]]] = defaultdict(list)
     for unit in translation.get("units", []):
         if isinstance(unit, dict) and isinstance(unit.get("page"), int):
@@ -5549,6 +5628,7 @@ def _story(
                     include_reference_heading=(
                         is_reference and not reference_section_started
                     ),
+                    reference_text_transform=reference_text_transform,
                 )
             )
             result.append(
@@ -6087,6 +6167,38 @@ def _merge_render_plan_preservations(
     return merged
 
 
+def _annotate_element_roles(
+    job_dir: Path,
+    translation: dict[str, Any],
+) -> None:
+    """把单元绑定的元素角色标到单元上，供标题判定否决使用。
+
+    "谁是标题"应当来自原文结构分析，不是字号或行长的猜测——作者单位、
+    arXiv 版本戳、图内标签都可能长得像标题。没有绑定文件时不标注，
+    下游维持原有启发式行为。
+    """
+
+    bindings_path = job_dir / "unit_bindings.json"
+    if not bindings_path.is_file():
+        return
+    try:
+        bindings = load_json(bindings_path).get("bindings") or []
+    except (OSError, ValueError):
+        return
+    roles = {
+        str(binding.get("unit_id") or ""): str(binding.get("element_role") or "")
+        for binding in bindings
+        if isinstance(binding, dict) and binding.get("unit_id")
+    }
+    if not roles:
+        return
+    for unit in translation.get("units", []):
+        if isinstance(unit, dict):
+            role = roles.get(str(unit.get("id") or ""))
+            if role:
+                unit["_element_role"] = role
+
+
 def _timed_build_candidate(
     job_dir: Path,
     output_pdf: Path,
@@ -6102,6 +6214,7 @@ def _timed_build_candidate(
         job["files"]["translation"],
     )
     translation = load_json(translation_path)
+    _annotate_element_roles(job_dir, translation)
     complex_path = internal_job_path(
         job_dir,
         job.get("files", {}).get(

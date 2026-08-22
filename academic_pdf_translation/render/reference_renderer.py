@@ -366,3 +366,48 @@ def verify_reference_output(
         problems.append(f"参考文献编号重复: {rendered.numbers}")
 
     return problems
+
+
+#: 已固化断词的两半都得像个词的样子，才值得送去判定。
+BAKED_HYPHEN_RE = re.compile(r"\b([A-Za-z]{2,})-([A-Za-z]{2,})\b")
+#: URL 后面跟着的这种碎片才可能是被折行切下来的后半段。
+URL_TAIL_RE = re.compile(r"(https?://\S+)\s+([\w./_%#?&=-]+)")
+
+
+def repair_baked_line_artifacts(
+    text: str, vocabulary: Counter, hyphenated_forms: set[str]
+) -> str:
+    """修复上游已经拼死的行末伪影。
+
+    理想情况是拿到带换行的原文，让 ``normalize_reference_text`` 按 ``-\n``
+    判。但有些抽取管线在更早的地方就把换行折掉了：``net-\nworks`` 进来时
+    已经是 ``net-works``，URL 断口处留着一个空格。这里做补救——
+    断词复用同一套词表判定（证据不足仍保留连字符），URL 只在断口停在
+    续行字符上、且后半段长得像路径时才拼。
+    """
+
+    def fix_hyphen(match: re.Match[str]) -> str:
+        decision = decide_hyphen(
+            match.group(1), match.group(2), vocabulary, hyphenated_forms
+        )
+        if decision.decision == DECISION_JOIN:
+            return f"{match.group(1)}{match.group(2)}"
+        return match.group(0)
+
+    value = BAKED_HYPHEN_RE.sub(fix_hyphen, str(text or ""))
+
+    def fix_url(match: re.Match[str]) -> str:
+        url, tail = match.group(1), match.group(2)
+        if not url.endswith(URL_CONTINUES_ON):
+            return match.group(0)
+        # 「数字.」开头的是下一条题录的编号，不是 URL 的后半段——
+        # 拼进去会把两条题录焊在一起。
+        if re.match(r"\d{1,3}\.", tail):
+            return match.group(0)
+        return f"{url}{tail}"
+
+    while True:
+        replaced = URL_TAIL_RE.sub(fix_url, value, count=1)
+        if replaced == value:
+            return value
+        value = replaced
