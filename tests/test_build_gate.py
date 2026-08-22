@@ -87,6 +87,8 @@ def _run(tmp_path: Path, outcome: BuildOutcome):
         bindings,
         build=lambda _round: outcome,
         output_dir=tmp_path / "out",
+        # 合成作业没有渲染计划：显式关掉要求，不靠默认值静默放过
+        require_render_plan=False,
         render_pages=False,
     )
 

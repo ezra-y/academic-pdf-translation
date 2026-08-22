@@ -138,6 +138,8 @@ def _first_run(tmp_path: Path):
         build=build,
         apply_repair=lambda _plan: None,
         output_dir=out,
+        # 合成作业没有渲染计划：显式关掉要求，不靠默认值静默放过
+        require_render_plan=False,
         render_pages=False,
     )
     assert result.attempt_id == 2, "前提没成立：这一跑必须停在 attempt-2"
@@ -153,6 +155,8 @@ def _resume(source, elements, units, bindings, out: Path):
         build=make_resume_builder(out),
         apply_repair=None,
         output_dir=out,
+        # 合成作业没有渲染计划：显式关掉要求，不靠默认值静默放过
+        require_render_plan=False,
         render_pages=False,
     )
 

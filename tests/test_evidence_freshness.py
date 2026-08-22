@@ -175,6 +175,8 @@ def test_repair_attempt_has_new_candidate_hash(tmp_path: Path) -> None:
         build=lambda round_index: bad if round_index == 0 else fixed,
         apply_repair=lambda plan: None,
         output_dir=out,
+        # 合成作业没有渲染计划：显式关掉要求，不靠默认值静默放过
+        require_render_plan=False,
         render_pages=False,
     )
     assert result.rebuilds == 1
@@ -201,6 +203,8 @@ def test_history_is_kept_but_not_used_as_current(tmp_path: Path) -> None:
         build=lambda round_index: bad if round_index == 0 else fixed,
         apply_repair=lambda plan: None,
         output_dir=out,
+        # 合成作业没有渲染计划：显式关掉要求，不靠默认值静默放过
+        require_render_plan=False,
         render_pages=False,
     )
     current = read_current_run(out)
@@ -255,6 +259,8 @@ def test_delivery_json_references_current_attempt(tmp_path: Path) -> None:
         bindings,
         build=lambda _round: good,
         output_dir=out,
+        # 合成作业没有渲染计划：显式关掉要求，不靠默认值静默放过
+        require_render_plan=False,
         render_pages=False,
     )
     data = result.as_dict()

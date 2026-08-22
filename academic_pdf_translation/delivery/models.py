@@ -53,6 +53,10 @@ class BuildOutcome:
     #: 这一轮不是新生成的候选，而是复用磁盘上已经存在的那一份
     #: （``--resume`` 走这条路）。复用不许建立新 attempt，也不许改指针。
     reused: bool = False
+    #: 这一轮各公式元素的裁切记录（element_id → formula_crop），来自
+    #: 生成器写出的 complex_content.json。视觉计划据此判断"公式是否
+    #: 确定完整"——只有拿得出裁切干净的证据才免检，拿不出就默认要看。
+    formula_crops: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Any]:
         data = asdict(self)
@@ -62,6 +66,8 @@ class BuildOutcome:
         # 计划正文另存为 attempt 目录里的快照文件，构建记录只留哈希，
         # 免得一份报告里塞进整个计划。
         data.pop("render_plan", None)
+        # 裁切记录已完整留在 complex_content.json，这里不重复塞。
+        data.pop("formula_crops", None)
         return data
 
     def report_sha256(self) -> str:
@@ -88,6 +94,7 @@ def build_outcome_from_report(
     attempt_id: str,
     render_plan_sha256: str = "",
     render_plan: dict[str, Any] | None = None,
+    formula_crops: dict[str, dict[str, Any]] | None = None,
 ) -> BuildOutcome:
     """把生成器的字典报告翻译成 :class:`BuildOutcome`。
 
@@ -123,4 +130,5 @@ def build_outcome_from_report(
         attempt_id=attempt_id,
         render_plan_sha256=render_plan_sha256,
         render_plan=render_plan,
+        formula_crops=dict(formula_crops or {}),
     )

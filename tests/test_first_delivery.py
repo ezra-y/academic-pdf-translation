@@ -111,6 +111,8 @@ def test_a_clean_candidate_is_delivered(tmp_path: Path) -> None:
         bindings,
         build=lambda _round: good,
         output_dir=tmp_path / "out",
+        # 合成作业没有渲染计划：显式关掉要求，不靠默认值静默放过
+        require_render_plan=False,
         render_pages=False,
     )
     assert result.status == STATUS_DELIVERED
@@ -131,6 +133,8 @@ def test_a_broken_candidate_without_a_repairer_is_handed_over(
         bindings,
         build=lambda _round: bad,
         output_dir=tmp_path / "out",
+        # 合成作业没有渲染计划：显式关掉要求，不靠默认值静默放过
+        require_render_plan=False,
         render_pages=False,
     )
     assert result.status == STATUS_HANDOVER
@@ -154,6 +158,8 @@ def test_a_build_failure_stops_the_delivery(tmp_path: Path) -> None:
         bindings,
         build=broken,
         output_dir=tmp_path / "out",
+        # 合成作业没有渲染计划：显式关掉要求，不靠默认值静默放过
+        require_render_plan=False,
         render_pages=False,
     )
     assert result.status == STATUS_BLOCKED
@@ -179,6 +185,8 @@ def test_one_repair_round_can_turn_a_handover_into_a_delivery(
         build=lambda round_index: bad if round_index == 0 else fixed,
         apply_repair=lambda plan: applied.append(len(plan.actions)),
         output_dir=tmp_path / "out",
+        # 合成作业没有渲染计划：显式关掉要求，不靠默认值静默放过
+        require_render_plan=False,
         render_pages=False,
     )
     assert result.status == STATUS_DELIVERED
@@ -209,6 +217,8 @@ def test_the_pipeline_never_rebuilds_twice(tmp_path: Path) -> None:
         build=build,
         apply_repair=lambda _plan: None,
         output_dir=tmp_path / "out",
+        # 合成作业没有渲染计划：显式关掉要求，不靠默认值静默放过
+        require_render_plan=False,
         render_pages=False,
     )
     assert builds == [0, 1], "只许生成两次：首版加唯一一轮返修"
@@ -233,6 +243,8 @@ def test_a_repair_that_breaks_something_else_blocks_delivery(
         build=lambda round_index: bad if round_index == 0 else swapped,
         apply_repair=lambda _plan: None,
         output_dir=tmp_path / "out",
+        # 合成作业没有渲染计划：显式关掉要求，不靠默认值静默放过
+        require_render_plan=False,
         render_pages=False,
     )
     assert result.status == STATUS_BLOCKED
@@ -256,6 +268,8 @@ def test_a_failed_rebuild_blocks_delivery(tmp_path: Path) -> None:
         build=build,
         apply_repair=lambda _plan: None,
         output_dir=tmp_path / "out",
+        # 合成作业没有渲染计划：显式关掉要求，不靠默认值静默放过
+        require_render_plan=False,
         render_pages=False,
     )
     assert result.status == STATUS_BLOCKED
@@ -279,6 +293,8 @@ def test_evidence_is_written_for_every_round(tmp_path: Path) -> None:
         build=lambda round_index: bad if round_index == 0 else fixed,
         apply_repair=lambda _plan: None,
         output_dir=tmp_path / "out",
+        # 合成作业没有渲染计划：显式关掉要求，不靠默认值静默放过
+        require_render_plan=False,
         render_pages=False,
     )
     for key in (
@@ -305,6 +321,8 @@ def test_the_status_cannot_be_written_into_the_evidence(tmp_path: Path) -> None:
         bindings,
         build=lambda _round: bad,
         output_dir=tmp_path / "out",
+        # 合成作业没有渲染计划：显式关掉要求，不靠默认值静默放过
+        require_render_plan=False,
         render_pages=False,
     )
     mapping_file = json.loads(
@@ -337,6 +355,8 @@ def test_an_empty_inventory_is_rejected(tmp_path: Path) -> None:
             bindings,
             build=lambda _round: source,
             output_dir=tmp_path / "out",
+            # 合成作业没有渲染计划：显式关掉要求，不靠默认值静默放过
+            require_render_plan=False,
         )
 
 
@@ -350,6 +370,8 @@ def test_a_missing_source_is_rejected(tmp_path: Path) -> None:
             bindings,
             build=lambda _round: tmp_path / "nope.pdf",
             output_dir=tmp_path / "out",
+            # 合成作业没有渲染计划：显式关掉要求，不靠默认值静默放过
+            require_render_plan=False,
         )
 
 
@@ -367,6 +389,8 @@ def test_the_real_bad_candidate_is_handed_over(tmp_path: Path) -> None:
         bindings,
         build=lambda _round: candidate,
         output_dir=tmp_path / "out",
+        # 合成作业没有渲染计划：显式关掉要求，不靠默认值静默放过
+        require_render_plan=False,
     )
     assert result.status == STATUS_HANDOVER
     assert result.delivered is False
@@ -385,6 +409,8 @@ def test_the_real_run_renders_the_pages_a_human_should_look_at(
         bindings,
         build=lambda _round: candidate,
         output_dir=tmp_path / "out",
+        # 合成作业没有渲染计划：显式关掉要求，不靠默认值静默放过
+        require_render_plan=False,
     )
     # 证据现在住在 runs/{run_id}/attempt-1/ 下，按运行目录找
     pages = sorted((tmp_path / "out").rglob("round-1-pages/*.png"))
@@ -401,6 +427,8 @@ def test_the_real_report_names_the_lost_figure(tmp_path: Path) -> None:
         bindings,
         build=lambda _round: candidate,
         output_dir=tmp_path / "out",
+        # 合成作业没有渲染计划：显式关掉要求，不靠默认值静默放过
+        require_render_plan=False,
         render_pages=False,
     )
     report = format_result(result)
@@ -445,6 +473,8 @@ def test_a_repair_that_changes_nothing_blocks_delivery(tmp_path: Path) -> None:
         build=lambda round_index: bad if round_index == 0 else same,
         apply_repair=lambda _plan: None,
         output_dir=tmp_path / "out",
+        # 合成作业没有渲染计划：显式关掉要求，不靠默认值静默放过
+        require_render_plan=False,
         render_pages=False,
     )
     assert result.status == STATUS_BLOCKED
@@ -471,6 +501,8 @@ def test_a_repair_that_does_change_things_is_not_flagged(
         build=lambda round_index: bad if round_index == 0 else fixed,
         apply_repair=lambda _plan: None,
         output_dir=tmp_path / "out",
+        # 合成作业没有渲染计划：显式关掉要求，不靠默认值静默放过
+        require_render_plan=False,
         render_pages=False,
     )
     assert REPAIR_MADE_NO_DIFFERENCE not in result.problems

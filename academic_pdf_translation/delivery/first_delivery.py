@@ -221,6 +221,8 @@ def verify_candidate(
     page_budget: int = DEFAULT_PAGE_BUDGET,
     render_pages: bool = True,
     binding: dict[str, Any] | None = None,
+    render_plan: dict[str, Any] | None = None,
+    formula_crops: dict[str, dict[str, Any]] | None = None,
 ) -> tuple[VerifyRound, dict[str, str]]:
     """对一份候选跑完阶段 9、10、11，并把证据落盘。
 
@@ -233,7 +235,16 @@ def verify_candidate(
         source_document, candidate, elements, element_texts=element_texts
     )
     audit = audit_structure(mapping, elements)
-    review = build_review_plan(mapping, audit, page_budget=page_budget)
+    # 视觉计划要知道每个元素是什么类型、计划怎么处理、公式裁得干不干净：
+    # 结构映射全绿不代表版面没问题，复杂内容默认进视觉检查。
+    review = build_review_plan(
+        mapping,
+        audit,
+        page_budget=page_budget,
+        elements=elements,
+        render_plan=render_plan,
+        formula_crops=formula_crops,
+    )
     if render_pages and review.selected:
         render_review_pages(candidate, review, output_dir / f"{label}-pages")
 
@@ -418,6 +429,7 @@ def _apply_visual_gate(
     visual_result: VisualReviewResult | None,
     candidate_path: Path,
     *,
+    identity: RunIdentity,
     label: str,
     output_dir: Path,
 ) -> VisualGateResult:
@@ -427,9 +439,9 @@ def _apply_visual_gate(
     "检查已通过"。FAIL 条目转成给人的返修任务。
     """
 
-    gate = check_visual_gate(
-        plan, visual_result, candidate_sha256=file_sha256(candidate_path)
-    )
+    # 结果必须对上这一轮的五元身份（run / attempt / 候选 / 计划 / 渲染器），
+    # 差一项就是 EVIDENCE_STALE。只比候选哈希证明不了计划和渲染器没换。
+    gate = check_visual_gate(plan, visual_result, identity=identity)
     if visual_result is not None:
         result.evidence[f"{label}-visual-result"] = _write_json(
             output_dir / f"{label}-visual-result.json",
@@ -515,7 +527,9 @@ def run_first_delivery(
     page_budget: int = DEFAULT_PAGE_BUDGET,
     render_pages: bool = True,
     visual_result: VisualReviewResult | None = None,
-    require_render_plan: bool = False,
+    # 默认就要求渲染计划。放过"没有计划"等于给旧链路留逃生通道，
+    # 旧作业要跳过元素级合同必须由调用方显式关掉。
+    require_render_plan: bool = True,
 ) -> DeliveryResult:
     """跑完首次交付，给出唯一结论。
 
@@ -635,6 +649,8 @@ def run_first_delivery(
         page_budget=page_budget,
         render_pages=render_pages,
         binding=identity.as_dict(),
+        render_plan=outcome.render_plan,
+        formula_crops=outcome.formula_crops,
     )
     result.evidence.update(evidence)
     result.stages.append(
@@ -662,6 +678,7 @@ def run_first_delivery(
     )
     first_gate = _apply_visual_gate(
         result, first.review, visual_result, candidate_path, label=first_label,
+        identity=identity,
         output_dir=evidence_dir,
     )
 
@@ -793,6 +810,8 @@ def run_first_delivery(
         page_budget=page_budget,
         render_pages=render_pages,
         binding=identity.as_dict(),
+        render_plan=repaired_outcome.render_plan,
+        formula_crops=repaired_outcome.formula_crops,
     )
     result.evidence.update(evidence)
 
@@ -823,6 +842,7 @@ def run_first_delivery(
     )
     second_gate = _apply_visual_gate(
         result, second.review, visual_result, repaired_path, label=second_label,
+        identity=identity,
         output_dir=evidence_dir,
     )
 

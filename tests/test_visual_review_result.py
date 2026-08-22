@@ -15,7 +15,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import fitz  # noqa: E402
 import pytest  # noqa: E402
 from academic_pdf_translation.delivery import first_delivery as fd  # noqa: E402
-from academic_pdf_translation.delivery.models import file_sha256  # noqa: E402
+from academic_pdf_translation.delivery.models import (  # noqa: E402
+    BUILD_READY,
+    BuildOutcome,
+    file_sha256,
+)
 from academic_pdf_translation.delivery.evidence import (  # noqa: E402
     RunIdentity,
 )
@@ -417,7 +421,7 @@ def _run_with_risky_plan(tmp_path, monkeypatch, visual_result, good=None):
     monkeypatch.setattr(
         fd,
         "build_review_plan",
-        lambda mapping, audit, page_budget: _plan(
+        lambda mapping, audit, **kwargs: _plan(
             _page(1, SIGNAL_DRAWING_BOUND)
         ),
     )
@@ -426,8 +430,25 @@ def _run_with_risky_plan(tmp_path, monkeypatch, visual_result, good=None):
         elements,
         units,
         bindings,
-        build=lambda _round: good,
+        # 合成候选也要带完整的五元身份：视觉门第一步就是 verify_binding，
+        # 缺计划哈希或渲染器 ID 一律 STALE。计划覆盖 e1/e2 两个元素。
+        build=lambda _round: BuildOutcome(
+            status=BUILD_READY,
+            candidate_path=good,
+            run_id="run-risky",
+            attempt_id="attempt-1",
+            renderer_build_id=BUILD_A,
+            render_plan_sha256=PLAN_SHA_A,
+            render_plan={
+                "elements": [
+                    {"element_id": "e1", "strategy": "translate-text"},
+                    {"element_id": "e2", "strategy": "translate-text"},
+                ]
+            },
+        ),
         output_dir=tmp_path / "out",
+        # 合成作业没有渲染计划：显式关掉要求，不靠默认值静默放过
+        require_render_plan=False,
         render_pages=False,
         visual_result=visual_result,
     )
@@ -450,7 +471,7 @@ def test_failed_visual_item_creates_repair_task(
     good, _ = _run_with_risky_plan(tmp_path, monkeypatch, None)
     failed = _result(
         _item(1, SIGNAL_DRAWING_BOUND, DECISION_FAIL, "图形对不上"),
-        sha=file_sha256(good),
+        binding=_identity(run_id="run-risky", sha=file_sha256(good)),
     )
     _, result = _run_with_risky_plan(tmp_path, monkeypatch, failed, good=good)
     assert result.status == fd.STATUS_HANDOVER
@@ -465,7 +486,7 @@ def test_passed_visual_result_allows_next_gate(
     good, _ = _run_with_risky_plan(tmp_path, monkeypatch, None)
     passed = _result(
         _item(1, SIGNAL_DRAWING_BOUND, DECISION_PASS, "图形完整"),
-        sha=file_sha256(good),
+        binding=_identity(run_id="run-risky", sha=file_sha256(good)),
     )
     _, result = _run_with_risky_plan(tmp_path, monkeypatch, passed, good=good)
     assert result.status == fd.STATUS_DELIVERED

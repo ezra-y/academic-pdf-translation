@@ -115,6 +115,28 @@ def read_render_plan(job_dir: Path) -> tuple[str, dict | None]:
     return (file_sha256(path), load_json(path))
 
 
+def read_formula_crops(job_dir: Path) -> dict[str, dict]:
+    """读生成器这一轮写出的公式裁切记录：element_id → formula_crop。
+
+    只有带 source_element_id 的桥接条目才有裁切记录；老式手写条目没有，
+    对应公式就拿不出"确定完整"的证据，视觉计划会默认要求看它。
+    """
+
+    path = job_dir / "complex_content.json"
+    if not path.is_file():
+        return {}
+    crops: dict[str, dict] = {}
+    for item in load_json(path).get("items") or []:
+        if not isinstance(item, dict):
+            continue
+        payload = item.get("payload") or {}
+        element_id = str(item.get("source_element_id") or "")
+        crop = payload.get("formula_crop") if isinstance(payload, dict) else None
+        if element_id and isinstance(crop, dict):
+            crops[element_id] = crop
+    return crops
+
+
 def generate_render_plan(job_dir: Path, forced: dict[str, str]):
     """按当前元素清单算一份渲染计划并写进作业目录。"""
 
@@ -207,6 +229,7 @@ def make_builder(job_dir: Path, output: Path | None):
             attempt_id=f"attempt-{round_index + 1}",
             render_plan_sha256=plan_sha,
             render_plan=plan,
+            formula_crops=read_formula_crops(job_dir),
         )
 
     return build
@@ -269,6 +292,9 @@ def make_resume_builder(delivery_dir: Path, job_dir: Path | None = None):
             render_plan_sha256=identity.render_plan_sha256,
             render_plan=plan,
             reused=True,
+            formula_crops=(
+                read_formula_crops(job_dir) if job_dir is not None else {}
+            ),
         )
 
     return build
