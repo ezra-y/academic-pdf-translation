@@ -52,6 +52,7 @@ from academic_pdf_translation.delivery.models import (  # noqa: E402
     file_sha256,
 )
 from academic_pdf_translation.planning.render_plan import (  # noqa: E402
+    PLAN_FILE_NAME,
     build_render_plan,
     write_plan,
 )
@@ -108,16 +109,15 @@ def read_render_plan(job_dir: Path) -> tuple[str, dict | None]:
     用过的那份。返修会重算计划，提前读会把旧身份带到新候选上。
     """
 
-    path = job_dir / "render_plan.json"
+    path = job_dir / PLAN_FILE_NAME
     if not path.is_file():
         return ("", None)
     return (file_sha256(path), load_json(path))
 
 
-def rebuild_render_plan(job_dir: Path) -> dict[str, str]:
-    """按返修指定的降级重算渲染计划，并返回实际生效的降级。"""
+def generate_render_plan(job_dir: Path, forced: dict[str, str]):
+    """按当前元素清单算一份渲染计划并写进作业目录。"""
 
-    forced = load_forced_strategies(job_dir)
     fitz = import_fitz()
     inventory = analyze_job_elements(
         job_dir, pymupdf_version=getattr(fitz, "VersionBind", "0")
@@ -129,6 +129,41 @@ def rebuild_render_plan(job_dir: Path) -> dict[str, str]:
         forced_strategies=forced,
     )
     write_plan(job_dir, plan)
+    return plan
+
+
+#: 缺渲染计划时的唯一出路：自动生成，或者报这个码停下。
+#: 「没有计划所以合同通过」这条逃生通道已经关掉了。
+BLOCKED_RENDER_PLAN_MISSING = "BLOCKED_RENDER_PLAN_MISSING"
+
+
+def ensure_render_plan(job_dir: Path) -> Path:
+    """v2 作业必须有渲染计划：没有就现算一份，算不出来就停。"""
+
+    path = job_dir / PLAN_FILE_NAME
+    if path.is_file():
+        return path
+    try:
+        generate_render_plan(job_dir, load_forced_strategies(job_dir))
+    except (SkillError, OSError, ValueError, KeyError, TypeError) as exc:
+        raise SkillError(
+            f"{BLOCKED_RENDER_PLAN_MISSING}: 作业里没有 {PLAN_FILE_NAME}，"
+            f"自动生成也没成功（{exc}）。"
+            "旧作业要跳过元素级合同，必须显式加 --legacy-no-render-plan"
+        ) from exc
+    if not path.is_file():
+        raise SkillError(
+            f"{BLOCKED_RENDER_PLAN_MISSING}: 自动生成之后仍然没有 "
+            f"{PLAN_FILE_NAME}"
+        )
+    return path
+
+
+def rebuild_render_plan(job_dir: Path) -> dict[str, str]:
+    """按返修指定的降级重算渲染计划，并返回实际生效的降级。"""
+
+    forced = load_forced_strategies(job_dir)
+    plan = generate_render_plan(job_dir, forced)
     applied = {
         item.element_id: item.strategy
         for item in plan.elements
@@ -177,7 +212,7 @@ def make_builder(job_dir: Path, output: Path | None):
     return build
 
 
-def make_resume_builder(delivery_dir: Path):
+def make_resume_builder(delivery_dir: Path, job_dir: Path | None = None):
     """--resume 用的构建器：不重建，取当前运行的候选原样核查。
 
     典型用法：第一遍交付停在 WAITING_FOR_VISUAL_REVIEW，评审看完页、
@@ -216,6 +251,13 @@ def make_resume_builder(delivery_dir: Path):
         # 计划取这一轮自己的快照，不取作业目录里"现在"那一份——
         # 作业目录里的可能已经是后来重算的了。
         snapshot = directory / "render-plan.json"
+        plan = load_json(snapshot) if snapshot.is_file() else None
+        if plan is None and job_dir is not None:
+            # 老运行没留快照。作业目录里那份只有在哈希对得上当前身份时
+            # 才允许顶替——对不上就是别人的计划，宁可没有。
+            plan_sha, current_plan = read_render_plan(job_dir)
+            if plan_sha and plan_sha == identity.render_plan_sha256:
+                plan = current_plan
         return BuildOutcome(
             status=str(record.get("status") or "READY_TO_REGISTER"),
             candidate_path=candidate,
@@ -225,9 +267,7 @@ def make_resume_builder(delivery_dir: Path):
             run_id=identity.run_id,
             attempt_id=f"attempt-{identity.attempt_id}",
             render_plan_sha256=identity.render_plan_sha256,
-            render_plan=(
-                load_json(snapshot) if snapshot.is_file() else None
-            ),
+            render_plan=plan,
             reused=True,
         )
 
@@ -290,6 +330,12 @@ def main() -> int:
         help="真实视觉检查结果（visual-review-result.json）；"
         "有风险页而不提供时，结论最多到 handover，不会是 delivered",
     )
+    parser.add_argument(
+        "--legacy-no-render-plan",
+        action="store_true",
+        help="旧作业兼容：跳过元素级渲染合同。v2 作业不要用——"
+        "没有渲染计划的交付不等于合同通过",
+    )
     parser.add_argument("--json", action="store_true", help="只输出 JSON")
     args = parser.parse_args()
 
@@ -300,13 +346,17 @@ def main() -> int:
         if args.visual_result is not None:
             visual_result = result_from_dict(load_json(args.visual_result))
         elements, units, bindings = _job_inputs(job_dir)
+        # v2 作业二选一：要么有渲染计划（没有就现算一份），要么显式声明
+        # 自己是旧作业。删掉 render_plan.json 不能变成"合同通过"。
+        if not args.legacy_no_render_plan and not args.resume:
+            ensure_render_plan(job_dir)
         result = run_first_delivery(
             job_dir / "source.pdf",
             elements,
             units,
             bindings,
             build=(
-                make_resume_builder(delivery_dir)
+                make_resume_builder(delivery_dir, job_dir)
                 if args.resume
                 else make_builder(job_dir, args.output)
             ),
@@ -318,6 +368,7 @@ def main() -> int:
             output_dir=delivery_dir,
             page_budget=args.page_budget,
             visual_result=visual_result,
+            require_render_plan=not args.legacy_no_render_plan,
         )
     except (
         SkillError,
