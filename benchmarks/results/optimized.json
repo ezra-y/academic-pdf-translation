@@ -2,12 +2,12 @@
   "schema_version": "2.0",
   "label": "current",
   "provenance": {
-    "renderer_build_id": "67690043b207e50d3d18cac58058b18b733fecbdf6d293673ef59eb27aad94b7",
-    "git_commit": "583dc352b335ca7e2a387cf767bafe73a2737292",
+    "renderer_build_id": "f9daf26b9464cc17723b01d7a1850cd22936ad0f525d3a31d79d7ffb10a9c643",
+    "git_commit": "799118c042ad23cb7d115231820d88f7168f22bc",
     "git_branch": "refactor/element-pipeline-v2",
     "git_dirty": true,
     "python": "3.14.5",
-    "load_average_1m": 5.79,
+    "load_average_1m": 10.69,
     "cpu_count": 15,
     "corpus": "synthetic-representative-v1",
     "corpus_manifest_cases": 5
@@ -31,21 +31,21 @@
       "repeats": 3,
       "cold": {
         "seconds": [
-          1.6008,
-          1.5963,
-          1.5673
+          2.5973,
+          3.1434,
+          3.1244
         ],
-        "median_seconds": 1.5963,
+        "median_seconds": 3.1244,
         "translation_stage_seconds": {},
         "pdf_stage_seconds": {
-          "build_candidate": 0.0956,
-          "retained_region_extract": 0.0007,
-          "candidate_fingerprint": 0.0912,
-          "register_candidate": 0.0054,
-          "qa_candidate": 0.6505,
-          "validate_job": 0.1733,
-          "completeness_audit": 0.2199,
-          "preflight": 0.9765
+          "build_candidate": 0.1883,
+          "retained_region_extract": 0.0018,
+          "candidate_fingerprint": 0.1547,
+          "register_candidate": 0.0101,
+          "qa_candidate": 1.3152,
+          "validate_job": 0.3625,
+          "completeness_audit": 0.4452,
+          "preflight": 2.0057
         },
         "counters": {
           "candidate_analysis_reuse": 6,
@@ -60,21 +60,21 @@
       },
       "warm": {
         "seconds": [
-          1.5644,
-          1.6041,
-          1.5759
+          2.4094,
+          2.4353,
+          2.3815
         ],
-        "median_seconds": 1.5759,
+        "median_seconds": 2.4094,
         "translation_stage_seconds": {},
         "pdf_stage_seconds": {
-          "build_candidate": 0.0945,
-          "retained_region_extract": 0.0007,
-          "candidate_fingerprint": 0.0892,
-          "register_candidate": 0.005,
-          "qa_candidate": 0.6444,
-          "validate_job": 0.1783,
-          "completeness_audit": 0.229,
-          "preflight": 0.9695
+          "build_candidate": 0.1583,
+          "retained_region_extract": 0.0016,
+          "candidate_fingerprint": 0.1316,
+          "register_candidate": 0.0074,
+          "qa_candidate": 0.9468,
+          "validate_job": 0.2747,
+          "completeness_audit": 0.3485,
+          "preflight": 1.4438
         },
         "counters": {
           "candidate_analysis_reuse": 6,
@@ -100,21 +100,21 @@
       "repeats": 3,
       "cold": {
         "seconds": [
-          1.809,
-          1.9048,
-          1.783
+          2.7569,
+          3.0565,
+          3.7126
         ],
-        "median_seconds": 1.809,
+        "median_seconds": 3.0565,
         "translation_stage_seconds": {},
         "pdf_stage_seconds": {
-          "build_candidate": 0.2596,
-          "retained_region_extract": 0.0008,
-          "candidate_fingerprint": 0.0934,
-          "register_candidate": 0.0087,
-          "qa_candidate": 0.6938,
-          "validate_job": 0.1901,
-          "completeness_audit": 0.2782,
-          "preflight": 1.0564
+          "build_candidate": 0.4558,
+          "retained_region_extract": 0.0016,
+          "candidate_fingerprint": 0.1542,
+          "register_candidate": 0.036,
+          "qa_candidate": 1.0802,
+          "validate_job": 0.2991,
+          "completeness_audit": 0.4427,
+          "preflight": 1.7091
         },
         "counters": {
           "candidate_analysis_reuse": 6,
@@ -129,21 +129,21 @@
       },
       "warm": {
         "seconds": [
-          1.8,
-          1.7437,
-          1.8541
+          2.778,
+          2.2402,
+          2.4166
         ],
-        "median_seconds": 1.8,
+        "median_seconds": 2.4166,
         "translation_stage_seconds": {},
         "pdf_stage_seconds": {
-          "build_candidate": 0.2349,
-          "retained_region_extract": 0.0007,
-          "candidate_fingerprint": 0.0862,
-          "register_candidate": 0.0047,
-          "qa_candidate": 0.6458,
-          "validate_job": 0.1777,
-          "completeness_audit": 0.2604,
-          "preflight": 0.9826
+          "build_candidate": 0.3055,
+          "retained_region_extract": 0.0009,
+          "candidate_fingerprint": 0.1105,
+          "register_candidate": 0.0062,
+          "qa_candidate": 0.8059,
+          "validate_job": 0.2339,
+          "completeness_audit": 0.3272,
+          "preflight": 1.2317
         },
         "counters": {
           "candidate_analysis_reuse": 6,
@@ -169,21 +169,21 @@
       "repeats": 3,
       "cold": {
         "seconds": [
-          0.5902,
-          0.5926,
-          0.5847
+          0.7784,
+          0.8347,
+          0.7833
         ],
-        "median_seconds": 0.5902,
+        "median_seconds": 0.7833,
         "translation_stage_seconds": {},
         "pdf_stage_seconds": {
-          "build_candidate": 0.0586,
-          "retained_region_extract": 0.0006,
-          "candidate_fingerprint": 0.0119,
-          "register_candidate": 0.0038,
-          "qa_candidate": 0.0825,
-          "validate_job": 0.0283,
-          "completeness_audit": 0.0479,
-          "preflight": 0.1482
+          "build_candidate": 0.0857,
+          "retained_region_extract": 0.0011,
+          "candidate_fingerprint": 0.017,
+          "register_candidate": 0.0073,
+          "qa_candidate": 0.116,
+          "validate_job": 0.0415,
+          "completeness_audit": 0.0715,
+          "preflight": 0.2157
         },
         "counters": {
           "candidate_analysis_reuse": 6,
@@ -198,21 +198,21 @@
       },
       "warm": {
         "seconds": [
-          0.5763,
-          0.5839,
-          0.597
+          0.6938,
+          0.7686,
+          0.7333
         ],
-        "median_seconds": 0.5839,
+        "median_seconds": 0.7333,
         "translation_stage_seconds": {},
         "pdf_stage_seconds": {
-          "build_candidate": 0.0612,
-          "retained_region_extract": 0.0005,
-          "candidate_fingerprint": 0.0117,
-          "register_candidate": 0.0034,
-          "qa_candidate": 0.0798,
-          "validate_job": 0.0267,
-          "completeness_audit": 0.0476,
-          "preflight": 0.1443
+          "build_candidate": 0.0754,
+          "retained_region_extract": 0.0008,
+          "candidate_fingerprint": 0.0166,
+          "register_candidate": 0.0068,
+          "qa_candidate": 0.1117,
+          "validate_job": 0.0399,
+          "completeness_audit": 0.0666,
+          "preflight": 0.2077
         },
         "counters": {
           "candidate_analysis_reuse": 6,
@@ -238,21 +238,21 @@
       "repeats": 3,
       "cold": {
         "seconds": [
-          0.523,
-          0.5182,
-          0.5026
+          0.6245,
+          0.6268,
+          0.6078
         ],
-        "median_seconds": 0.5182,
+        "median_seconds": 0.6245,
         "translation_stage_seconds": {},
         "pdf_stage_seconds": {
-          "build_candidate": 0.029,
-          "retained_region_extract": 0.0004,
-          "candidate_fingerprint": 0.0071,
-          "register_candidate": 0.0035,
-          "qa_candidate": 0.0546,
-          "validate_job": 0.0245,
-          "completeness_audit": 0.0185,
-          "preflight": 0.0984
+          "build_candidate": 0.0401,
+          "retained_region_extract": 0.0005,
+          "candidate_fingerprint": 0.0088,
+          "register_candidate": 0.0054,
+          "qa_candidate": 0.0703,
+          "validate_job": 0.0316,
+          "completeness_audit": 0.0235,
+          "preflight": 0.1289
         },
         "counters": {
           "candidate_analysis_reuse": 6,
@@ -267,21 +267,21 @@
       },
       "warm": {
         "seconds": [
-          0.4829,
-          0.5679,
-          0.4907
+          0.598,
+          0.6413,
+          0.5994
         ],
-        "median_seconds": 0.4907,
+        "median_seconds": 0.5994,
         "translation_stage_seconds": {},
         "pdf_stage_seconds": {
-          "build_candidate": 0.0382,
-          "retained_region_extract": 0.0004,
-          "candidate_fingerprint": 0.007,
-          "register_candidate": 0.0041,
-          "qa_candidate": 0.0567,
-          "validate_job": 0.0255,
-          "completeness_audit": 0.02,
-          "preflight": 0.1022
+          "build_candidate": 0.0433,
+          "retained_region_extract": 0.0005,
+          "candidate_fingerprint": 0.0078,
+          "register_candidate": 0.0053,
+          "qa_candidate": 0.0705,
+          "validate_job": 0.0329,
+          "completeness_audit": 0.0248,
+          "preflight": 0.1272
         },
         "counters": {
           "candidate_analysis_reuse": 6,
@@ -307,17 +307,17 @@
       "repeats": 3,
       "cold": {
         "seconds": [
-          1.4754,
-          1.5782,
-          1.4728
+          1.8383,
+          1.792,
+          1.7616
         ],
-        "median_seconds": 1.4754,
+        "median_seconds": 1.792,
         "translation_stage_seconds": {},
         "pdf_stage_seconds": {
-          "build_candidate": 1.083,
+          "build_candidate": 1.2285,
           "retained_region_extract": 0.0003,
-          "validate_job": 0.0428,
-          "completeness_audit": 0.1452
+          "validate_job": 0.0487,
+          "completeness_audit": 0.1627
         },
         "counters": {
           "candidate_pdf_open": 18,
@@ -330,17 +330,17 @@
       },
       "warm": {
         "seconds": [
-          1.5711,
-          1.4239,
-          1.4077
+          1.6075,
+          1.7754,
+          2.2877
         ],
-        "median_seconds": 1.4239,
+        "median_seconds": 1.7754,
         "translation_stage_seconds": {},
         "pdf_stage_seconds": {
-          "build_candidate": 0.9533,
-          "retained_region_extract": 0.0002,
-          "validate_job": 0.0438,
-          "completeness_audit": 0.1388
+          "build_candidate": 1.243,
+          "retained_region_extract": 0.0003,
+          "validate_job": 0.0529,
+          "completeness_audit": 0.1604
         },
         "counters": {
           "candidate_pdf_open": 18,
@@ -359,10 +359,10 @@
     }
   ],
   "totals": {
-    "cold_median_seconds": 5.9891,
-    "warm_median_seconds": 5.8744,
-    "cold_case_median_seconds": 1.4754,
-    "warm_case_median_seconds": 1.4239
+    "cold_median_seconds": 9.3807,
+    "warm_median_seconds": 7.9341,
+    "cold_case_median_seconds": 1.792,
+    "warm_case_median_seconds": 1.7754
   },
   "note": "合成语料只用于比较耗时与重复读取，不能替代真实论文的视觉抽查。模型翻译阶段未测量。"
 }

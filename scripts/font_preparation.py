@@ -73,6 +73,41 @@ def _job_sample_characters(job_dir: Path) -> str:
     return "".join(sorted(seen))
 
 
+def _job_math_characters(job_dir: Path) -> str:
+    """译文里既非 ASCII 也非 CJK 的字符——∈、Ω、私用区这类符号。
+
+    核心中文与数学符号分开检查：正文字体只需覆盖核心中文，符号字符
+    由数学后备角色兜底，谁也不必假装一把字体什么都能画。
+    """
+
+    path = Path(job_dir) / "translation.json"
+    if not path.is_file():
+        return ""
+    try:
+        data = load_json(path)
+    except SkillError:
+        return ""
+    seen: set[str] = set()
+    for unit in data.get("units", []):
+        if not isinstance(unit, dict):
+            continue
+        text = str(unit.get("translation") or "") or str(
+            unit.get("source") or ""
+        )
+        for character in text:
+            code = ord(character)
+            if code < 0x2000 or character.isspace():
+                continue
+            if 0x3400 <= code <= 0x9FFF or 0x3000 <= code <= 0x303F:
+                continue
+            if 0xFF00 <= code <= 0xFFEF:
+                continue
+            seen.add(character)
+        if len(seen) > 120:
+            break
+    return "".join(sorted(seen))
+
+
 def _language_sample(job: dict[str, Any]) -> str:
     """目标语言的代表字符；字体必须画得出来才算可用。"""
 
@@ -110,6 +145,9 @@ def resolve_job_fonts(job: dict[str, Any], job_dir: Path | None = None) -> FontR
         required_characters=_language_sample(job),
         fallback_names=[*FALLBACK_FONT_NAMES, *explicit],
         reference_characters=reference_characters,
+        math_characters=(
+            _job_math_characters(job_dir) if job_dir is not None else ""
+        ),
     )
     if ROLE_REGULAR not in resolution.selections:
         raise SkillError(
@@ -196,7 +234,18 @@ def prepare_job_fonts(
     # 冻结的题录体若违反字重闸门（例如旧作业冻住了 Arial Black），
     # 冻结作废，强制重选。旧证据在返回里标记失效原因。
     stale_reference = None
+    stale_missing: list[str] = []
     frozen = (job.get("quality") or {}).get("selected_fonts")
+    if isinstance(frozen, list) and frozen:
+        # 换机器后旧的绝对字体路径可能不存在（Mac 冻结、Linux 运行）。
+        # 找不到就作废重选，先把失效记下来再动手。
+        stale_missing = [
+            str(value)
+            for value in frozen
+            if isinstance(value, str) and not Path(value).expanduser().is_file()
+        ]
+        if stale_missing:
+            force = True
     if isinstance(frozen, list) and len(frozen) >= 3:
         reference_path = Path(str(frozen[2]))
         if not reference_weight_ok(reference_path):
@@ -231,6 +280,11 @@ def prepare_job_fonts(
         report["stale_evidence"] = (
             f"冻结题录体 {stale_reference} 是粗体家族，违反题录字重闸门，"
             "旧冻结作废并已重选"
+        )
+    elif stale_missing:
+        report["stale_evidence"] = (
+            "冻结字体在当前系统不存在，旧冻结作废并已重新解析: "
+            + "、".join(stale_missing[:3])
         )
     return report
 

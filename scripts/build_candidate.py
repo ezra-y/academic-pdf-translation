@@ -169,6 +169,11 @@ def _plain_superscript(text: str) -> str:
     )
 
 
+#: 本次构建的数学符号后备字体名；没有选出后备时为 None。
+#: 正文/题录字体画不出的符号字符按字符段改用它（见 _markup）。
+MATH_FALLBACK_FONT_NAME: str | None = None
+
+
 def _font_supports(font_name: str, character: str) -> bool:
     """已注册字体能否画出这个字符；无法判断时按"能"处理，不误拦。"""
 
@@ -271,6 +276,26 @@ def _markup(
                     f"<super>{_plain_superscript(token)}</super>"
                 )
                 continue
+            # 数学符号后备：段落主字体画不出、后备字体画得出的字符，
+            # 独立成段换字体。不做这一步它们会退化成空字符。
+            if MATH_FALLBACK_FONT_NAME:
+                base_font = primary_font or cjk_font or "AcademicUnifiedRegular"
+                math_runs = _fallback_runs(
+                    token, base_font, MATH_FALLBACK_FONT_NAME
+                )
+                if any(needs for _, needs in math_runs):
+                    rendered_tokens.append(
+                        "".join(
+                            (
+                                f'<font name="{MATH_FALLBACK_FONT_NAME}">'
+                                f"{reportlab_cjk_markup(piece)}</font>"
+                                if needs
+                                else reportlab_cjk_markup(piece)
+                            )
+                            for piece, needs in math_runs
+                        )
+                    )
+                    continue
             rendered = reportlab_cjk_markup(token)
             if escaped_font and CJK_FONT_RUN_PATTERN.fullmatch(token):
                 rendered = (
@@ -6733,19 +6758,29 @@ def _timed_build_candidate(
         regular_path = Path(_frozen_fonts[0])
         bold_path = Path(_frozen_fonts[1])
         reference_path = Path(_frozen_fonts[2])
+        math_path = (
+            Path(_frozen_fonts[3]) if len(_frozen_fonts) >= 4 else None
+        )
     else:
         regular_path, bold_path = _resolve_fonts(job)
         reference_path = _resolve_reference_font(regular_path)
+        math_path = None
     resolved_font_paths = [
         str(regular_path),
         str(bold_path),
         str(reference_path),
+        *([str(math_path)] if math_path else []),
     ]
     if job.get("quality", {}).get("selected_fonts") != resolved_font_paths:
         quality = job.setdefault("quality", {})
         quality["selected_fonts"] = resolved_font_paths
         quality["selected_font_evidence"] = font_evidence(
-            [regular_path, bold_path, reference_path]
+            [
+                regular_path,
+                bold_path,
+                reference_path,
+                *([math_path] if math_path else []),
+            ]
         )
         write_json(job_dir / "job.json", job)
     regular_font = "AcademicUnifiedRegular"
@@ -6754,6 +6789,12 @@ def _timed_build_candidate(
     _register_font(regular_font, regular_path)
     _register_font(bold_font, bold_path)
     _register_font(reference_font_name, reference_path)
+    global MATH_FALLBACK_FONT_NAME
+    if math_path is not None and Path(math_path).is_file():
+        _register_font("AcademicUnifiedMath", Path(math_path))
+        MATH_FALLBACK_FONT_NAME = "AcademicUnifiedMath"
+    else:
+        MATH_FALLBACK_FONT_NAME = None
     install_reportlab_cjk_nobr_patch()
 
     page_size = _common_page_size(source_path)
@@ -7129,6 +7170,9 @@ def _timed_build_candidate(
                 str(regular_path),
                 str(bold_path),
                 str(reference_path),
+                # 数学符号后备也是真用到的字体，必须进合同——
+                # 少报一把，字体一致性检查就对不上。
+                *([str(math_path)] if math_path else []),
             ],
             "candidate_page_map_complete": True,
         },

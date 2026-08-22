@@ -279,11 +279,21 @@ def _stale_font_evidence_issues(
                 ),
             }
         ]
+    def _same_file(left: str, right: str) -> bool:
+        # /Library/Fonts 是 /System/Library/Fonts/Supplemental 的符号链接：
+        # 同一个文件两个路径写法，按字符串比会误判成"字体被换了"。
+        if left == right:
+            return True
+        try:
+            return Path(left).resolve() == Path(right).resolve()
+        except OSError:
+            return False
+
     changed = [
         entry["path"]
         for entry, record in zip(observed, recorded, strict=True)
         if not isinstance(record, dict)
-        or record.get("path") != entry["path"]
+        or not _same_file(str(record.get("path") or ""), entry["path"])
         or record.get("sha256") != entry["sha256"]
     ]
     if changed:

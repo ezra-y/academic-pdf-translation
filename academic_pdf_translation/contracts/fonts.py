@@ -29,7 +29,9 @@ from reportlab.pdfbase.ttfonts import TTFont
 ROLE_REGULAR = "regular"
 ROLE_BOLD = "bold"
 ROLE_REFERENCE = "reference"
-FONT_ROLES = (ROLE_REGULAR, ROLE_BOLD, ROLE_REFERENCE)
+#: 数学符号后备：正文字体画不出的 ∈、Ω 这类字符按字符段改用它。
+ROLE_MATH = "math"
+FONT_ROLES = (ROLE_REGULAR, ROLE_BOLD, ROLE_REFERENCE, ROLE_MATH)
 
 FONT_SUFFIXES = (".ttf", ".ttc", ".otf")
 #: ReportLab 对 TrueType 轮廓支持最好，优先级最高。
@@ -294,6 +296,26 @@ def reference_weight_ok(path: Path) -> bool:
     return not _REFERENCE_FORBIDDEN_RE.search(normalized_token(path.stem))
 
 
+def _score_fallbacks(paths: list[Path]) -> list[Path]:
+    """第二阶段候选的确定性排序。
+
+    真正的加载与字符覆盖由 pick() 逐个探测，这里只决定先试谁：
+    TrueType 轮廓优先、正常字重优先、路径短且稳定优先、
+    最后按路径字典序保证可复现。
+    """
+
+    def score(path: Path) -> tuple:
+        suffix = path.suffix.casefold()
+        return (
+            0 if suffix in (".ttf", ".ttc", ".otf") else 1,
+            1 if _is_bold_file(path) else 0,
+            len(path.parts),
+            str(path),
+        )
+
+    return sorted(paths, key=score)
+
+
 def _is_bold_file(path: Path) -> bool:
     token = normalized_token(path.stem)
     for marker in BOLD_TOKENS:
@@ -412,6 +434,7 @@ def resolve_fonts(
     fallback_names: Iterable[str] = (),
     reference_names: Iterable[str] = DEFAULT_REFERENCE_NAMES,
     reference_characters: str = "",
+    math_characters: str = "",
 ) -> FontResolution:
     """按角色解析字体，全部经过真实 ReportLab 探测。
 
@@ -424,7 +447,13 @@ def resolve_fonts(
     requested += [str(value).strip() for value in fallback_names if str(value).strip()]
     resolution = FontResolution()
 
-    ranked = _ordered_candidates(requested, files) or list(files)
+    # 两阶段候选队列。第一阶段：名字匹配的偏好字体。第二阶段：其余
+    # **全部**字体按可用性打分排队——匹配的候选全部加载失败时，
+    # 系统里明明还有能用的字体（Linux 上常见 uming.ttc），
+    # 不能因为名字不像就不试。
+    preferred = _ordered_candidates(requested, files)
+    remaining = [path for path in files if path not in set(preferred)]
+    ranked = preferred + _score_fallbacks(remaining)
 
     def pick(role: str, predicate) -> FontSelection | None:
         for path in ranked:
@@ -536,5 +565,42 @@ def resolve_fonts(
         )
     if reference is not None:
         resolution.selections[ROLE_REFERENCE] = reference
+
+    # 数学符号与核心中文分开检查：正文字体覆盖不了的符号字符，
+    # 从全部候选里找一把能画的当后备。找不到就明说，不许静默丢字。
+    if math_characters and regular is not None:
+        uncovered = "".join(
+            character
+            for character in dict.fromkeys(math_characters)
+            if not character.isspace()
+            and not font_covers(
+                Path(regular.path), character, regular.subfont_index
+            )
+        )
+        if uncovered:
+            math = None
+            for path in ranked:
+                if _is_bold_file(path):
+                    continue
+                probe = probe_reportlab_font(path)
+                if not probe.loadable:
+                    continue
+                if font_covers(path, uncovered, probe.subfont_index):
+                    math = FontSelection(
+                        role=ROLE_MATH,
+                        path=str(path),
+                        sha256=sha256_file(path),
+                        subfont_index=probe.subfont_index,
+                        probe=probe,
+                    )
+                    break
+            if math is not None:
+                resolution.selections[ROLE_MATH] = math
+            else:
+                resolution.warnings.append(
+                    "FONT_MATH_SYMBOLS_UNCOVERED: 正文字体画不出这些"
+                    "数学/符号字符，且候选里没有能补齐的后备字体: "
+                    + "".join(uncovered[:20])
+                )
 
     return resolution
