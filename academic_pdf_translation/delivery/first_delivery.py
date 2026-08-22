@@ -87,6 +87,9 @@ REPAIR_MADE_NO_DIFFERENCE = (
     "返修重建出来的候选与返修前内容完全相同——降级指令没有落到生成器上，这一轮返修等于没跑"
 )
 
+#: v2 作业必须有渲染计划。缺计划时报这个码，不许静默当成"合同通过"。
+BLOCKED_RENDER_PLAN_MISSING = "BLOCKED_RENDER_PLAN_MISSING"
+
 STAGE_BUILD = "build"
 STAGE_MAP = "map"
 STAGE_AUDIT = "audit"
@@ -278,18 +281,37 @@ def _as_outcome(value: Any) -> BuildOutcome:
     return BuildOutcome(status=BUILD_READY, candidate_path=Path(value))
 
 
+def _attempt_number(outcome: BuildOutcome, default: int) -> int:
+    """取 BuildOutcome 自报的 attempt 序号。
+
+    生成器写的是 ``attempt-2`` 这种带前缀的字符串，恢复流程写的可能是
+    纯数字。取不出来才退回 ``default``——退回是兜底，不是常态。
+    """
+
+    raw = str(outcome.attempt_id or "").strip()
+    if raw.startswith("attempt-"):
+        raw = raw[len("attempt-") :]
+    try:
+        number = int(raw)
+    except ValueError:
+        return default
+    return number if number > 0 else default
+
+
 def _bind_attempt(
     result: DeliveryResult,
     outcome: BuildOutcome,
     output_dir: Path,
     run_id: str,
     attempt_id: int,
-    render_plan_sha256: str,
 ) -> RunIdentity:
     """建立这一轮的运行身份：候选拷进 attempt 目录，指针原子更新。
 
     指针更新后，上一轮的证据自动变成历史——它还在磁盘上，
     但五元绑定对不上当前身份，谁也不能再拿它验证新候选。
+
+    渲染计划哈希取自 ``outcome``，也就是**这一轮真正用过的**那份。
+    返修会重算计划，用流程开始时读到的旧哈希会让证据身份写错。
     """
 
     candidate_sha = outcome.candidate_sha256 or ""
@@ -303,7 +325,7 @@ def _bind_attempt(
         run_id=run_id,
         attempt_id=attempt_id,
         candidate_sha256=candidate_sha,
-        render_plan_sha256=render_plan_sha256,
+        render_plan_sha256=outcome.render_plan_sha256,
         renderer_build_id=outcome.renderer_build_id,
     )
     directory = attempt_dir(output_dir, run_id, attempt_id)
@@ -318,6 +340,25 @@ def _bind_attempt(
     result.run_id = run_id
     result.attempt_id = attempt_id
     return identity
+
+
+def _write_plan_snapshot(
+    result: DeliveryResult,
+    outcome: BuildOutcome,
+    evidence_dir: Path,
+    label: str,
+) -> None:
+    """把这一轮用过的渲染计划副本存进本轮的 attempt 目录。
+
+    磁盘上 ``render_plan.json`` 只有"现在"这一份，返修一重算就没了。
+    要事后证明"第二轮是按第二份计划渲染的"，只能在当轮存副本。
+    """
+
+    if outcome.render_plan is None:
+        return
+    result.evidence[f"{label}-render-plan"] = _write_json(
+        evidence_dir / "render-plan.json", outcome.render_plan
+    )
 
 
 def _record_build(
@@ -395,11 +436,14 @@ def _apply_render_contract(
     render_plan: dict[str, Any] | None,
     evidence_dir: Path,
     label: str,
+    *,
+    require_render_plan: bool,
 ) -> bool:
     """按元素 ID 对账三份清单，证据落盘。
 
-    候选元素视图由映射派生（没有手写字段）；有渲染计划才做完整对账。
-    返回合同是否通过——没有计划时视为通过（老作业兼容）。
+    候选元素视图由映射派生（没有手写字段）。``require_render_plan``
+    为真时没有计划就是硬失败：删掉 ``render_plan.json`` 不能变成
+    "合同通过"。只有显式声明的老作业才允许跳过这道合同。
     """
 
     candidate_view = derive_candidate_elements(mapping)
@@ -407,6 +451,12 @@ def _apply_render_contract(
         evidence_dir / "candidate-elements.json", candidate_view
     )
     if render_plan is None:
+        if require_render_plan:
+            result.problems.append(
+                f"[{BLOCKED_RENDER_PLAN_MISSING}] 这一轮没有渲染计划，"
+                "元素级合同无从对账；缺计划不等于合同通过"
+            )
+            return False
         return True
     contract = contract_from_documents(
         {"elements": elements}, render_plan, candidate_view
@@ -433,14 +483,17 @@ def run_first_delivery(
     page_budget: int = DEFAULT_PAGE_BUDGET,
     render_pages: bool = True,
     visual_result: VisualReviewResult | None = None,
-    render_plan_sha256: str = "",
-    render_plan: dict[str, Any] | None = None,
+    require_render_plan: bool = False,
 ) -> DeliveryResult:
     """跑完首次交付，给出唯一结论。
 
     ``build(round_index)`` 由调用方提供，返回这一轮的 :class:`BuildOutcome`。
     交付流程不关心是谁生成的，但**关心生成器自己怎么说**：生成器说
     BLOCKED，这里就是 blocked，候选文件存在与否都改变不了这一点。
+
+    渲染计划不是流程参数，而是 :class:`BuildOutcome` 的一部分：每一轮
+    带上自己真正用过的那份计划与哈希。返修会重算计划，用开跑时读到的
+    那一份去核查第二轮候选，等于用错的身份签发证据。
     """
 
     if not elements:
@@ -461,12 +514,15 @@ def run_first_delivery(
         return result
 
     run_id = outcome.run_id or new_run_id()
+    first_attempt = _attempt_number(outcome, 1)
     identity = _bind_attempt(
-        result, outcome, output_dir, run_id, 1, render_plan_sha256
+        result, outcome, output_dir, run_id, first_attempt
     )
-    evidence_dir = attempt_dir(output_dir, run_id, 1)
+    evidence_dir = attempt_dir(output_dir, run_id, first_attempt)
+    first_label = f"round-{first_attempt}"
+    _write_plan_snapshot(result, outcome, evidence_dir, first_label)
     _record_build(
-        result, outcome, evidence_dir, "round-1", identity=identity
+        result, outcome, evidence_dir, first_label, identity=identity
     )
     if outcome.candidate_path is not None:
         # 候选留作证据——它是不是"能交付的候选"由门槛说了算。
@@ -491,6 +547,22 @@ def run_first_delivery(
         result.status = STATUS_BLOCKED
         return result
 
+    if require_render_plan and outcome.render_plan is None:
+        # 没有渲染计划就没有元素级合同。缺计划必须停，不能悄悄退回旧链路。
+        result.stages.append(
+            StageRecord(
+                STAGE_BUILD,
+                False,
+                f"{BLOCKED_RENDER_PLAN_MISSING}：这一轮没有渲染计划",
+            )
+        )
+        result.problems.append(
+            f"[{BLOCKED_RENDER_PLAN_MISSING}] 这一轮没有渲染计划，"
+            "元素级合同无从对账"
+        )
+        result.status = STATUS_BLOCKED
+        return result
+
     build_needs_repair = build_gate.verdict == GATE_REPAIR
     if build_needs_repair:
         result.problems.extend(build_gate.reasons)
@@ -512,7 +584,7 @@ def run_first_delivery(
         elements,
         element_texts=element_texts,
         output_dir=evidence_dir,
-        label="round-1",
+        label=first_label,
         page_budget=page_budget,
         render_pages=render_pages,
         binding=identity.as_dict(),
@@ -533,10 +605,16 @@ def run_first_delivery(
         )
     )
     first_contract_ok = _apply_render_contract(
-        result, first.mapping, elements, render_plan, evidence_dir, "round-1"
+        result,
+        first.mapping,
+        elements,
+        outcome.render_plan,
+        evidence_dir,
+        first_label,
+        require_render_plan=require_render_plan,
     )
     first_gate = _apply_visual_gate(
-        result, first.review, visual_result, candidate_path, label="round-1",
+        result, first.review, visual_result, candidate_path, label=first_label,
         output_dir=evidence_dir,
     )
 
@@ -609,12 +687,15 @@ def run_first_delivery(
         result.status = STATUS_BLOCKED
         return result
 
+    second_attempt = _attempt_number(repaired_outcome, first_attempt + 1)
     identity = _bind_attempt(
-        result, repaired_outcome, output_dir, run_id, 2, render_plan_sha256
+        result, repaired_outcome, output_dir, run_id, second_attempt
     )
-    evidence_dir = attempt_dir(output_dir, run_id, 2)
+    evidence_dir = attempt_dir(output_dir, run_id, second_attempt)
+    second_label = f"round-{second_attempt}"
+    _write_plan_snapshot(result, repaired_outcome, evidence_dir, second_label)
     _record_build(
-        result, repaired_outcome, evidence_dir, "round-2", identity=identity
+        result, repaired_outcome, evidence_dir, second_label, identity=identity
     )
     rebuild_gate = check_build_gate(repaired_outcome)
     if rebuild_gate.blocked or repaired_outcome.candidate_path is None:
@@ -657,7 +738,7 @@ def run_first_delivery(
         elements,
         element_texts=element_texts,
         output_dir=evidence_dir,
-        label="round-2",
+        label=second_label,
         page_budget=page_budget,
         render_pages=render_pages,
         binding=identity.as_dict(),
@@ -681,10 +762,16 @@ def run_first_delivery(
     # 返修产生的是**新候选**，round-1 的视觉结果对它天然无效——
     # 门槛按新候选的哈希重新判定（旧结果会得到 STALE）。
     second_contract_ok = _apply_render_contract(
-        result, second.mapping, elements, render_plan, evidence_dir, "round-2"
+        result,
+        second.mapping,
+        elements,
+        repaired_outcome.render_plan,
+        evidence_dir,
+        second_label,
+        require_render_plan=require_render_plan,
     )
     second_gate = _apply_visual_gate(
-        result, second.review, visual_result, repaired_path, label="round-2",
+        result, second.review, visual_result, repaired_path, label=second_label,
         output_dir=evidence_dir,
     )
 

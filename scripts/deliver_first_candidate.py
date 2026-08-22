@@ -101,6 +101,19 @@ def _job_inputs(job_dir: Path) -> tuple[list, list, list]:
     return (elements, units, bindings)
 
 
+def read_render_plan(job_dir: Path) -> tuple[str, dict | None]:
+    """读作业里**当前**这一份渲染计划，返回（哈希, 计划正文）。
+
+    调用点很关键：必须在一轮生成结束之后读，读到的才是这一轮真正
+    用过的那份。返修会重算计划，提前读会把旧身份带到新候选上。
+    """
+
+    path = job_dir / "render_plan.json"
+    if not path.is_file():
+        return ("", None)
+    return (file_sha256(path), load_json(path))
+
+
 def rebuild_render_plan(job_dir: Path) -> dict[str, str]:
     """按返修指定的降级重算渲染计划，并返回实际生效的降级。"""
 
@@ -150,10 +163,15 @@ def make_builder(job_dir: Path, output: Path | None):
         report = build_first_candidate(
             job_dir, output, attempt_label=label
         )
+        # 计划要在**生成之后**读：返修那一轮的计划是刚刚重算出来的，
+        # 开跑前读到的那一份已经过期了。
+        plan_sha, plan = read_render_plan(job_dir)
         return build_outcome_from_report(
             report,
             run_id=run_id,
             attempt_id=f"attempt-{round_index + 1}",
+            render_plan_sha256=plan_sha,
+            render_plan=plan,
         )
 
     return build
@@ -191,6 +209,9 @@ def make_resume_builder(delivery_dir: Path):
         )
         if record_path.is_file():
             record = load_json(record_path)
+        # 计划取这一轮自己的快照，不取作业目录里"现在"那一份——
+        # 作业目录里的可能已经是后来重算的了。
+        snapshot = directory / "render-plan.json"
         return BuildOutcome(
             status=str(record.get("status") or "READY_TO_REGISTER"),
             candidate_path=candidate,
@@ -199,6 +220,10 @@ def make_resume_builder(delivery_dir: Path):
             renderer_build_id=identity.renderer_build_id,
             run_id=identity.run_id,
             attempt_id=f"attempt-{identity.attempt_id}",
+            render_plan_sha256=identity.render_plan_sha256,
+            render_plan=(
+                load_json(snapshot) if snapshot.is_file() else None
+            ),
         )
 
     return build
@@ -288,16 +313,6 @@ def main() -> int:
             output_dir=delivery_dir,
             page_budget=args.page_budget,
             visual_result=visual_result,
-            render_plan_sha256=(
-                file_sha256(job_dir / "render_plan.json")
-                if (job_dir / "render_plan.json").is_file()
-                else ""
-            ),
-            render_plan=(
-                load_json(job_dir / "render_plan.json")
-                if (job_dir / "render_plan.json").is_file()
-                else None
-            ),
         )
     except (
         SkillError,
