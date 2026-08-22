@@ -29,6 +29,7 @@ RENDERER_INPUTS = (
     "academic_pdf_translation/render/story_complex.py",
     "academic_pdf_translation/render/story_text.py",
     "academic_pdf_translation/render/story_visual.py",
+    "academic_pdf_translation/render/typography_search.py",
     "academic_pdf_translation/render/table_data.py",
     "academic_pdf_translation/render/text_blocks.py",
     "academic_pdf_translation/render/plan_bridge.py",

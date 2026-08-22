@@ -372,168 +372,62 @@ def _story(**kwargs: Any) -> list[Flowable]:
     return _with_story_deps(_story_module._story, **kwargs)
 
 
-def _title_from_translation(translation: dict[str, Any], fallback: str) -> str:
-    for unit in translation.get("units", []):
-        if not isinstance(unit, dict):
-            continue
-        if str(unit.get("kind") or "").lower() not in HEADING_KINDS:
-            continue
-        value = str(unit.get("translation") or "").strip()
-        if value:
-            return value.splitlines()[0][:180]
-    for unit in translation.get("units", []):
-        if isinstance(unit, dict):
-            value = str(unit.get("translation") or "").strip()
-            if value:
-                return value.splitlines()[0][:180]
-    return fallback
+# 排版搜索（字号、行距和页数的试排与选择）已移入
+# academic_pdf_translation.render.typography_search。
+# 它对外只有一个入口 search_typography，进出都是明确的数据，
+# 生成器主流程不再夹着一段两百行的搜索循环。
+# 这里按旧名再导出，需要注入的用薄包装绑好依赖，调用路径不变。
+from academic_pdf_translation.render import (  # noqa: E402
+    typography_search as _typography_search,
+)
+from academic_pdf_translation.render.typography_search import (  # noqa: E402,F401
+    TypographySearchError,
+    _adaptive_page_expansion_limit,
+    _estimated_page_count,
+    _title_from_translation,
+)
+
+#: 排版搜索需要的、原本长在 scripts 层的几件东西，在这里一次装配好。
+_TYPOGRAPHY_DEPS = _typography_search.TypographyDeps(
+    story=_STORY_DEPS,
+    candidate_groups_fn=candidate_groups,
+    search_first_acceptable_fn=search_first_acceptable,
+    count_render_attempt_fn=lambda: perf_trace.count(
+        perf_trace.COUNTER_RENDER_ATTEMPT
+    ),
+    open_candidate_analysis_fn=open_candidate_analysis,
+)
 
 
-def _render_attempt(
-    *,
-    path: Path,
-    job: dict[str, Any],
-    translation: dict[str, Any],
-    complex_content: dict[str, Any],
-    retained_payloads: list[dict[str, Any]],
-    source_document: Any,
-    source_structure: dict[str, Any],
-    page_size: tuple[float, float],
-    margins: tuple[float, float, float, float],
-    regular_font: str,
-    bold_font: str,
-    reference_font: str,
-    body_font_pt: float,
-    leading_ratio: float,
-    reference_font_pt: float,
-    label_font_path: str | None = None,
-) -> tuple[MappingTracker, int]:
-    """完整试排一次，结果写入给定路径。
+def _with_typography_deps(call, *args: Any, **kwargs: Any):
+    """递上注入包调用包内函数，并把 TypographySearchError 翻译回 SkillError。"""
 
-    这里刻意保留落盘：实测在写时复制文件系统上，写临时文件再内存映射打开，
-    比把整份 PDF 复制成 bytes 再从内存流解析更快，也不会把每次试排的完整
-    PDF 都留在内存里。选中的候选直接复用它自己的临时文件，不重排。
-    """
-
-    tracker = MappingTracker()
-    styles = _styles(
-        regular_font=regular_font,
-        bold_font=bold_font,
-        reference_font=reference_font,
-        body_font_pt=body_font_pt,
-        leading_ratio=leading_ratio,
-        reference_font_pt=reference_font_pt,
-    )
-    available_width = page_size[0] - margins[0] - margins[1]
-    available_height = page_size[1] - margins[2] - margins[3]
-    story = _story(
-        job=job,
-        translation=translation,
-        complex_content=complex_content,
-        retained_payloads=retained_payloads,
-        styles=styles,
-        source_document=source_document,
-        source_structure=source_structure,
-        available_width=available_width,
-        available_height=available_height,
-        regular_font=regular_font,
-        bold_font=bold_font,
-        body_font_pt=body_font_pt,
-        target_language=str(job["translation"]["target_language"]),
-        label_font_path=label_font_path,
-    )
-    document = MappingDocTemplate(
-        str(path),
-        tracker=tracker,
-        page_size=page_size,
-        margins=margins,
-        regular_font=regular_font,
-        title=_title_from_translation(translation, str(job["job_id"])),
-        target_language=str(job["translation"]["target_language"]),
-        message_fn=message,
-    )
-    def canvas_maker(filename: str, **kwargs):
-        kwargs["initialFontName"] = regular_font
-        kwargs["initialFontSize"] = body_font_pt
-        kwargs["initialLeading"] = body_font_pt * leading_ratio
-        return Canvas(filename, **kwargs)
-
-    # 矢量图 Flowable 在包内抛自己的异常，这里翻译回 SkillError，
-    # 保证对外的错误类型和文案与搬家前完全一致。
     try:
-        document.build(story, canvasmaker=canvas_maker)
-    except VectorFigureError as error:
-        raise SkillError(str(error)) from error
-    tracker.finalize_heading_check()
-    perf_trace.count(perf_trace.COUNTER_RENDER_ATTEMPT)
-    output = open_candidate_analysis(path)
-    page_count = output.page_count
-    output.release()
-    return tracker, page_count
+        return call(*args, deps=_TYPOGRAPHY_DEPS, **kwargs)
+    except TypographySearchError as exc:
+        raise SkillError(str(exc)) from exc
+
+
+def _render_attempt(**kwargs: Any) -> tuple[MappingTracker, int]:
+    return _with_typography_deps(_typography_search._render_attempt, **kwargs)
 
 
 def _typography_candidate_groups(
     job: dict[str, Any],
 ) -> list[list[tuple[float, float]]]:
-    """把作业里的质量配置翻译成候选搜索空间。
-
-    这里只做作业数据到参数的适配；网格本身由 `typography_fit.candidate_groups`
-    唯一定义，排版器不再自带一套。
-    """
-
-    quality = job.get("quality", {})
-    search = quality.get("typography_search") or {}
-    font_range = search.get("body_font_range_pt") or quality.get(
-        "body_font_target_pt",
-        [9.5, 11.5],
-    )
-    leading_range = search.get("leading_range") or quality.get(
-        "leading_target",
-        [1.5, 1.65],
-    )
-    lower_font, upper_font = map(float, font_range)
-    lower_leading, upper_leading = map(float, leading_range)
-    return candidate_groups(
-        body_font_range_pt=(lower_font, upper_font),
-        body_font_step_pt=max(
-            float(search.get("body_font_step_pt") or 0.5),
-            0.5,
-        ),
-        leading_range=(lower_leading, upper_leading),
-        leading_step=max(float(search.get("leading_step") or 0.05), 0.05),
-        preferred_body_font_pt=float(
-            quality.get("body_font_preferred_pt")
-            or (lower_font + upper_font) / 2
-        ),
-        preferred_leading=float(
-            quality.get("leading_preferred")
-            or (lower_leading + upper_leading) / 2
-        ),
+    return _with_typography_deps(
+        _typography_search._typography_candidate_groups,
+        job,
     )
 
 
-def _estimated_page_count(
-    *,
-    translated_chars: int,
-    paragraph_count: int,
-    heading_count: int,
-    available_width_pt: float,
-    available_height_pt: float,
-    body_font_pt: float,
-    leading_ratio: float,
-) -> int:
-    """不做完整试排的轻量页数估算。
-
-    只用字量、段落数、标题数和可用版心，用来记录搜索依据；它不参与选择，
-    因此估算偏差不会改变最终字号。
-    """
-
-    line_height = max(body_font_pt * leading_ratio, 1.0)
-    chars_per_line = max(available_width_pt / max(body_font_pt, 1.0), 1.0)
-    lines_per_page = max(available_height_pt / line_height, 1.0)
-    text_lines = translated_chars / chars_per_line
-    spacing_lines = paragraph_count * 0.9 + heading_count * 1.6
-    return max(1, math.ceil((text_lines + spacing_lines) / lines_per_page))
+def _search_typography(
+    **kwargs: Any,
+) -> _typography_search.TypographySearchResult:
+    return _with_typography_deps(
+        _typography_search.search_typography,
+        **kwargs,
+    )
 
 
 def _bookmark_entries(
@@ -592,75 +486,6 @@ def _add_outline(
     document.save(destination_pdf, garbage=4, deflate=True)
     handle.release()
 
-
-def _adaptive_page_expansion_limit(
-    source_document: Any,
-    retained_payloads: list[dict[str, Any]],
-    complex_content: dict[str, Any] | None = None,
-) -> float:
-    page_count = max(int(source_document.page_count), 1)
-    reference_page_equivalents = 0.0
-    for payload in retained_payloads:
-        if (
-            str(payload.get("category") or "") not in REFERENCE_CATEGORIES
-            or payload.get("resolution")
-            == "translated-nonreference-region"
-        ):
-            continue
-        page_number = payload.get("page")
-        bbox = payload.get("effective_bbox") or payload.get("bbox")
-        if (
-            not isinstance(page_number, int)
-            or not 1 <= page_number <= page_count
-            or not isinstance(bbox, list)
-            or len(bbox) != 4
-        ):
-            continue
-        page = source_document[page_number - 1]
-        page_area = max(float(page.rect.width * page.rect.height), 1.0)
-        x0, y0, x1, y1 = map(float, bbox)
-        region_area = max(0.0, x1 - x0) * max(0.0, y1 - y0)
-        reference_page_equivalents += min(region_area / page_area, 1.0)
-    reference_share = min(reference_page_equivalents / page_count, 1.0)
-    complex_page_equivalents = 0.0
-    for item in (complex_content or {}).get("items", []):
-        if not isinstance(item, dict) or item.get("status") != "ready":
-            continue
-        payload = item.get("payload")
-        if not isinstance(payload, dict):
-            continue
-        method = str(item.get("method") or "")
-        if method in {"structured-table-rebuild", "semantic-grid-rebuild"}:
-            for table in payload.get("tables", []):
-                if not isinstance(table, dict):
-                    continue
-                rows = table.get("rows")
-                row_count = (
-                    len(rows)
-                    if isinstance(rows, list)
-                    else int(table.get("row_count") or 0)
-                )
-                complex_page_equivalents += max(0.15, row_count / 30.0)
-        elif method in {"image-text-localization", "ocr-region-rebuild"}:
-            for region in payload.get("regions", []):
-                if not isinstance(region, dict):
-                    continue
-                label_count = len(_localized_image_labels(region))
-                complex_page_equivalents += 0.35 + label_count / 30.0
-        elif method == "vector-rebuild":
-            figures = payload.get("figures")
-            if isinstance(figures, list):
-                complex_page_equivalents += max(0.4, len(figures) * 0.4)
-    complex_share = min(complex_page_equivalents / page_count, 1.0)
-    return round(
-        min(
-            2.4,
-            1.6
-            + reference_share * 1.5
-            + min(complex_share * 0.9, 0.8),
-        ),
-        3,
-    )
 
 
 def _element_unit_texts(job_dir: Path, translation: dict[str, Any]) -> dict[str, str]:
@@ -1206,203 +1031,28 @@ def _timed_build_candidate(
             "以下保留原文区域没有提取到可排版文字: "
             + ", ".join(empty_retained[:30])
         )
-    attempts: list[dict[str, Any]] = []
-    selected: tuple[Path, MappingTracker, int, float, float, float] | None = None
     output_pdf.parent.mkdir(parents=True, exist_ok=True)
-    typography_groups = _typography_candidate_groups(job)
-    translated_chars = sum(
-        len(str(unit.get("translation") or unit.get("source") or ""))
-        for unit in translation.get("units", [])
-        if isinstance(unit, dict)
-    )
-    heading_count = sum(
-        1
-        for unit in translation.get("units", [])
-        if isinstance(unit, dict)
-        and str(unit.get("kind") or "").lower() == "heading"
-    )
-    paragraph_count = len(
-        [unit for unit in translation.get("units", []) if isinstance(unit, dict)]
-    )
-    typography_estimate = {
-        "translated_chars": translated_chars,
-        "paragraph_count": paragraph_count,
-        "heading_count": heading_count,
-        "available_width_pt": round(page_size[0] - margins[0] - margins[1], 2),
-        "available_height_pt": round(page_size[1] - margins[2] - margins[3], 2),
-        "candidates": [
-            {
-                "body_font_pt": body_font,
-                "leading_ratio": leading,
-                "estimated_page_count": _estimated_page_count(
-                    translated_chars=translated_chars,
-                    paragraph_count=paragraph_count,
-                    heading_count=heading_count,
-                    available_width_pt=page_size[0] - margins[0] - margins[1],
-                    available_height_pt=page_size[1] - margins[2] - margins[3],
-                    body_font_pt=body_font,
-                    leading_ratio=leading,
-                ),
-            }
-            for group in typography_groups
-            for body_font, leading in group[-1:]
-        ],
-        "note": (
-            "估算只用于记录搜索依据，不参与选择；实际字号仍由完整试排决定。"
-        ),
-    }
     with tempfile.TemporaryDirectory(prefix="academic-unified-render-") as tmp:
         tmp_dir = Path(tmp)
-        probe_cache: dict[tuple[int, int], dict[str, Any] | None] = {}
-
-        def _evaluate_candidate(
-            group_index: int,
-            item_index: int,
-        ) -> dict[str, Any] | None:
-            key = (group_index, item_index)
-            if key in probe_cache:
-                return probe_cache[key]
-            body_font, leading = typography_groups[group_index][item_index]
-            reference_font_pt = _reference_font_size(job, body_font)
-            attempt_started = time.monotonic()
-            attempt_path = (
-                tmp_dir / f"attempt-{group_index:02d}-{item_index:02d}.pdf"
-            )
-            try:
-                tracker, page_count = _render_attempt(
-                    path=attempt_path,
-                    job=job,
-                    translation=translation,
-                    complex_content=complex_content,
-                    retained_payloads=retained_payloads,
-                    source_document=source_document,
-                    source_structure=source_structure,
-                    page_size=page_size,
-                    margins=margins,
-                    regular_font=regular_font,
-                    bold_font=bold_font,
-                    reference_font=reference_font_name,
-                    body_font_pt=body_font,
-                    leading_ratio=leading,
-                    reference_font_pt=reference_font_pt,
-                    label_font_path=str(regular_path),
-                )
-            except Exception as exc:
-                attempts.append(
-                    {
-                        "body_font_pt": body_font,
-                        "leading_ratio": leading,
-                        "status": "render-failed",
-                        "message": str(exc)[:2000],
-                        "seconds": round(time.monotonic() - attempt_started, 3),
-                    }
-                )
-                probe_cache[key] = None
-                return None
-            expansion = page_count / max(source_page_count, 1)
-            fits = expansion <= effective_page_expansion_ratio
-            record = {
-                "body_font_pt": body_font,
-                "leading_ratio": leading,
-                "reference_font_pt": round(reference_font_pt, 2),
-                "candidate_page_count": page_count,
-                "page_count_ratio": round(expansion, 3),
-                "status": "fits" if fits else "too-many-pages",
-                "seconds": round(time.monotonic() - attempt_started, 3),
-            }
-            attempts.append(record)
-            probe_cache[key] = {
-                "record": record,
-                # 不达标的候选不可能被选中；它的映射跟踪器立刻释放，
-                # 否则完整扫描会把每一次试排的逐单元映射都留在内存里。
-                "tracker": tracker if fits else None,
-                "page_count": page_count,
-                "path": attempt_path,
-                "body_font_pt": body_font,
-                "leading_ratio": leading,
-                "reference_font_pt": reference_font_pt,
-                "fits": fits,
-            }
-            return probe_cache[key]
-
-        position, search_method, search_note = search_first_acceptable(
-            groups=typography_groups,
-            evaluate=_evaluate_candidate,
+        search_result = _search_typography(
+            tmp_dir=tmp_dir,
+            job=job,
+            translation=translation,
+            complex_content=complex_content,
+            retained_payloads=retained_payloads,
+            source_document=source_document,
+            source_structure=source_structure,
+            page_size=page_size,
+            margins=margins,
+            regular_font=regular_font,
+            bold_font=bold_font,
+            reference_font_name=reference_font_name,
+            label_font_path=str(regular_path),
+            source_page_count=source_page_count,
+            effective_page_expansion_ratio=effective_page_expansion_ratio,
         )
-        if search_method == "linear-fallback":
-            for group_index, group in enumerate(typography_groups):
-                for item_index in range(len(group)):
-                    result = _evaluate_candidate(group_index, item_index)
-                    if result is not None and result["fits"]:
-                        position = (group_index, item_index)
-                        break
-                if position is not None:
-                    break
-
-        if position is not None:
-            chosen = probe_cache[position]
-            chosen["record"]["status"] = "selected"
-            selected = (
-                chosen["path"],
-                chosen["tracker"],
-                chosen["page_count"],
-                chosen["body_font_pt"],
-                chosen["leading_ratio"],
-                chosen["reference_font_pt"],
-            )
-        typography_search = {
-            "method": search_method,
-            "note": search_note,
-            "candidate_count": sum(
-                len(group) for group in typography_groups
-            ),
-            "leading_group_count": len(typography_groups),
-            "render_attempts": len(attempts),
-            "estimate": typography_estimate,
-        }
-        if selected is None:
-            rendered_attempts = [
-                attempt
-                for attempt in attempts
-                if attempt.get("candidate_page_count")
-            ]
-            best = min(
-                rendered_attempts,
-                key=lambda attempt: float(
-                    attempt.get("page_count_ratio") or math.inf
-                ),
-                default=None,
-            )
-            if best is None:
-                failure_messages = list(
-                    dict.fromkeys(
-                        str(attempt.get("message") or "").strip()
-                        for attempt in attempts
-                        if attempt.get("status") == "render-failed"
-                        and str(attempt.get("message") or "").strip()
-                    )
-                )
-                detail = (
-                    "没有成功试排。"
-                    + (
-                        "首个渲染错误：" + " | ".join(failure_messages[:3])
-                        if failure_messages
-                        else ""
-                    )
-                )
-            else:
-                detail = (
-                    f"最紧凑的可读试排为 "
-                    f"{best['candidate_page_count']} 页，"
-                    f"扩张比 {best['page_count_ratio']}；"
-                    f"当前异常保护上限为 "
-                    f"{effective_page_expansion_ratio}。"
-                )
-            raise SkillError(
-                "统一生成器无法在可读字号和页数扩张上限内完成首版。"
-                f"{detail}"
-                "请优先检查重复内容、错误保留区域或异常复杂页载荷。"
-            )
+        attempts = search_result.attempts
+        typography_search = search_result.typography_search
         (
             selected_path,
             tracker,
@@ -1410,7 +1060,7 @@ def _timed_build_candidate(
             body_font,
             leading,
             reference_font_pt,
-        ) = selected
+        ) = search_result.selection
         provisional_hash = sha256_file(selected_path)
         provisional_map = tracker.build_map(
             job=job,
