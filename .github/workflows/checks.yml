@@ -15,6 +15,14 @@ jobs:
         with:
           python-version: "3.11"
 
+      # 目标语言是中文：runner 上必须真有一种可嵌入的中文字体，
+      # 否则字体解析会失败。这里装字体，不是放松字体检查。
+      - name: 安装中文字体
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq fonts-noto-cjk
+          fc-list :lang=zh | head -3
+
       - name: 安装依赖
         run: |
           python -m pip install --upgrade pip
