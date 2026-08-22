@@ -14,6 +14,11 @@ from academic_pdf_translation.render.text_blocks import (
     split_blocks,
 )
 
+#: 保留区域的文献类目名。它决定一块保留区域是不是"题录"，
+#: 进而决定排版顺序与字号。以前长在 scripts/retained_source.py，
+#: 包内也要用，就挪到这里做唯一定义，scripts 侧改成从这里取。
+REFERENCE_CATEGORIES = {"references", "bibliography"}
+
 #: 各语言的"参考文献"标题写法。判定按去空白后的前缀匹配。
 REFERENCE_HEADING_TOKENS = (
     "参考文献",

@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+import sys
+from pathlib import Path as _Path
+
+# 按 README 的写法直接跑时 sys.path 里没有仓库根，包就 import 不到。
+sys.path.insert(0, str(_Path(__file__).resolve().parent.parent))
+
 import re
 import unicodedata
 from collections import defaultdict
@@ -10,7 +16,11 @@ import perf_trace
 from _common import SkillError, import_fitz
 from candidate_analysis import open_candidate_analysis
 
-REFERENCE_CATEGORIES = {"references", "bibliography"}
+# 文献类目名的唯一定义已移入 academic_pdf_translation.render.reference_data，
+# 这里再导出保持调用路径不变。
+from academic_pdf_translation.render.reference_data import (  # noqa: F401
+    REFERENCE_CATEGORIES,
+)
 REFERENCE_HEADING_RE = re.compile(
     r"^\s*(?:references|bibliography|literature\s+cited|works\s+cited)\s*$",
     re.IGNORECASE,
