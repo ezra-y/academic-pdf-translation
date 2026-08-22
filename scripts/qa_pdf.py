@@ -95,6 +95,27 @@ from _common import (  # noqa: E402
     write_json,
 )
 from candidate_analysis import open_candidate_analysis  # noqa: E402
+from i18n import all_messages  # noqa: E402
+
+
+def visible_source_page_marker_pages(document: Any) -> list[int]:
+    """候选文字层里出现源页调试标记的页码（任何语言模板都算）。"""
+
+    patterns = [
+        re.compile(
+            re.escape(template).replace(
+                re.escape("{page}"), r"\s*\d+\s*"
+            )
+        )
+        for template in all_messages("source_page")
+    ]
+    pages: list[int] = []
+    for index in range(document.page_count):
+        text = document[index].get_text("text")
+        if any(pattern.search(text) for pattern in patterns):
+            pages.append(index + 1)
+    return pages
+
 from candidate_page_map import (  # noqa: E402
     candidate_pages_for_source,
     candidate_pages_for_unit,
@@ -1223,6 +1244,19 @@ def _timed_run_qa(job_dir: Path) -> dict:
 
     hard_failures: list[dict] = []
     review_flags: list[dict] = []
+
+    # 正式 PDF 的文字层里不许出现"原文第 X 页"这类调试标记——
+    # 任何语言版本的模板命中都算，映射锚点应当是不可见的。
+    marker_pages = visible_source_page_marker_pages(candidate)
+    if marker_pages:
+        hard_failures.append(
+            {
+                "code": "VISIBLE_SOURCE_PAGE_MARKER",
+                "pages": marker_pages,
+                "message": "正文文字层出现源页调试标记，禁止交付",
+            }
+        )
+
     if pre_complex_break_pages:
         review_flags.append(
             {

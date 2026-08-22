@@ -5602,12 +5602,9 @@ def _story(
                 )
             )
             started_source_pages.add(source_page)
-        result.append(
-            Paragraph(
-                message(target_language, "source_page", page=source_page),
-                styles["source_anchor"],
-            )
-        )
+        # 源页映射只靠上面的 MappingAnchor（零尺寸、不可见）。
+        # 不再插入"原文第 X 页"可见段落——那是调试标记，读者不需要，
+        # 它还会劈开跨源页的句子。映射结果照常写进 candidate-page-map.json。
         replace_items = [
             item
             for item in page_complex
@@ -6124,30 +6121,59 @@ def _estimated_page_count(
     return max(1, math.ceil((text_lines + spacing_lines) / lines_per_page))
 
 
+def _bookmark_entries(
+    mapping: dict[str, Any], translation: dict[str, Any]
+) -> list[list[Any]]:
+    """书签用真实章节标题，不用"原文第 X 页"调试标记。
+
+    判据与正文渲染同一套：kind 属于标题类且绑定角色允许当标题
+    （作者单位、arXiv 版本戳、图内标签长得再像标题也不是标题）。
+    纯启发式判出来的"疑似标题"不进书签——书签宁缺毋滥。
+    """
+
+    unit_pages = {
+        str(entry.get("unit_id") or ""): list(
+            entry.get("candidate_pages") or []
+        )
+        for entry in mapping.get("units", [])
+    }
+    toc: list[list[Any]] = []
+    for unit in translation.get("units", []):
+        if not isinstance(unit, dict):
+            continue
+        text = str(unit.get("translation") or "").strip()
+        if not text or not _role_may_head(unit):
+            continue
+        kind = str(unit.get("kind") or "").lower()
+        if kind in HEADING_KINDS or unit.get("heading_level") == 1:
+            level = 1
+        elif unit.get("heading_level") == 2:
+            level = 2
+        else:
+            continue
+        pages = unit_pages.get(str(unit.get("id") or ""))
+        if not pages:
+            continue
+        # set_toc 要求层级从 1 开始且不跳级
+        if not toc and level > 1:
+            level = 1
+        elif toc and level > toc[-1][0] + 1:
+            level = toc[-1][0] + 1
+        toc.append([level, text, int(pages[0])])
+    return toc
+
+
 def _add_outline(
     source_pdf: Path,
     destination_pdf: Path,
     mapping: dict[str, Any],
-    target_language: str,
+    translation: dict[str, Any],
 ) -> None:
     handle = open_candidate_analysis(source_pdf, role="source")
     document = handle.document
-    toc = []
-    for entry in mapping["source_pages"]:
-        pages = entry["candidate_pages"]
-        if pages:
-            toc.append(
-                [
-                    1,
-                    message(
-                        target_language,
-                        "source_page",
-                        page=entry["source_page"],
-                    ),
-                    int(pages[0]),
-                ]
-            )
-    document.set_toc(toc)
+    toc = _bookmark_entries(mapping, translation)
+    if toc:
+        document.set_toc(toc)
     document.save(destination_pdf, garbage=4, deflate=True)
     handle.release()
 
@@ -6768,7 +6794,7 @@ def _timed_build_candidate(
             selected_path,
             outline_path,
             provisional_map,
-            str(job["translation"]["target_language"]),
+            translation,
         )
         with tempfile.NamedTemporaryFile(
             dir=output_pdf.parent,
