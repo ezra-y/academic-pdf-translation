@@ -183,6 +183,10 @@ def make_resume_builder(delivery_dir: Path):
     典型用法：第一遍交付停在 WAITING_FOR_VISUAL_REVIEW，评审看完页、
     录完结果后带 --visual-result 重跑。重建会改变文件字节，让刚录的
     结果立刻 STALE——所以续跑必须复用同一份候选。
+
+    候选可能是返修后的 attempt-2。返回的 outcome 标了 ``reused``，
+    交付流程据此接手当前身份，不新建 attempt、不重新复制候选——
+    否则 attempt-2 的候选会被写回 attempt-1，覆盖第一轮的历史证据。
     """
 
     def build(round_index: int) -> BuildOutcome:
@@ -224,6 +228,7 @@ def make_resume_builder(delivery_dir: Path):
             render_plan=(
                 load_json(snapshot) if snapshot.is_file() else None
             ),
+            reused=True,
         )
 
     return build

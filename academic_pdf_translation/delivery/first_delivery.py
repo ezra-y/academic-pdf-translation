@@ -29,9 +29,11 @@ from pathlib import Path
 from typing import Any
 
 from academic_pdf_translation.delivery.evidence import (
+    EVIDENCE_STALE,
     RunIdentity,
     attempt_dir,
     new_run_id,
+    read_current_run,
     write_current_run,
 )
 from academic_pdf_translation.delivery.gates import (
@@ -342,6 +344,36 @@ def _bind_attempt(
     return identity
 
 
+def _adopt_attempt(
+    result: DeliveryResult,
+    outcome: BuildOutcome,
+    output_dir: Path,
+) -> RunIdentity:
+    """复用已有候选：原样接手当前运行身份，一个字节都不改。
+
+    ``--resume`` 要做的事只有"把没做完的门槛做完"。它不新建 attempt、
+    不重新复制候选、不动 ``current-run.json``——否则第二轮的候选会被
+    重新写回第一轮，把历史证据覆盖掉。
+
+    接手前先核对：磁盘上的"现在"必须就是这份候选。对不上说明中途换过
+    候选，那就不是恢复，是另一次运行，必须停。
+    """
+
+    identity = read_current_run(output_dir)
+    if identity is None:
+        raise FirstDeliveryError(
+            "没有 current-run.json，无从恢复；复用候选必须有当前运行身份"
+        )
+    candidate_sha = outcome.candidate_sha256 or ""
+    if candidate_sha and candidate_sha != identity.candidate_sha256:
+        raise FirstDeliveryError(
+            f"{EVIDENCE_STALE}: 要复用的候选与 current-run.json 指纹不一致"
+        )
+    result.run_id = identity.run_id
+    result.attempt_id = identity.attempt_id
+    return identity
+
+
 def _write_plan_snapshot(
     result: DeliveryResult,
     outcome: BuildOutcome,
@@ -513,11 +545,26 @@ def run_first_delivery(
         result.status = STATUS_BLOCKED
         return result
 
-    run_id = outcome.run_id or new_run_id()
-    first_attempt = _attempt_number(outcome, 1)
-    identity = _bind_attempt(
-        result, outcome, output_dir, run_id, first_attempt
-    )
+    # 新建候选才绑定新 attempt；复用已有候选只接手当前身份。
+    # 这条分界线就是"历史证据不可修改"的全部实现。
+    if outcome.reused:
+        try:
+            identity = _adopt_attempt(result, outcome, output_dir)
+        except FirstDeliveryError as exc:
+            result.stages.append(
+                StageRecord(STAGE_BUILD, False, f"恢复失败: {exc}")
+            )
+            result.problems.append(str(exc))
+            result.status = STATUS_BLOCKED
+            return result
+        run_id = identity.run_id
+        first_attempt = identity.attempt_id
+    else:
+        run_id = outcome.run_id or new_run_id()
+        first_attempt = _attempt_number(outcome, 1)
+        identity = _bind_attempt(
+            result, outcome, output_dir, run_id, first_attempt
+        )
     evidence_dir = attempt_dir(output_dir, run_id, first_attempt)
     first_label = f"round-{first_attempt}"
     _write_plan_snapshot(result, outcome, evidence_dir, first_label)
@@ -662,10 +709,14 @@ def run_first_delivery(
         )
     )
 
-    if apply_repair is None:
+    if apply_repair is None or outcome.reused:
         result.stages.append(
             StageRecord(
-                STAGE_REBUILD, False, "调用方没有提供返修执行器，不重建"
+                STAGE_REBUILD,
+                False,
+                "恢复模式只做未完成的门槛，不重建"
+                if outcome.reused
+                else "调用方没有提供返修执行器，不重建",
             )
         )
         result.problems = result.problems + _collect_problems(first)

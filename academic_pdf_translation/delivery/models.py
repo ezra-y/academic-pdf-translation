@@ -50,6 +50,9 @@ class BuildOutcome:
     #: 这一轮实际用过的渲染计划快照。合同对账只认它，不认磁盘上
     #: "现在"那一份——磁盘上那份可能已经是下一轮的了。
     render_plan: dict[str, Any] | None = None
+    #: 这一轮不是新生成的候选，而是复用磁盘上已经存在的那一份
+    #: （``--resume`` 走这条路）。复用不许建立新 attempt，也不许改指针。
+    reused: bool = False
 
     def as_dict(self) -> dict[str, Any]:
         data = asdict(self)
