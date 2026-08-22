@@ -20,11 +20,12 @@ from typing import Any
 if str(Path(__file__).resolve().parent.parent) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from academic_pdf_translation.contracts.fonts import (  # noqa: E402
+from academic_pdf_translation.contracts.fonts import (
     ROLE_BOLD,
     ROLE_REFERENCE,
     ROLE_REGULAR,
     FontResolution,
+    reference_weight_ok,
     resolve_fonts,
 )
 
@@ -192,6 +193,15 @@ def prepare_job_fonts(
     job_dir = Path(job_dir).resolve()
     job_path = job_dir / "job.json"
     job = load_json(job_path)
+    # 冻结的题录体若违反字重闸门（例如旧作业冻住了 Arial Black），
+    # 冻结作废，强制重选。旧证据在返回里标记失效原因。
+    stale_reference = None
+    frozen = (job.get("quality") or {}).get("selected_fonts")
+    if isinstance(frozen, list) and len(frozen) >= 3:
+        reference_path = Path(str(frozen[2]))
+        if not reference_weight_ok(reference_path):
+            stale_reference = str(reference_path)
+            force = True
     if not force and fonts_are_current(job):
         quality = job["quality"]
         return {
@@ -211,12 +221,18 @@ def prepare_job_fonts(
         probe.as_dict() for probe in resolution.rejected[:20]
     ]
     write_json(job_path, job)
-    return {
+    report = {
         "status": "reselected" if previous else "selected",
         "selected_fonts": resolution.paths,
         "selected_font_evidence": resolution.evidence(),
         "warnings": list(resolution.warnings),
     }
+    if stale_reference:
+        report["stale_evidence"] = (
+            f"冻结题录体 {stale_reference} 是粗体家族，违反题录字重闸门，"
+            "旧冻结作废并已重选"
+        )
+    return report
 
 
 def main() -> int:

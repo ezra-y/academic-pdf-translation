@@ -104,6 +104,12 @@ STYLE_SUFFIXES = frozenset(
     }
 )
 
+#: 题录体允许的字重：正常粗细的散文字重。粗体家族（Bold/Semibold/
+#: Demibold/Heavy/Black 及缩写）一律拒绝——"Arial Black" 名字里带
+#: Arial，按名字匹配会把整页参考文献排成海报粗。
+REFERENCE_ALLOWED_WEIGHTS = ("regular", "book", "roman", "medium")
+REFERENCE_FORBIDDEN_WEIGHT_TOKENS = BOLD_TOKENS
+
 #: 题录体的默认候选，按偏好顺序。
 DEFAULT_REFERENCE_NAMES = (
     "Arial",
@@ -267,6 +273,27 @@ def _family_token(path: Path) -> str:
     return token
 
 
+def _file_weight(path: Path) -> str:
+    """按文件名判定真实字重，写进证据供人核对。"""
+
+    return "bold" if _is_bold_file(path) else "regular"
+
+
+_REFERENCE_FORBIDDEN_RE = re.compile(
+    r"bold|black|heavy|semibold|demibold|bd(?![a-z])|blk|italic|oblique"
+)
+
+
+def reference_weight_ok(path: Path) -> bool:
+    """题录体的字重闸门：正常字重才许进参考文献正文。
+
+    与判"这是不是一把粗体"不同，这里是排他闸门：名字里**任何位置**
+    出现粗体或斜体记号都拒——"Arial Bold Italic" 尾缀是 italic，
+    只看结尾会漏掉它；整页参考文献也不该是斜体。"""
+
+    return not _REFERENCE_FORBIDDEN_RE.search(normalized_token(path.stem))
+
+
 def _is_bold_file(path: Path) -> bool:
     token = normalized_token(path.stem)
     for marker in BOLD_TOKENS:
@@ -321,6 +348,8 @@ class FontSelection:
     subfont_index: int | None
     probe: FontProbe
     source: str = "candidate-match"
+    #: 真实字重（按文件名判定）："bold" 或 "regular"。
+    weight: str = ""
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -329,6 +358,7 @@ class FontSelection:
             "sha256": self.sha256,
             "subfont_index": self.subfont_index,
             "source": self.source,
+            "weight": self.weight or _file_weight(Path(self.path)),
             "probe": self.probe.as_dict(),
         }
 
@@ -463,6 +493,19 @@ def resolve_fonts(
     for name in reference_names:
         for path in files:
             if _match_score(name, path) < 60:
+                continue
+            if not reference_weight_ok(path):
+                # "Arial Black" 也叫 Arial。字重不合格就拒，且要说清楚。
+                resolution.rejected.append(
+                    FontProbe(
+                        path=str(path),
+                        loadable=True,
+                        reason=(
+                            "题录体只许正常字重（regular/book/roman/"
+                            "medium），该文件按名字判定是粗体家族"
+                        ),
+                    )
+                )
                 continue
             probe = probe_reportlab_font(path)
             if not probe.loadable:

@@ -1245,6 +1245,37 @@ def _timed_run_qa(job_dir: Path) -> dict:
     hard_failures: list[dict] = []
     review_flags: list[dict] = []
 
+    # 参考文献不许整页排成粗体：某页字符量的六成以上来自名字带
+    # Bold/Black/Heavy 的字体，就是题录体选错了（例如 Arial Black）。
+    bold_dominated_pages: list[int] = []
+    bold_name_re = re.compile(r"black|heavy|bold", re.IGNORECASE)
+    for index in range(candidate.page_count):
+        by_weight = {"bold": 0, "other": 0}
+        for block in candidate[index].get_text("dict").get("blocks", []):
+            for line in block.get("lines", []):
+                for span in line.get("spans", []):
+                    chars = len(str(span.get("text") or "").strip())
+                    if not chars:
+                        continue
+                    if bold_name_re.search(str(span.get("font") or "")):
+                        by_weight["bold"] += chars
+                    else:
+                        by_weight["other"] += chars
+        total = by_weight["bold"] + by_weight["other"]
+        if total >= 200 and by_weight["bold"] / total > 0.6:
+            bold_dominated_pages.append(index + 1)
+    if bold_dominated_pages:
+        hard_failures.append(
+            {
+                "code": "REFERENCE_FONT_TOO_BOLD",
+                "pages": bold_dominated_pages,
+                "message": (
+                    "整页文字六成以上来自粗体家族字体，"
+                    "题录体或正文字体选错了字重"
+                ),
+            }
+        )
+
     # 正式 PDF 的文字层里不许出现"原文第 X 页"这类调试标记——
     # 任何语言版本的模板命中都算，映射锚点应当是不可见的。
     marker_pages = visible_source_page_marker_pages(candidate)

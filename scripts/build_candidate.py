@@ -89,6 +89,7 @@ from font_preparation import (
     _resolve_fonts,
     _resolve_reference_font,
     font_evidence,
+    fonts_are_current,
 )
 from i18n import message
 from renderer_identity import renderer_build_id
@@ -6720,8 +6721,21 @@ def _timed_build_candidate(
         )
     source_path = internal_job_path(job_dir, job["source"]["job_path"])
     # 字体正常在初始化或统一入口就已冻结；这里只兜底，并保持证据同步。
-    regular_path, bold_path = _resolve_fonts(job)
-    reference_path = _resolve_reference_font(regular_path)
+    # 冻结优先：prepare_job_fonts 已经把三个角色的字体连同哈希写进
+    # job.json，渲染就用它们。渲染时再解析一遍等于绕开冻结——
+    # 冻结时按题录真实字符做过覆盖检查，重解析没有这份输入，会选错。
+    _frozen_fonts = (job.get("quality") or {}).get("selected_fonts")
+    if (
+        isinstance(_frozen_fonts, list)
+        and len(_frozen_fonts) >= 3
+        and fonts_are_current(job)
+    ):
+        regular_path = Path(_frozen_fonts[0])
+        bold_path = Path(_frozen_fonts[1])
+        reference_path = Path(_frozen_fonts[2])
+    else:
+        regular_path, bold_path = _resolve_fonts(job)
+        reference_path = _resolve_reference_font(regular_path)
     resolved_font_paths = [
         str(regular_path),
         str(bold_path),
