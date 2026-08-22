@@ -28,6 +28,12 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+from academic_pdf_translation.delivery.evidence import (
+    RunIdentity,
+    attempt_dir,
+    new_run_id,
+    write_current_run,
+)
 from academic_pdf_translation.delivery.gates import (
     GATE_REPAIR,
     check_build_gate,
@@ -116,6 +122,9 @@ class DeliveryResult:
     candidate_path: str = ""
     #: 每一轮生成的完整构建状态（含构建报告哈希），一轮一条。
     builds: list[dict[str, Any]] = field(default_factory=list)
+    #: 本次交付的运行身份。attempt_id 指向"现在算数"的那一轮。
+    run_id: str = ""
+    attempt_id: int = 0
 
     @property
     def delivered(self) -> bool:
@@ -135,6 +144,8 @@ class DeliveryResult:
             "manual_items": list(self.manual_items),
             "evidence": dict(self.evidence),
             "builds": list(self.builds),
+            "run_id": self.run_id,
+            "attempt_id": self.attempt_id,
         }
 
 
@@ -200,8 +211,13 @@ def verify_candidate(
     label: str,
     page_budget: int = DEFAULT_PAGE_BUDGET,
     render_pages: bool = True,
+    binding: dict[str, Any] | None = None,
 ) -> tuple[VerifyRound, dict[str, str]]:
-    """对一份候选跑完阶段 9、10、11，并把证据落盘。"""
+    """对一份候选跑完阶段 9、10、11，并把证据落盘。
+
+    ``binding`` 是这一轮的运行身份，写进每份证据——报告要能证明
+    "我说的就是这一份候选"。
+    """
 
     candidate = _open(candidate_path)
     mapping = build_mapping(
@@ -212,15 +228,20 @@ def verify_candidate(
     if render_pages and review.selected:
         render_review_pages(candidate, review, output_dir / f"{label}-pages")
 
+    def _bound(payload: dict[str, Any]) -> dict[str, Any]:
+        if binding is None:
+            return payload
+        return {"binding": dict(binding), **payload}
+
     evidence = {
         f"{label}-mapping": _write_json(
-            output_dir / f"{label}-mapping.json", mapping.as_dict()
+            output_dir / f"{label}-mapping.json", _bound(mapping.as_dict())
         ),
         f"{label}-audit": _write_json(
-            output_dir / f"{label}-audit.json", audit.as_dict()
+            output_dir / f"{label}-audit.json", _bound(audit.as_dict())
         ),
         f"{label}-review": _write_json(
-            output_dir / f"{label}-review.json", review.as_dict()
+            output_dir / f"{label}-review.json", _bound(review.as_dict())
         ),
     }
     return (
@@ -253,16 +274,62 @@ def _as_outcome(value: Any) -> BuildOutcome:
     return BuildOutcome(status=BUILD_READY, candidate_path=Path(value))
 
 
+def _bind_attempt(
+    result: DeliveryResult,
+    outcome: BuildOutcome,
+    output_dir: Path,
+    run_id: str,
+    attempt_id: int,
+    render_plan_sha256: str,
+) -> RunIdentity:
+    """建立这一轮的运行身份：候选拷进 attempt 目录，指针原子更新。
+
+    指针更新后，上一轮的证据自动变成历史——它还在磁盘上，
+    但五元绑定对不上当前身份，谁也不能再拿它验证新候选。
+    """
+
+    candidate_sha = outcome.candidate_sha256 or ""
+    if (
+        not candidate_sha
+        and outcome.candidate_path is not None
+        and outcome.candidate_path.is_file()
+    ):
+        candidate_sha = file_sha256(outcome.candidate_path)
+    identity = RunIdentity(
+        run_id=run_id,
+        attempt_id=attempt_id,
+        candidate_sha256=candidate_sha,
+        render_plan_sha256=render_plan_sha256,
+        renderer_build_id=outcome.renderer_build_id,
+    )
+    directory = attempt_dir(output_dir, run_id, attempt_id)
+    directory.mkdir(parents=True, exist_ok=True)
+    if outcome.candidate_path is not None and outcome.candidate_path.is_file():
+        import shutil
+
+        shutil.copy2(outcome.candidate_path, directory / "candidate.pdf")
+    write_current_run(output_dir, identity)
+    result.run_id = run_id
+    result.attempt_id = attempt_id
+    return identity
+
+
 def _record_build(
-    result: DeliveryResult, outcome: BuildOutcome, output_dir: Path, label: str
+    result: DeliveryResult,
+    outcome: BuildOutcome,
+    evidence_dir: Path,
+    label: str,
+    *,
+    identity: RunIdentity,
 ) -> None:
     """构建状态与报告哈希落进结论和证据，谁也删不掉。"""
 
     record = outcome.as_dict()
     record["report_sha256"] = outcome.report_sha256()
+    record["binding"] = identity.as_dict()
     result.builds.append(record)
     result.evidence[f"{label}-build"] = _write_json(
-        output_dir / f"{label}-build.json", record
+        evidence_dir / f"{label}-build.json", record
     )
 
 
@@ -327,6 +394,7 @@ def run_first_delivery(
     page_budget: int = DEFAULT_PAGE_BUDGET,
     render_pages: bool = True,
     visual_result: VisualReviewResult | None = None,
+    render_plan_sha256: str = "",
 ) -> DeliveryResult:
     """跑完首次交付，给出唯一结论。
 
@@ -352,7 +420,14 @@ def run_first_delivery(
         result.status = STATUS_BLOCKED
         return result
 
-    _record_build(result, outcome, output_dir, "round-1")
+    run_id = outcome.run_id or new_run_id()
+    identity = _bind_attempt(
+        result, outcome, output_dir, run_id, 1, render_plan_sha256
+    )
+    evidence_dir = attempt_dir(output_dir, run_id, 1)
+    _record_build(
+        result, outcome, evidence_dir, "round-1", identity=identity
+    )
     if outcome.candidate_path is not None:
         # 候选留作证据——它是不是"能交付的候选"由门槛说了算。
         result.candidate_path = str(outcome.candidate_path)
@@ -396,10 +471,11 @@ def run_first_delivery(
         candidate_path,
         elements,
         element_texts=element_texts,
-        output_dir=output_dir,
+        output_dir=evidence_dir,
         label="round-1",
         page_budget=page_budget,
         render_pages=render_pages,
+        binding=identity.as_dict(),
     )
     result.evidence.update(evidence)
     result.stages.append(
@@ -418,7 +494,7 @@ def run_first_delivery(
     )
     first_gate = _apply_visual_gate(
         result, first.review, visual_result, candidate_path, label="round-1",
-        output_dir=output_dir,
+        output_dir=evidence_dir,
     )
 
     if first.clean:
@@ -436,7 +512,7 @@ def run_first_delivery(
 
     repair = plan_repair(first.mapping, first.audit, round_index=0)
     result.evidence["repair-plan"] = _write_json(
-        output_dir / "repair-plan.json", repair.as_dict()
+        evidence_dir / "repair-plan.json", repair.as_dict()
     )
     result.manual_items = result.manual_items + [
         item.as_dict() for item in repair.manual
@@ -486,7 +562,13 @@ def run_first_delivery(
         result.status = STATUS_BLOCKED
         return result
 
-    _record_build(result, repaired_outcome, output_dir, "round-2")
+    identity = _bind_attempt(
+        result, repaired_outcome, output_dir, run_id, 2, render_plan_sha256
+    )
+    evidence_dir = attempt_dir(output_dir, run_id, 2)
+    _record_build(
+        result, repaired_outcome, evidence_dir, "round-2", identity=identity
+    )
     rebuild_gate = check_build_gate(repaired_outcome)
     if rebuild_gate.blocked or repaired_outcome.candidate_path is None:
         result.stages.append(
@@ -527,16 +609,17 @@ def run_first_delivery(
         repaired_path,
         elements,
         element_texts=element_texts,
-        output_dir=output_dir,
+        output_dir=evidence_dir,
         label="round-2",
         page_budget=page_budget,
         render_pages=render_pages,
+        binding=identity.as_dict(),
     )
     result.evidence.update(evidence)
 
     outcome = compare_rounds(first.mapping, second.mapping)
     result.evidence["repair-outcome"] = _write_json(
-        output_dir / "repair-outcome.json", outcome.as_dict()
+        evidence_dir / "repair-outcome.json", outcome.as_dict()
     )
     result.stages.append(
         StageRecord(STAGE_REVERIFY, second.clean, outcome.verdict)
@@ -552,7 +635,7 @@ def run_first_delivery(
     # 门槛按新候选的哈希重新判定（旧结果会得到 STALE）。
     second_gate = _apply_visual_gate(
         result, second.review, visual_result, repaired_path, label="round-2",
-        output_dir=output_dir,
+        output_dir=evidence_dir,
     )
 
     result.problems = result.problems + _collect_problems(second)

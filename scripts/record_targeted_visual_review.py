@@ -29,6 +29,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import argparse  # noqa: E402
 
+from academic_pdf_translation.delivery.evidence import (  # noqa: E402
+    attempt_dir,
+    read_current_run,
+)
 from academic_pdf_translation.delivery.models import file_sha256  # noqa: E402
 from academic_pdf_translation.verify.visual_result import (  # noqa: E402
     VisualResultError,
@@ -38,23 +42,39 @@ from academic_pdf_translation.verify.visual_result import (  # noqa: E402
 from _common import SkillError, load_json, write_json  # noqa: E402
 
 
-def _latest_build_candidate(delivery_dir: Path) -> Path | None:
-    """从交付证据里找最后一轮的候选路径。"""
+def _current_attempt_dir(delivery_dir: Path) -> Path | None:
+    """按 current-run.json 指针找"现在算数"的那一轮证据目录。
 
-    for name in ("round-2-build.json", "round-1-build.json"):
-        record_path = delivery_dir / name
-        if record_path.is_file():
-            candidate = load_json(record_path).get("candidate_path")
-            if candidate:
-                return Path(candidate)
+    禁止按固定文件名摸旧报告——旧证据还在，但它属于历史。
+    """
+
+    identity = read_current_run(delivery_dir)
+    if identity is None:
+        return None
+    directory = attempt_dir(delivery_dir, identity.run_id, identity.attempt_id)
+    return directory if directory.is_dir() else None
+
+
+def _latest_build_candidate(delivery_dir: Path) -> Path | None:
+    directory = _current_attempt_dir(delivery_dir)
+    if directory is None:
+        return None
+    bundled = directory / "candidate.pdf"
+    if bundled.is_file():
+        return bundled
+    for path in sorted(directory.glob("round-*-build.json"), reverse=True):
+        candidate = load_json(path).get("candidate_path")
+        if candidate and Path(candidate).is_file():
+            return Path(candidate)
     return None
 
 
 def _latest_plan(delivery_dir: Path) -> dict | None:
-    for name in ("round-2-review.json", "round-1-review.json"):
-        path = delivery_dir / name
-        if path.is_file():
-            return load_json(path)
+    directory = _current_attempt_dir(delivery_dir)
+    if directory is None:
+        return None
+    for path in sorted(directory.glob("round-*-review.json"), reverse=True):
+        return load_json(path)
     return None
 
 

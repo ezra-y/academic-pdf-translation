@@ -45,6 +45,7 @@ from academic_pdf_translation.delivery.first_delivery import (  # noqa: E402
 from academic_pdf_translation.delivery.models import (  # noqa: E402
     BuildOutcome,
     build_outcome_from_report,
+    file_sha256,
 )
 from academic_pdf_translation.planning.render_plan import (  # noqa: E402
     build_render_plan,
@@ -227,6 +228,11 @@ def main() -> int:
             output_dir=delivery_dir,
             page_budget=args.page_budget,
             visual_result=visual_result,
+            render_plan_sha256=(
+                file_sha256(job_dir / "render_plan.json")
+                if (job_dir / "render_plan.json").is_file()
+                else ""
+            ),
         )
     except (
         SkillError,
