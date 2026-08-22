@@ -11,7 +11,6 @@ RENDERER_INPUTS = (
     "scripts/candidate_analysis.py",
     "scripts/candidate_page_map.py",
     "scripts/font_preparation.py",
-    "scripts/cjk_markup.py",
     "scripts/i18n.py",
     "scripts/reportlab_layout.py",
     "scripts/retained_source.py",
@@ -20,6 +19,8 @@ RENDERER_INPUTS = (
     "assets/language-profiles.json",
     # 生成器 import 的包文件也影响产出，必须进构建哈希，
     # 否则改了它们基准还显示"同一版代码"。
+    "academic_pdf_translation/render/cjk_markup.py",
+    "academic_pdf_translation/render/font_runs.py",
     "academic_pdf_translation/render/formula_crop.py",
     "academic_pdf_translation/render/plan_bridge.py",
     "academic_pdf_translation/render/preserved_region_renderer.py",
