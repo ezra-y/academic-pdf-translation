@@ -62,6 +62,50 @@ def test_render_contract_uses_render_plan_as_source() -> None:
     assert contract_from_documents(source, _plan("e1", "e2")).passed
 
 
+def test_plan_element_not_in_source_is_rejected() -> None:
+    """计划里多出一个原文根本没有的元素：必须失败，不能只查"少了谁"。"""
+
+    source = _source(_elem("e1"))
+    contract = contract_from_documents(source, _plan("e1", "ghost-001"))
+    assert not contract.passed
+    assert contract.unknown_planned_element_ids == {"ghost-001"}
+    assert any("查无此人" in problem for problem in contract.problems)
+    issues = planning_issues(source, _plan("e1", "ghost-001"))
+    codes = {issue["code"] for issue in issues}
+    assert "PLAN_ELEMENTS_WITHOUT_SOURCE" in codes
+
+
+def test_candidate_element_only_in_plan_is_unsourced() -> None:
+    """假元素混进计划，也不能因此获得"有原文来源"的身份。"""
+
+    source = _source(_elem("e1"))
+    candidate = _candidate(
+        {"id": "e1", "located": True},
+        {"id": "ghost-001", "located": True},
+    )
+    contract = contract_from_documents(
+        source, _plan("e1", "ghost-001"), candidate
+    )
+    assert not contract.passed
+    assert any(
+        "候选清单里有原文清单查无此人的元素" in problem
+        and "ghost-001" in problem
+        for problem in contract.problems
+    )
+
+
+def test_optional_source_element_may_have_plan() -> None:
+    """非必需元素有计划不算多出来——它在原文里确实存在。"""
+
+    source = _source(_elem("e1"), _elem("e2", required=False))
+    contract = contract_from_documents(source, _plan("e1", "e2"))
+    assert contract.passed
+    assert contract.unknown_planned_element_ids == set()
+    assert contract.required_element_ids == {"e1"}
+    assert contract.all_source_element_ids == {"e1", "e2"}
+    assert planning_issues(source, _plan("e1", "e2")) == []
+
+
 def test_old_complex_count_cannot_block_valid_new_plan() -> None:
     """旧手写载荷条目数与新计划不同：视图判旧，不判排版器失职。"""
 

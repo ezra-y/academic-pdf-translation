@@ -6,10 +6,16 @@
 - ``render_plan.json`` —— 每个元素怎么处理；
 - ``candidate_elements.json`` —— 每个元素最后去了哪里（由候选映射派生）。
 
-通过条件是两条集合等式：
+通过条件是三条集合关系，缺谁、多谁都不行：
 
-- 必需元素 == 计划元素（缺谁、多谁都不行）；
+- 必需元素 ⊆ 计划元素（少一个就是漏排）；
+- 计划元素 ⊆ 原文元素（多一个就是凭空捏造的假元素）；
 - 必需元素 == 已渲染元素 ∪ 合法省略元素。
+
+第二条必须单独查。只查"少了谁"的话，一个只存在于计划、原文里根本
+没有的 ID 会一路混进候选清单，还因为"计划里有"而白得一个"有原文来源"
+的身份——从此再没有任何一关能认出它是假的。所以"元素有没有来源"
+只认原文清单，计划说了不算。
 
 不再用"复杂页载荷数量"做核心判断——同一页可以同时有图、表、公式、
 图题、脚注，按页数或旧条目数比对必然错位。``complex_content.json``
@@ -39,11 +45,19 @@ class RenderContract:
     """一次按元素 ID 的对账结果。"""
 
     schema_version: str = SCHEMA_VERSION
+    #: 原文清单里的**全部**元素，含非必需的。判断"有没有来源"只看它。
+    all_source_element_ids: set[str] = field(default_factory=set)
     required_element_ids: set[str] = field(default_factory=set)
     planned_element_ids: set[str] = field(default_factory=set)
     rendered_element_ids: set[str] = field(default_factory=set)
     legal_omitted_element_ids: set[str] = field(default_factory=set)
     problems: list[str] = field(default_factory=list)
+
+    @property
+    def unknown_planned_element_ids(self) -> set[str]:
+        """计划里有、原文里没有的元素。凭空多出来的处理对象。"""
+
+        return self.planned_element_ids - self.all_source_element_ids
 
     @property
     def omitted_element_ids(self) -> set[str]:
@@ -60,17 +74,23 @@ class RenderContract:
     def as_dict(self) -> dict[str, Any]:
         return {
             "schema_version": self.schema_version,
+            "source_count": len(self.all_source_element_ids),
             "required_count": len(self.required_element_ids),
             "planned_count": len(self.planned_element_ids),
             "rendered_count": len(self.rendered_element_ids),
             "omitted_count": len(self.omitted_element_ids),
             "legal_omitted_count": len(self.legal_omitted_element_ids),
+            "unknown_planned_count": len(self.unknown_planned_element_ids),
+            "all_source_element_ids": sorted(self.all_source_element_ids),
             "required_element_ids": sorted(self.required_element_ids),
             "planned_element_ids": sorted(self.planned_element_ids),
             "rendered_element_ids": sorted(self.rendered_element_ids),
             "omitted_element_ids": sorted(self.omitted_element_ids),
             "legal_omitted_element_ids": sorted(
                 self.legal_omitted_element_ids
+            ),
+            "unknown_planned_element_ids": sorted(
+                self.unknown_planned_element_ids
             ),
             "passed": self.passed,
             "problems": list(self.problems),
@@ -94,20 +114,34 @@ def _ids_with_duplicates(
     return seen, duplicates
 
 
+def _source_ids(
+    source_elements: dict[str, Any],
+) -> tuple[set[str], set[str], list[str]]:
+    """原文清单拆成三份：全部 ID、必需 ID、重复的 ID。
+
+    「全部」和「必需」必须分开。必需 ID 回答"谁一定要有计划"，
+    全部 ID 回答"谁在原文里真的存在"——后者才是元素身份的来源。
+    """
+
+    records = [
+        element
+        for element in source_elements.get("elements", [])
+        if isinstance(element, dict)
+    ]
+    all_ids, duplicates = _ids_with_duplicates(records, "id")
+    required, _ = _ids_with_duplicates(
+        [record for record in records if record.get("required", True)], "id"
+    )
+    return all_ids, required, duplicates
+
+
 def planning_issues(
     source_elements: dict[str, Any], render_plan: dict[str, Any]
 ) -> list[dict[str, Any]]:
-    """构建前就能查的部分：必需元素必须每个都有计划，且只出现一次。"""
+    """构建前就能查的部分：必需元素每个都要有计划，计划里也不许有假元素。"""
 
     issues: list[dict[str, Any]] = []
-    required, source_dups = _ids_with_duplicates(
-        [
-            element
-            for element in source_elements.get("elements", [])
-            if isinstance(element, dict) and element.get("required", True)
-        ],
-        "id",
-    )
+    all_source, required, source_dups = _source_ids(source_elements)
     planned, plan_dups = _ids_with_duplicates(
         render_plan.get("elements", []), "element_id"
     )
@@ -132,6 +166,15 @@ def planning_issues(
                 "code": "REQUIRED_ELEMENTS_WITHOUT_PLAN",
                 "element_ids": sorted(unplanned),
                 "message": "这些必需元素没有任何处理计划，禁止渲染",
+            }
+        )
+    unknown = planned - all_source
+    if unknown:
+        issues.append(
+            {
+                "code": "PLAN_ELEMENTS_WITHOUT_SOURCE",
+                "element_ids": sorted(unknown),
+                "message": "这些元素只存在于渲染计划，原文里查无此人，禁止渲染",
             }
         )
     return issues
@@ -172,17 +215,11 @@ def contract_from_documents(
     """三份清单 → 一份合同。``candidate_elements`` 缺席时只查计划侧。"""
 
     contract = RenderContract()
-    required, source_dups = _ids_with_duplicates(
-        [
-            element
-            for element in source_elements.get("elements", [])
-            if isinstance(element, dict) and element.get("required", True)
-        ],
-        "id",
-    )
+    all_source, required, source_dups = _source_ids(source_elements)
     planned, plan_dups = _ids_with_duplicates(
         render_plan.get("elements", []), "element_id"
     )
+    contract.all_source_element_ids = all_source
     contract.required_element_ids = required
     contract.planned_element_ids = planned
 
@@ -195,6 +232,17 @@ def contract_from_documents(
         contract.problems.append(
             "必需元素没有处理计划: " + "、".join(sorted(unplanned)[:8])
             + (f" 等 {len(unplanned)} 个" if len(unplanned) > 8 else "")
+        )
+    unknown_planned = contract.unknown_planned_element_ids
+    if unknown_planned:
+        contract.problems.append(
+            "渲染计划里有原文清单查无此人的元素: "
+            + "、".join(sorted(unknown_planned)[:8])
+            + (
+                f" 等 {len(unknown_planned)} 个"
+                if len(unknown_planned) > 8
+                else ""
+            )
         )
 
     if candidate_elements is None:
@@ -213,10 +261,11 @@ def contract_from_documents(
         contract.problems.append(
             f"元素 {duplicate} 在候选清单里被计了两次——同一个元素不能既算这里又算那里"
         )
-    known = required | planned
+    # 「有没有原文来源」只认原文清单。出现在计划里不算来源——
+    # 否则一个假元素只要混进计划，就能永远逃过这一关。
     unsourced = {
         str(record.get("id") or "") for record in records
-    } - known - {""}
+    } - all_source - {""}
     if unsourced:
         contract.problems.append(
             "候选清单里有原文清单查无此人的元素: "
