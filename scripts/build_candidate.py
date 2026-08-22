@@ -106,8 +106,12 @@ from typography_fit import (
     search_first_acceptable,
 )
 
-RENDERER_NAME = "academic-pdf-layout"
-RENDERER_VERSION = "1.0"
+# 生成器身份的唯一定义已移入
+# academic_pdf_translation.render.document_output，这里再导出保持引用路径不变。
+from academic_pdf_translation.render.document_output import (  # noqa: E402,F401
+    RENDERER_NAME,
+    RENDERER_VERSION,
+)
 REFERENCE_KINDS = {
     "reference",
     "references",
@@ -430,46 +434,25 @@ def _search_typography(
     )
 
 
-def _bookmark_entries(
-    mapping: dict[str, Any], translation: dict[str, Any]
-) -> list[list[Any]]:
-    """书签用真实章节标题，不用"原文第 X 页"调试标记。
+# 输出写入（书签、原子替换、渲染日志组装）已移入
+# academic_pdf_translation.render.document_output。
+# 这三件事都是对外承诺：写盘必须原子，渲染日志是交付判断的证据来源。
+# 它们和排版怎么算无关，所以不和排版搜索挤在一起。
+# 这里按旧名再导出，需要注入的用薄包装绑好依赖，调用路径不变。
+from academic_pdf_translation.render import (  # noqa: E402
+    document_output as _document_output,
+)
+from academic_pdf_translation.render.document_output import (  # noqa: E402,F401
+    _bookmark_entries,
+)
 
-    判据与正文渲染同一套：kind 属于标题类且绑定角色允许当标题
-    （作者单位、arXiv 版本戳、图内标签长得再像标题也不是标题）。
-    纯启发式判出来的"疑似标题"不进书签——书签宁缺毋滥。
-    """
-
-    unit_pages = {
-        str(entry.get("unit_id") or ""): list(
-            entry.get("candidate_pages") or []
-        )
-        for entry in mapping.get("units", [])
-    }
-    toc: list[list[Any]] = []
-    for unit in translation.get("units", []):
-        if not isinstance(unit, dict):
-            continue
-        text = str(unit.get("translation") or "").strip()
-        if not text or not _role_may_head(unit):
-            continue
-        kind = str(unit.get("kind") or "").lower()
-        if kind in HEADING_KINDS or unit.get("heading_level") == 1:
-            level = 1
-        elif unit.get("heading_level") == 2:
-            level = 2
-        else:
-            continue
-        pages = unit_pages.get(str(unit.get("id") or ""))
-        if not pages:
-            continue
-        # set_toc 要求层级从 1 开始且不跳级
-        if not toc and level > 1:
-            level = 1
-        elif toc and level > toc[-1][0] + 1:
-            level = toc[-1][0] + 1
-        toc.append([level, text, int(pages[0])])
-    return toc
+#: 输出写入需要的、原本长在 scripts 层的几件东西，在这里一次装配好。
+_OUTPUT_DEPS = _document_output.DocumentOutputDeps(
+    open_candidate_analysis_fn=open_candidate_analysis,
+    sha256_file_fn=sha256_file,
+    renderer_build_id_fn=renderer_build_id,
+    retained_region_ids_fn=retained_region_ids,
+)
 
 
 def _add_outline(
@@ -478,14 +461,21 @@ def _add_outline(
     mapping: dict[str, Any],
     translation: dict[str, Any],
 ) -> None:
-    handle = open_candidate_analysis(source_pdf, role="source")
-    document = handle.document
-    toc = _bookmark_entries(mapping, translation)
-    if toc:
-        document.set_toc(toc)
-    document.save(destination_pdf, garbage=4, deflate=True)
-    handle.release()
+    _document_output._add_outline(
+        source_pdf,
+        destination_pdf,
+        mapping,
+        translation,
+        deps=_OUTPUT_DEPS,
+    )
 
+
+def _write_candidate_pdf(**kwargs: Any) -> None:
+    _document_output.write_candidate_pdf(deps=_OUTPUT_DEPS, **kwargs)
+
+
+def _build_layout_log(**kwargs: Any) -> dict[str, Any]:
+    return _document_output.build_layout_log(deps=_OUTPUT_DEPS, **kwargs)
 
 
 def _element_unit_texts(job_dir: Path, translation: dict[str, Any]) -> dict[str, str]:
@@ -1073,26 +1063,13 @@ def _timed_build_candidate(
             candidate_sha256=provisional_hash,
             now_fn=utc_now,
         )
-        outline_path = tmp_dir / "candidate-with-outline.pdf"
-        _add_outline(
-            selected_path,
-            outline_path,
-            provisional_map,
-            translation,
+        _write_candidate_pdf(
+            selected_path=selected_path,
+            outline_path=tmp_dir / "candidate-with-outline.pdf",
+            output_pdf=output_pdf,
+            mapping=provisional_map,
+            translation=translation,
         )
-        with tempfile.NamedTemporaryFile(
-            dir=output_pdf.parent,
-            prefix=f".{output_pdf.name}.",
-            suffix=".tmp",
-            delete=False,
-        ) as handle:
-            temp_output = Path(handle.name)
-        try:
-            temp_output.write_bytes(outline_path.read_bytes())
-            os.replace(temp_output, output_pdf)
-        finally:
-            if temp_output.exists():
-                temp_output.unlink()
     source_handle.release()
 
     candidate_hash = sha256_file(output_pdf)
@@ -1111,107 +1088,40 @@ def _timed_build_candidate(
     map_path = output_pdf.with_suffix(".page-map.json")
     write_json(map_path, mapping)
 
-    unit_ids = [
-        str(unit["id"])
-        for unit in translation.get("units", [])
-        if isinstance(unit, dict) and str(unit.get("id") or "")
-    ]
-    complex_ids = [
-        str(item["id"])
-        for item in complex_content.get("items", [])
-        if isinstance(item, dict) and str(item.get("id") or "")
-    ]
-    retained_ids = retained_region_ids(retained)
-    mapped_unit_ids = {
-        str(entry["unit_id"]) for entry in mapping.get("units", [])
-    }
-    mapped_complex_ids = {
-        str(entry["complex_item_id"])
-        for entry in mapping.get("complex_items", [])
-    }
-    mapped_retained_ids = {
-        str(entry["retained_region_id"])
-        for entry in mapping.get("retained_regions", [])
-    }
-    layout_log = {
-        "schema_version": "1.0",
-        "renderer": RENDERER_NAME,
-        "renderer_version": RENDERER_VERSION,
-        "renderer_build_id": renderer_build_id(),
-        "algorithm": "continuous-flow-with-structured-complex-content-v2",
-        "selection_method": "actual-render-page-budget",
-        "page_size_pt": [round(value, 2) for value in page_size],
-        "margins_pt": list(margins),
-        "body_font_pt": body_font,
-        "leading_ratio": leading,
-        "reference_font_pt": round(reference_font_pt, 2),
-        "source_page_count": source_page_count,
-        "candidate_page_count": candidate_page_count,
-        "page_count_ratio": round(
-            candidate_page_count / max(source_page_count, 1),
-            3,
-        ),
-        "page_count_ratio_limit": effective_page_expansion_ratio,
-        "page_count_ratio_limit_source": (
+    layout_log = _build_layout_log(
+        translation=translation,
+        complex_content=complex_content,
+        retained=retained,
+        retained_payloads=retained_payloads,
+        retained_path=retained_path,
+        mapping=mapping,
+        map_path=map_path,
+        page_size=page_size,
+        margins=margins,
+        body_font_pt=body_font,
+        leading_ratio=leading,
+        reference_font_pt=reference_font_pt,
+        source_page_count=source_page_count,
+        candidate_page_count=candidate_page_count,
+        page_count_ratio_limit=effective_page_expansion_ratio,
+        page_count_ratio_limit_source=(
             "explicit"
             if max_page_expansion_ratio is not None
             else "adaptive-reference-share"
         ),
-        "attempts": attempts,
-        "typography_search": typography_search,
-        "candidate_page_map": str(map_path),
-        "render_contract": {
-            "all_units_consumed": mapped_unit_ids == set(unit_ids),
-            "unit_count": len(unit_ids),
-            "unit_ids_sha256": hashlib.sha256(
-                "\n".join(unit_ids).encode("utf-8")
-            ).hexdigest(),
-            "all_complex_items_consumed": (
-                mapped_complex_ids == set(complex_ids)
-            ),
-            "complex_item_count": len(complex_ids),
-            "complex_item_ids_sha256": hashlib.sha256(
-                "\n".join(complex_ids).encode("utf-8")
-            ).hexdigest(),
-            "all_retained_regions_consumed": (
-                mapped_retained_ids == set(retained_ids)
-            ),
-            "retained_region_count": len(retained_ids),
-            "retained_region_ids_sha256": hashlib.sha256(
-                "\n".join(retained_ids).encode("utf-8")
-            ).hexdigest(),
-            "retained_source_sha256": sha256_file(retained_path),
-            "retained_region_source_chars": sum(
-                int(payload.get("source_char_count") or 0)
-                for payload in retained_payloads
-            ),
-            "retained_regions_already_present": sorted(
-                str(payload["id"])
-                for payload in retained_payloads
-                if payload.get("already_present_in_translation") is True
-            ),
-            "all_text_regions_measured": True,
-            "unmeasured_text_regions": [],
-            "overflow_regions": [],
-            "heading_checks_performed": True,
-            "orphan_regions": tracker.orphan_regions,
-            "cjk_kinsoku_enabled": True,
-            "font_paths": [
-                str(regular_path),
-                str(bold_path),
-                str(reference_path),
-                # 数学符号后备也是真用到的字体，必须进合同——
-                # 少报一把，字体一致性检查就对不上。
-                *([str(math_path)] if math_path else []),
-            ],
-            "candidate_page_map_complete": True,
-        },
-        # 结构化抑制名单：哪些单元没有按文字排、为什么。给人核对用。
-        "suppressed_units": list(
-            translation.get("_suppression_manifest") or []
-        ),
-        "elapsed_seconds": round(time.monotonic() - started, 3),
-    }
+        attempts=attempts,
+        typography_search=typography_search,
+        orphan_regions=tracker.orphan_regions,
+        font_paths=[
+            str(regular_path),
+            str(bold_path),
+            str(reference_path),
+            # 数学符号后备也是真用到的字体，必须进合同——
+            # 少报一把，字体一致性检查就对不上。
+            *([str(math_path)] if math_path else []),
+        ],
+        elapsed_seconds=round(time.monotonic() - started, 3),
+    )
     write_json(job_dir / "generator-layout-log.json", layout_log)
     return {
         "output_pdf": str(output_pdf),
