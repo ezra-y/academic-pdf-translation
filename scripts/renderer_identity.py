@@ -23,6 +23,7 @@ RENDERER_INPUTS = (
     "academic_pdf_translation/render/flowables.py",
     "academic_pdf_translation/render/font_runs.py",
     "academic_pdf_translation/render/formula_crop.py",
+    "academic_pdf_translation/render/mapping.py",
     "academic_pdf_translation/render/reference_data.py",
     "academic_pdf_translation/render/table_data.py",
     "academic_pdf_translation/render/text_blocks.py",
