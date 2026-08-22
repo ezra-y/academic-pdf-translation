@@ -22,6 +22,7 @@ RENDERER_INPUTS = (
     "academic_pdf_translation/render/cjk_markup.py",
     "academic_pdf_translation/render/font_runs.py",
     "academic_pdf_translation/render/formula_crop.py",
+    "academic_pdf_translation/render/table_data.py",
     "academic_pdf_translation/render/plan_bridge.py",
     "academic_pdf_translation/render/preserved_region_renderer.py",
     "academic_pdf_translation/planning/mode_policy.py",
