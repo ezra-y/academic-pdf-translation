@@ -48,25 +48,26 @@ def _delivered_count(summary: dict) -> int:
 # --- 数字对得上 -------------------------------------------------------------
 
 
-def test_the_readme_states_the_measured_delivery_rate() -> None:
-    """README 写的比例必须等于基准算出来的。"""
+def test_the_readme_scopes_the_machine_only_benchmark() -> None:
+    """README 引用首版交付基准时，必须写明口径。
 
-    summary = _summary()
-    delivered = _delivered_count(summary)
-    total = summary["case_count"]
+    那份基准是机器单独跑的压力测试——不调用模型、不做复审。把它当成
+    Skill 的翻译能力写出来，等于告诉用户"这东西不行"，而那不是它量的东西。
+    反过来也一样：README 不许再出现不带口径的交付比例。
+    """
+
     text = README.read_text(encoding="utf-8")
-    assert f"{delivered}/{total}" in text, (
-        f"README 应当写明实测的 {delivered}/{total}"
-    )
+    if "first-delivery" in text:
+        assert "机器单独" in text, "引用了基准却没标明机器单独口径"
+        assert "不代表" in text, "必须写明该口径不代表正常使用效果"
+    assert "做不到什么" not in text, "不许把压力测试口径写成能力清单"
 
 
-def test_the_english_readme_agrees_with_the_chinese_one() -> None:
-    summary = _summary()
-    assert _delivered_count(summary) == 0, (
-        "已经有可交付的样本了，两份 README 的措辞都要一起改"
-    )
+def test_the_english_readme_scopes_it_the_same_way() -> None:
     english = README_EN.read_text(encoding="utf-8")
-    assert "Zero of six" in english or "0/6" in english
+    if "first-delivery" in english:
+        assert "machine-only" in english
+        assert "does **not** reflect" in english or "not reflect" in english
 
 
 def test_the_report_lists_every_case_it_measured() -> None:

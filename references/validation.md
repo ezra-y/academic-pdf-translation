@@ -20,7 +20,7 @@
 
 | 报告 | 内容 | 什么时候能引用 |
 | --- | --- | --- |
-| `../benchmarks/results/first-delivery.md` | 当前代码在真实论文上的**首版交付实测**，含 delivered/handover/blocked 分布 | 需要说明"第一版能不能直接给读者"时——**这是唯一能回答这个问题的报告** |
+| `../benchmarks/results/first-delivery.md` | **机器单独跑**（不调用模型、无复审）的压力测试，含 delivered/handover/blocked 分布 | 需要说明**自动化部分单独**能走多远时。它不回答"正常使用（模型在环）效果如何" |
 | `../benchmarks/results/comparison.md` | 当前代码的可复现性能基准，绑定当前 `renderer_build_id` | 需要说明**当前版本**的耗时与重复读取时 |
 | `../assets/representative-benchmark.json` | 一次历史运行的记录，构建哈希已经过期 | 只能作为历史参考，**不能当作当前版本的证据** |
 

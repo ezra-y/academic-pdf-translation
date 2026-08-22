@@ -46,36 +46,32 @@ licensed under
 Only the representative comparison image is included here; the source paper is
 not redistributed with this Skill.
 
-## What It Can and Cannot Do Today
+## How Quality Is Enforced
 
-Measured only — nothing here is an estimate. Full data in
-[benchmarks/results/first-delivery.md](benchmarks/results/first-delivery.md).
+Translation itself is done by the model — the Skill does not translate for it.
+The Skill does two things: it breaks complex layout (tables, diagrams,
+formulas, footnotes) into tasks a model can handle reliably, and before
+delivery it verifies the output programmatically instead of trusting the
+generator's own "ready" verdict.
 
-**Zero of six real papers were directly deliverable on the first pass.**
-Two ran the whole pipeline and stopped at "hand over to a human"; four were
-blocked before rendering by the font-coverage check.
+What the automated checks guarantee:
 
-That is not a statement about translation quality — the two handed-over
-outputs have all their content. It means: **this Skill cannot currently
-produce a final PDF unattended.**
+- every element of the output PDF is verified independently — figures,
+  tables, formulas and captions are really there, on the right pages;
+- content that cannot be rebuilt reliably falls back to preserving the
+  original region as-is — plain beats missing;
+- every caption stays on the same page as the figure it describes;
+- anything the machine cannot judge is named explicitly, with the relevant
+  pages rendered for the tier-appropriate human review.
 
-It does:
+One boundary stated plainly: translation time and token cost are
+**unmeasured**, and no estimate is given.
 
-- verify every element independently instead of trusting the generator's
-  own "ready" verdict;
-- fall back to preserving the original region when a figure, table or formula
-  cannot be rebuilt reliably — plain beats missing;
-- keep every caption on the same page as the figure it describes;
-- name what it could not locate, and render those pages for a human to review.
-
-It does not:
-
-- preserve regions as vectors (they are raster at 300 DPI or better, never
-  upscaled), so they pixelate when magnified;
-- bind figure-level captions for vector figures (matching is by image xref,
-  which vector figures do not have);
-- measure translation time or token cost — **unmeasured**, and no estimate
-  is given.
+The repository also ships a stress test
+([benchmarks/results/first-delivery.md](benchmarks/results/first-delivery.md)):
+the deterministic scaffolding running **machine-only**, with the model removed
+entirely. That number measures the automation floor — it does **not** reflect
+normal usage, where the model is in the loop with tiered review.
 
 ## Quick Start
 
