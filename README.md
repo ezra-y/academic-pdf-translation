@@ -58,6 +58,30 @@ README 全宽显示，也可以点击查看原始尺寸。中文版以阅读和�
 
 示例只展示局部版式，不随 Skill 分发原论文或完整译本。
 
+## 现在做得到什么，做不到什么
+
+这一节只写实测过的，不写猜测。完整数据见
+[benchmarks/results/first-delivery.md](benchmarks/results/first-delivery.md)。
+
+**第一版直接可交付的比例，实测是 0/6。** 6 篇真实论文里，2 篇走完整条流程后
+停在"交给人处理"，4 篇在生成前被字体覆盖检查拦下。
+
+这不代表译文没用——停在"交给人处理"的产物内容是全的，只是还有需要人判断的
+地方。它代表的是：**这个 Skill 目前不能无人值守地直接出终稿。**
+
+做得到：
+
+- 每个元素都被独立核查，而不是听生成器自称通过；
+- 重建不可靠的图、表、公式会退到"原样保留原文那一块"，宁可不好看也不丢内容；
+- 图题跟着它说明的图走，不会被分到两页；
+- 查不出来的地方会点名，并渲染出该看的页面交给人。
+
+做不到：
+
+- 保留下来的区域是栅格（不低于 300 DPI 且不放大），放很大会看出像素；
+- 矢量图的图级图题按图像编号对应，矢量图没有编号，覆盖不到；
+- 翻译耗时与 Token **未测量**，不给任何估计。
+
 ## 快速开始
 
 ### 1. 安装 Skill
@@ -165,6 +189,8 @@ Workspace/
 ## 更多说明
 
 - Agent 执行流程：[SKILL.md](SKILL.md)
+- 元素管线与核查层：[references/element-pipeline.md](references/element-pipeline.md)
+- 首版交付实测：[benchmarks/results/first-delivery.md](benchmarks/results/first-delivery.md)
 - 质量门槛：[references/quality-contract.md](references/quality-contract.md)
 - 工作区和输出：[references/workspace.md](references/workspace.md)
 - 已验证范围：[references/validation.md](references/validation.md)

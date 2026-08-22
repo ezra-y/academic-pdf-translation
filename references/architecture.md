@@ -1,5 +1,9 @@
 # 架构
 
+这份讲整个 Skill 的作业契约与文件格式。
+新的元素管线与核查层（`academic_pdf_translation/` 包）另见
+[element-pipeline.md](element-pipeline.md)。
+
 ## 设计目标
 
 - 可复现的版式画像和 QA；
@@ -157,6 +161,10 @@ URL、DOI 空格。正文出现率只有在候选中确有对应保留区域时�
 - 再用至少 5 篇代表样本覆盖普通正文、表格或模型图、照片、混合正文与
   参考文献；
 - 每篇必须在该代码构建第一次注册前预检返回 `READY_TO_REGISTER`；
+  注意这是**生成器自评**，不等于产物合格——首版是否真的可交付，
+  以核查层的 `delivered` 为准，见
+  [validation.md](validation.md) 与
+  [element-pipeline.md](element-pipeline.md)；
 - 注册时只有候选哈希、排版器与版本、导出前总检查哈希和图表清单哈希均与
   `READY_TO_REGISTER` 预检记录一致，才绑定图表清单；任一项不一致就清空
   绑定并重新预检；

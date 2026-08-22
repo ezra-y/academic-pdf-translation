@@ -46,6 +46,37 @@ licensed under
 Only the representative comparison image is included here; the source paper is
 not redistributed with this Skill.
 
+## What It Can and Cannot Do Today
+
+Measured only — nothing here is an estimate. Full data in
+[benchmarks/results/first-delivery.md](benchmarks/results/first-delivery.md).
+
+**Zero of six real papers were directly deliverable on the first pass.**
+Two ran the whole pipeline and stopped at "hand over to a human"; four were
+blocked before rendering by the font-coverage check.
+
+That is not a statement about translation quality — the two handed-over
+outputs have all their content. It means: **this Skill cannot currently
+produce a final PDF unattended.**
+
+It does:
+
+- verify every element independently instead of trusting the generator's
+  own "ready" verdict;
+- fall back to preserving the original region when a figure, table or formula
+  cannot be rebuilt reliably — plain beats missing;
+- keep every caption on the same page as the figure it describes;
+- name what it could not locate, and render those pages for a human to review.
+
+It does not:
+
+- preserve regions as vectors (they are raster at 300 DPI or better, never
+  upscaled), so they pixelate when magnified;
+- bind figure-level captions for vector figures (matching is by image xref,
+  which vector figures do not have);
+- measure translation time or token cost — **unmeasured**, and no estimate
+  is given.
+
 ## Quick Start
 
 ### 1. Install the Skill
@@ -149,6 +180,14 @@ Workspace/
 
 When the task finishes, the Agent returns a clickable filename and absolute
 path for every translated PDF.
+
+## More
+
+- Agent workflow: [SKILL.md](SKILL.md)
+- Element pipeline and verification layer:
+  [references/element-pipeline.md](references/element-pipeline.md)
+- First-delivery measurements:
+  [benchmarks/results/first-delivery.md](benchmarks/results/first-delivery.md)
 
 ## License
 

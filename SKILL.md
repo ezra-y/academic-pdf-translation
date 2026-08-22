@@ -162,6 +162,27 @@ python3 scripts/set_complex_payload.py /path/to/job \
 先确认术语表，再编排批次。`translation.terminology_reviewed` 不是 `true`
 时命令会拒绝正式编排；只想看分批结果用 `--preview`，它不写任何文件。
 
+## 首次交付：唯一入口
+
+候选生成之后，用这一个命令跑完核查、最多一轮返修、再核查，并给出唯一结论：
+
+```bash
+python3 scripts/deliver_first_candidate.py /path/to/job
+```
+
+退出码就是结论：`0` 可以交付，`2` 交给人处理，`1` 停下别交。
+证据（两轮的映射、对账、视觉检查计划、返修计划与前后对比、待人细看的页面
+图片）写在 `<作业目录>/delivery/`。**没有证据的结论不算结论。**
+
+前置：作业需要先有 `source_elements.json` 与 `unit_bindings.json`。
+
+```bash
+python3 scripts/analyze_source_elements.py /path/to/job
+python3 scripts/bind_translation_units.py /path/to/job
+```
+
+详见 [references/element-pipeline.md](references/element-pipeline.md)。
+
 ```bash
 python3 scripts/plan_translation_batches.py /path/to/job --model <实际模型标识>
 ```
