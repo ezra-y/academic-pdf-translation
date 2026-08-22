@@ -20,6 +20,7 @@ RENDERER_INPUTS = (
     # 生成器 import 的包文件也影响产出，必须进构建哈希，
     # 否则改了它们基准还显示"同一版代码"。
     "academic_pdf_translation/render/cjk_markup.py",
+    "academic_pdf_translation/render/flowables.py",
     "academic_pdf_translation/render/font_runs.py",
     "academic_pdf_translation/render/formula_crop.py",
     "academic_pdf_translation/render/reference_data.py",

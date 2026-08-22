@@ -4186,6 +4186,7 @@ def run() -> None:
             regular_font="Helvetica",
             bold_font="Helvetica-Bold",
             body_font_pt=9,
+            message_fn=message,
         )
         annotation_figure.drawOn(annotation_canvas, 10, 10)
         annotation_canvas.save()
@@ -4252,6 +4253,7 @@ def run() -> None:
             regular_font="Helvetica",
             bold_font="Helvetica-Bold",
             body_font_pt=10,
+            message_fn=message,
         )
         dense_figure.drawOn(dense_canvas, 10, 20)
         dense_canvas.save()
@@ -4592,6 +4594,7 @@ def run() -> None:
                 regular_font="Helvetica",
                 bold_font="Helvetica-Bold",
                 body_font_pt=9,
+                message_fn=message,
             )
             flowable.wrap(400, 500)
             flowable.drawOn(advanced_canvas, 10, 20)
@@ -4622,6 +4625,7 @@ def run() -> None:
             regular_font="Helvetica",
             bold_font="Helvetica-Bold",
             body_font_pt=9,
+            message_fn=message,
         )
         _, compact_height = compact_label.wrap(300, 200)
         if not 40 <= compact_height < 80:
