@@ -1,0 +1,55 @@
+{
+  "measurement": "端到端机器时间：main 01f797a vs perf/pipeline-optimization（全部阶段完成后）",
+  "scope": "初始化 + 候选构建 + 导出前总检查 + 注册前预检；不含模型翻译",
+  "metric": "每例 3 次取最小值",
+  "cases": [
+    {
+      "case": "single-column-body@1.1",
+      "status": "NEEDS_REPAIR",
+      "baseline_min_seconds": 3.979,
+      "optimized_min_seconds": 2.104,
+      "baseline_render_attempts": 18,
+      "optimized_render_attempts": 6,
+      "improvement_ratio": 0.4712,
+      "selected_identical": true,
+      "status_identical": true
+    },
+    {
+      "case": "two-column-body@0.9",
+      "status": "NEEDS_REPAIR",
+      "baseline_min_seconds": 3.636,
+      "optimized_min_seconds": 1.989,
+      "baseline_render_attempts": 15,
+      "optimized_render_attempts": 5,
+      "improvement_ratio": 0.453,
+      "selected_identical": true,
+      "status_identical": true
+    },
+    {
+      "case": "structured-table-and-model@1.0",
+      "status": "BLOCKED_BEFORE_PREFLIGHT",
+      "baseline_min_seconds": 0.117,
+      "optimized_min_seconds": 0.07,
+      "baseline_render_attempts": 1,
+      "optimized_render_attempts": 0,
+      "improvement_ratio": 0.4017,
+      "selected_identical": false,
+      "status_identical": true
+    },
+    {
+      "case": "image-heavy@1.0",
+      "status": "NEEDS_REPAIR",
+      "baseline_min_seconds": 0.267,
+      "optimized_min_seconds": 0.198,
+      "baseline_render_attempts": 1,
+      "optimized_render_attempts": 1,
+      "improvement_ratio": 0.2584,
+      "selected_identical": true,
+      "status_identical": true
+    }
+  ],
+  "total_baseline_min_seconds": 7.999,
+  "total_optimized_min_seconds": 4.361,
+  "total_improvement_ratio": 0.4548,
+  "quality": "四例的流水线结论、选中字号行距页数、问题代码与返修任务代码逐项相同。"
+}

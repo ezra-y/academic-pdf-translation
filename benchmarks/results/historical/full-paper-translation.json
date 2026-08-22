@@ -1,0 +1,46 @@
+{
+  "measurement": "整篇真实翻译实测：arXiv:1912.01703 (PyTorch)，英译中",
+  "paper": {
+    "pages": 12,
+    "frozen_units": 252,
+    "source_chars": 39622,
+    "batches": 13
+  },
+  "translation_wallclock": {
+    "batched_flow_seconds": 398,
+    "batched_flow_minutes": 6.6,
+    "note": "12 批实测 348 秒，加上先前单独实测的 batch-0005 的 50 秒",
+    "per_unit_seconds": 1.58
+  },
+  "old_per_unit_flow": {
+    "measured_seconds_per_unit": 13.4,
+    "measured_on": "同一节的 7 个正文单元，逐单元逐次写回，实测 94 秒",
+    "extrapolated_whole_paper_seconds": 3377,
+    "extrapolated_whole_paper_minutes": 56.3
+  },
+  "improvement_ratio": 0.8821,
+  "machine_pipeline_seconds": 1.275,
+  "machine_share_of_total": 0.00319,
+  "quality": {
+    "coverage_units": "107 译 + 145 保留 = 252",
+    "source_text_coverage_ratio": 1.0,
+    "candidate_pages": 12,
+    "source_pages": 12,
+    "candidate_han_chars": 6484,
+    "remaining_hard_failures": [
+      "SOURCE_IMAGE_MISSING"
+    ],
+    "stage_validation": "translated 阶段校验通过（去掉 5 个触发误报的术语之后）"
+  },
+  "bugs_found": [
+    {
+      "code": "TERMINOLOGY_FALSE_POSITIVE",
+      "detail": "术语检查报出 12 个未使用术语，全部为误报：tensor 匹配到产品名 TensorFlow 内部（无词边界），以及匹配到合法保留原文的参考文献、表格数据行和代码标识符 LinearLayer。为跑通只能把 5 个术语移出术语表。"
+    },
+    {
+      "code": "SOURCE_IMAGE_MISSING",
+      "detail": "第 8、9 页的图未进入候选。这是声明「无复杂页」的直接代价，工具按声明执行，门禁如实报出。"
+    }
+  ],
+  "caveats": "旧流程整篇数字是按实测单元成本外推，不是逐单元跑完 252 次的实测值。参考文献 70 个单元采用统一保留原文决策，因此批处理侧后四批很快，真实混合语料会略慢。"
+}

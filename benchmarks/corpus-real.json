@@ -1,0 +1,97 @@
+{
+  "schema_version": "1.0",
+  "corpus": "real-open-access-v1",
+  "note": "真实开放获取论文（arXiv），原文不随仓库分发。译文为确定性合成文本，只用于触发代码路径，不代表译文质量。",
+  "translation_ratio": 0.55,
+  "cases": [
+    {
+      "id": "real-single-column-body",
+      "job_dir": "jobs-real/real-single-column-body",
+      "tags": [
+        "body",
+        "single-column"
+      ],
+      "source_pdf": "arxiv-1912.01703.pdf",
+      "source_bytes": 380838,
+      "source_sha256": "b47fb010f6872701d6d3bdd8270497be700c9961e2ec2cac2b08a154a43d81f2",
+      "page_count": 12,
+      "frozen_unit_count": 252,
+      "complex_page_count": 2,
+      "double_column_page_count": 1,
+      "recommended_route": "hybrid-complex-pages",
+      "translation_ratio": null,
+      "translation_mode": "identity"
+    },
+    {
+      "id": "real-two-column-body",
+      "job_dir": "jobs-real/real-two-column-body",
+      "tags": [
+        "body",
+        "two-column"
+      ],
+      "source_pdf": "arxiv-1512.03385.pdf",
+      "source_bytes": 819383,
+      "source_sha256": "1e0651b6810ecba34a3dbc5b5b0209226f889004607c1f203540a48d64e5a93a",
+      "page_count": 12,
+      "frozen_unit_count": 558,
+      "complex_page_count": 11,
+      "double_column_page_count": 12,
+      "recommended_route": "custom-layout",
+      "translation_ratio": null,
+      "translation_mode": "identity"
+    },
+    {
+      "id": "real-table-and-model",
+      "job_dir": "jobs-real/real-table-and-model",
+      "tags": [
+        "table",
+        "diagram"
+      ],
+      "source_pdf": "arxiv-1706.03762.pdf",
+      "source_bytes": 2215244,
+      "source_sha256": "bdfaa68d8984f0dc02beaca527b76f207d99b666d31d1da728ee0728182df697",
+      "page_count": 15,
+      "frozen_unit_count": 567,
+      "complex_page_count": 9,
+      "double_column_page_count": 2,
+      "recommended_route": "custom-layout",
+      "translation_ratio": null,
+      "translation_mode": "identity"
+    },
+    {
+      "id": "real-image-heavy",
+      "job_dir": "jobs-real/real-image-heavy",
+      "tags": [
+        "figure",
+        "image"
+      ],
+      "source_pdf": "arxiv-1703.06870.pdf",
+      "source_bytes": 7723886,
+      "source_sha256": "b595a882b763d55d933543131f32a2c4b6f41d0818d418ef46a2b66f946b67a8",
+      "page_count": 12,
+      "frozen_unit_count": 812,
+      "complex_page_count": 10,
+      "double_column_page_count": 11,
+      "recommended_route": "custom-layout",
+      "translation_ratio": null,
+      "translation_mode": "identity"
+    },
+    {
+      "id": "real-reference-heavy",
+      "job_dir": "jobs-real/real-reference-heavy",
+      "tags": [
+        "references"
+      ],
+      "source_pdf": "arxiv-2005.14165.pdf",
+      "source_bytes": 6768044,
+      "source_sha256": "97fd272f1fdfc18677462d0292f5fbf26ca86b4d1b485c2dba03269b643a0e83",
+      "page_count": 75,
+      "frozen_unit_count": 1190,
+      "complex_page_count": 36,
+      "double_column_page_count": 2,
+      "recommended_route": "hybrid-complex-pages",
+      "translation_ratio": null,
+      "translation_mode": "identity"
+    }
+  ]
+}

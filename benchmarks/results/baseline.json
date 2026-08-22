@@ -1,0 +1,314 @@
+{
+  "schema_version": "2.0",
+  "label": "baseline",
+  "provenance": {
+    "renderer_build_id": "2eb01fb6e630ce3b96187bb3e832d6c1443a16ae837ace5f983b8623d86c3a8f",
+    "git_commit": "025b7a34346a1085ac40c7abecd3628df6839280",
+    "git_branch": "HEAD",
+    "git_dirty": true,
+    "python": "3.14.5",
+    "load_average_1m": 6.72,
+    "cpu_count": 15,
+    "corpus": "synthetic-representative-v1",
+    "corpus_manifest_cases": 5
+  },
+  "repeats": 5,
+  "model_translation": {
+    "measured": false,
+    "reason": "本次运行没有调用真实翻译模型；译文由确定性伪译文替代，只用于触发同一批代码路径。",
+    "model": null,
+    "model_calls": null,
+    "batches": null,
+    "retries": null,
+    "input_tokens": null,
+    "output_tokens": null,
+    "seconds": null
+  },
+  "cases": [
+    {
+      "id": "single-column-body",
+      "status": "NEEDS_REPAIR",
+      "repeats": 5,
+      "cold": {
+        "seconds": [
+          1.5053,
+          1.516,
+          1.7669,
+          1.6574,
+          1.5508
+        ],
+        "median_seconds": 1.5508,
+        "translation_stage_seconds": {},
+        "pdf_stage_seconds": {
+          "retained_region_extract": 0.0008,
+          "candidate_fingerprint": 0.1034,
+          "qa_candidate": 0.6855,
+          "completeness_audit": 0.2721
+        },
+        "counters": {
+          "expensive_audit_cache_hit": 1,
+          "render_attempt": 3,
+          "sha256_cache_hit": 48,
+          "sha256_file_read": 19
+        }
+      },
+      "warm": {
+        "seconds": [
+          1.4692,
+          1.4291,
+          1.4403,
+          1.3922,
+          1.4826
+        ],
+        "median_seconds": 1.4403,
+        "translation_stage_seconds": {},
+        "pdf_stage_seconds": {
+          "retained_region_extract": 0.001,
+          "candidate_fingerprint": 0.095,
+          "qa_candidate": 0.5814,
+          "completeness_audit": 0.217
+        },
+        "counters": {
+          "expensive_audit_cache_hit": 1,
+          "render_attempt": 3,
+          "sha256_cache_hit": 50,
+          "sha256_file_read": 17
+        }
+      },
+      "page_count": 12,
+      "frozen_unit_count": 134,
+      "tags": [
+        "body",
+        "single-column"
+      ]
+    },
+    {
+      "id": "two-column-body",
+      "status": "NEEDS_REPAIR",
+      "repeats": 5,
+      "cold": {
+        "seconds": [
+          1.6232,
+          1.6067,
+          1.5646,
+          1.5565,
+          1.5597
+        ],
+        "median_seconds": 1.5646,
+        "translation_stage_seconds": {},
+        "pdf_stage_seconds": {
+          "retained_region_extract": 0.0006,
+          "candidate_fingerprint": 0.0988,
+          "qa_candidate": 0.6112,
+          "completeness_audit": 0.268
+        },
+        "counters": {
+          "expensive_audit_cache_hit": 1,
+          "render_attempt": 3,
+          "sha256_cache_hit": 48,
+          "sha256_file_read": 19
+        }
+      },
+      "warm": {
+        "seconds": [
+          1.6044,
+          1.5947,
+          1.6313,
+          1.6519,
+          1.778
+        ],
+        "median_seconds": 1.6313,
+        "translation_stage_seconds": {},
+        "pdf_stage_seconds": {
+          "retained_region_extract": 0.0009,
+          "candidate_fingerprint": 0.1049,
+          "qa_candidate": 0.6188,
+          "completeness_audit": 0.2949
+        },
+        "counters": {
+          "expensive_audit_cache_hit": 1,
+          "render_attempt": 3,
+          "sha256_cache_hit": 50,
+          "sha256_file_read": 17
+        }
+      },
+      "page_count": 12,
+      "frozen_unit_count": 180,
+      "tags": [
+        "body",
+        "two-column"
+      ]
+    },
+    {
+      "id": "structured-table-and-model",
+      "status": "NEEDS_REPAIR",
+      "repeats": 5,
+      "cold": {
+        "seconds": [
+          0.4135,
+          0.3733,
+          0.3772,
+          0.4709,
+          0.4421
+        ],
+        "median_seconds": 0.4135,
+        "translation_stage_seconds": {},
+        "pdf_stage_seconds": {
+          "retained_region_extract": 0.0005,
+          "candidate_fingerprint": 0.0143,
+          "qa_candidate": 0.0776,
+          "completeness_audit": 0.053
+        },
+        "counters": {
+          "expensive_audit_cache_hit": 1,
+          "render_attempt": 1,
+          "sha256_cache_hit": 48,
+          "sha256_file_read": 19
+        }
+      },
+      "warm": {
+        "seconds": [
+          0.4053,
+          0.3883,
+          0.4342,
+          0.4049,
+          0.4033
+        ],
+        "median_seconds": 0.4049,
+        "translation_stage_seconds": {},
+        "pdf_stage_seconds": {
+          "retained_region_extract": 0.0007,
+          "candidate_fingerprint": 0.015,
+          "qa_candidate": 0.0848,
+          "completeness_audit": 0.0577
+        },
+        "counters": {
+          "expensive_audit_cache_hit": 1,
+          "render_attempt": 1,
+          "sha256_cache_hit": 50,
+          "sha256_file_read": 17
+        }
+      },
+      "page_count": 8,
+      "frozen_unit_count": 128,
+      "tags": [
+        "table",
+        "diagram"
+      ]
+    },
+    {
+      "id": "image-heavy",
+      "status": "NEEDS_REPAIR",
+      "repeats": 5,
+      "cold": {
+        "seconds": [
+          0.2923,
+          0.2834,
+          0.2853,
+          0.2783,
+          0.3206
+        ],
+        "median_seconds": 0.2853,
+        "translation_stage_seconds": {},
+        "pdf_stage_seconds": {
+          "retained_region_extract": 0.0003,
+          "candidate_fingerprint": 0.0074,
+          "qa_candidate": 0.0547,
+          "completeness_audit": 0.0166
+        },
+        "counters": {
+          "expensive_audit_cache_hit": 1,
+          "render_attempt": 1,
+          "sha256_cache_hit": 48,
+          "sha256_file_read": 19
+        }
+      },
+      "warm": {
+        "seconds": [
+          0.2572,
+          0.3187,
+          0.242,
+          0.2503,
+          0.2468
+        ],
+        "median_seconds": 0.2503,
+        "translation_stage_seconds": {},
+        "pdf_stage_seconds": {
+          "retained_region_extract": 0.0003,
+          "candidate_fingerprint": 0.007,
+          "qa_candidate": 0.0507,
+          "completeness_audit": 0.0165
+        },
+        "counters": {
+          "expensive_audit_cache_hit": 1,
+          "render_attempt": 1,
+          "sha256_cache_hit": 50,
+          "sha256_file_read": 17
+        }
+      },
+      "page_count": 8,
+      "frozen_unit_count": 32,
+      "tags": [
+        "figure",
+        "image"
+      ]
+    },
+    {
+      "id": "reference-heavy",
+      "status": "ERROR: 统一生成器无法在可读字号和页数扩张上限内完成首版。最紧凑的可读试排为 11 页，扩张比 1.833；当前异常保护上限为 1.6。请优先检查重复内容、错误保留区域或异常复杂页载荷。",
+      "repeats": 5,
+      "cold": {
+        "seconds": [
+          1.4388,
+          1.3882,
+          1.4182,
+          1.4341,
+          1.4094
+        ],
+        "median_seconds": 1.4182,
+        "translation_stage_seconds": {},
+        "pdf_stage_seconds": {
+          "retained_region_extract": 0.0002,
+          "completeness_audit": 0.1646
+        },
+        "counters": {
+          "render_attempt": 18,
+          "sha256_cache_hit": 9,
+          "sha256_file_read": 9
+        }
+      },
+      "warm": {
+        "seconds": [
+          1.5752,
+          1.5463,
+          1.6305,
+          1.5419,
+          1.5475
+        ],
+        "median_seconds": 1.5475,
+        "translation_stage_seconds": {},
+        "pdf_stage_seconds": {
+          "retained_region_extract": 0.0002,
+          "completeness_audit": 0.1747
+        },
+        "counters": {
+          "render_attempt": 18,
+          "sha256_cache_hit": 11,
+          "sha256_file_read": 7
+        }
+      },
+      "page_count": 6,
+      "frozen_unit_count": 313,
+      "tags": [
+        "references"
+      ]
+    }
+  ],
+  "totals": {
+    "cold_median_seconds": 5.2324,
+    "warm_median_seconds": 5.2743,
+    "cold_case_median_seconds": 1.4182,
+    "warm_case_median_seconds": 1.4403
+  },
+  "note": "合成语料只用于比较耗时与重复读取，不能替代真实论文的视觉抽查。模型翻译阶段未测量。"
+}

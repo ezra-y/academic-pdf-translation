@@ -1,0 +1,137 @@
+{
+  "schema_version": "1.0",
+  "generated_at": "2026-08-21T12:55:22+00:00",
+  "case_count": 5,
+  "automatic_first_pass_count": 0,
+  "automatic_first_pass_rate": 0.0,
+  "median_total_seconds": 0.89,
+  "benchmark_wall_seconds": 4.057,
+  "workers": 1,
+  "renderer_build_ids": [
+    "2eb01fb6e630ce3b96187bb3e832d6c1443a16ae837ace5f983b8623d86c3a8f"
+  ],
+  "single_build": true,
+  "visual_review_required": true,
+  "work_dir": null,
+  "cases": [
+    {
+      "id": "image-heavy",
+      "tags": [
+        "figure",
+        "image"
+      ],
+      "status": "NEEDS_REPAIR",
+      "renderer_version": "1.0",
+      "renderer_build_id": "2eb01fb6e630ce3b96187bb3e832d6c1443a16ae837ace5f983b8623d86c3a8f",
+      "source_page_count": 8,
+      "candidate_page_count": 2,
+      "timing_seconds": {
+        "input_readiness": 0.02,
+        "build": 0.015,
+        "pre_render_audit": 0.009,
+        "preflight": 0.092,
+        "total": 0.138
+      },
+      "hard_failure_codes": [
+        "TARGET_TEXT_MISSING",
+        "NULL_CHARACTERS",
+        "TARGET_PRIMARY_SCRIPT_MISSING"
+      ]
+    },
+    {
+      "id": "reference-heavy",
+      "tags": [
+        "references"
+      ],
+      "status": "NEEDS_REPAIR",
+      "renderer_version": "1.0",
+      "renderer_build_id": "2eb01fb6e630ce3b96187bb3e832d6c1443a16ae837ace5f983b8623d86c3a8f",
+      "source_page_count": 6,
+      "candidate_page_count": 9,
+      "timing_seconds": {
+        "input_readiness": 0.164,
+        "build": 0.22,
+        "pre_render_audit": 0.011,
+        "preflight": 0.495,
+        "total": 0.89
+      },
+      "hard_failure_codes": [
+        "TARGET_TEXT_MISSING",
+        "NULL_CHARACTERS",
+        "TARGET_PRIMARY_SCRIPT_MISSING"
+      ]
+    },
+    {
+      "id": "single-column-body",
+      "tags": [
+        "body",
+        "single-column"
+      ],
+      "status": "NEEDS_REPAIR",
+      "renderer_version": "1.0",
+      "renderer_build_id": "2eb01fb6e630ce3b96187bb3e832d6c1443a16ae837ace5f983b8623d86c3a8f",
+      "source_page_count": 12,
+      "candidate_page_count": 17,
+      "timing_seconds": {
+        "input_readiness": 0.209,
+        "build": 0.2,
+        "pre_render_audit": 0.01,
+        "preflight": 0.91,
+        "total": 1.331
+      },
+      "hard_failure_codes": [
+        "TARGET_TEXT_MISSING",
+        "NULL_CHARACTERS",
+        "TARGET_PRIMARY_SCRIPT_MISSING"
+      ]
+    },
+    {
+      "id": "structured-table-and-model",
+      "tags": [
+        "table",
+        "diagram"
+      ],
+      "status": "NEEDS_REPAIR",
+      "renderer_version": "1.0",
+      "renderer_build_id": "2eb01fb6e630ce3b96187bb3e832d6c1443a16ae837ace5f983b8623d86c3a8f",
+      "source_page_count": 8,
+      "candidate_page_count": 3,
+      "timing_seconds": {
+        "input_readiness": 0.034,
+        "build": 0.04,
+        "pre_render_audit": 0.01,
+        "preflight": 0.132,
+        "total": 0.217
+      },
+      "hard_failure_codes": [
+        "TARGET_TEXT_MISSING",
+        "NULL_CHARACTERS",
+        "TARGET_PRIMARY_SCRIPT_MISSING"
+      ]
+    },
+    {
+      "id": "two-column-body",
+      "tags": [
+        "body",
+        "two-column"
+      ],
+      "status": "NEEDS_REPAIR",
+      "renderer_version": "1.0",
+      "renderer_build_id": "2eb01fb6e630ce3b96187bb3e832d6c1443a16ae837ace5f983b8623d86c3a8f",
+      "source_page_count": 12,
+      "candidate_page_count": 18,
+      "timing_seconds": {
+        "input_readiness": 0.205,
+        "build": 0.225,
+        "pre_render_audit": 0.011,
+        "preflight": 0.988,
+        "total": 1.43
+      },
+      "hard_failure_codes": [
+        "TARGET_TEXT_MISSING",
+        "NULL_CHARACTERS",
+        "TARGET_PRIMARY_SCRIPT_MISSING"
+      ]
+    }
+  ]
+}

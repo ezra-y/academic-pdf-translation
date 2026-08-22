@@ -1,0 +1,64 @@
+{
+  "measurement": "P2 翻译执行链路：冻结单元数 vs 批次数",
+  "metric": "完成全文所需的写回并校验轮次",
+  "baseline_definition": "旧流程要求逐项填写 translation.json，每个冻结单元一次",
+  "optimized_definition": "新流程每批写回一次，整批校验，单批失败只重做该批",
+  "cases": [
+    {
+      "case": "image-heavy",
+      "frozen_units": 32,
+      "batches": 2,
+      "units_per_batch_median": 16.0,
+      "units_per_batch_max": 21,
+      "source_chars_per_batch_median": 1467.0,
+      "write_and_validate_cycles_before": 32,
+      "write_and_validate_cycles_after": 2,
+      "reduction_ratio": 0.9375
+    },
+    {
+      "case": "reference-heavy",
+      "frozen_units": 313,
+      "batches": 16,
+      "units_per_batch_median": 20.0,
+      "units_per_batch_max": 21,
+      "source_chars_per_batch_median": 1683.0,
+      "write_and_validate_cycles_before": 313,
+      "write_and_validate_cycles_after": 16,
+      "reduction_ratio": 0.9489
+    },
+    {
+      "case": "single-column-body",
+      "frozen_units": 134,
+      "batches": 7,
+      "units_per_batch_median": 20,
+      "units_per_batch_max": 22,
+      "source_chars_per_batch_median": 7308,
+      "write_and_validate_cycles_before": 134,
+      "write_and_validate_cycles_after": 7,
+      "reduction_ratio": 0.9478
+    },
+    {
+      "case": "structured-table-and-model",
+      "frozen_units": 128,
+      "batches": 7,
+      "units_per_batch_median": 20,
+      "units_per_batch_max": 21,
+      "source_chars_per_batch_median": 555,
+      "write_and_validate_cycles_before": 128,
+      "write_and_validate_cycles_after": 7,
+      "reduction_ratio": 0.9453
+    },
+    {
+      "case": "two-column-body",
+      "frozen_units": 180,
+      "batches": 9,
+      "units_per_batch_median": 20,
+      "units_per_batch_max": 21,
+      "source_chars_per_batch_median": 5652,
+      "write_and_validate_cycles_before": 180,
+      "write_and_validate_cycles_after": 9,
+      "reduction_ratio": 0.95
+    }
+  ],
+  "caveat": "旧流程的实际模型调用次数从未被脚本化，无法直接计数；这里比较的是流程规定的写回并校验轮次，是可复算的下界。"
+}
