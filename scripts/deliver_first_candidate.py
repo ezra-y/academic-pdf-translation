@@ -23,6 +23,16 @@ import argparse  # noqa: E402
 import json  # noqa: E402
 from pathlib import Path  # noqa: E402
 
+from academic_pdf_translation.analysis.element_overrides import (  # noqa: E402
+    apply_all,
+    load_overrides,
+)
+from academic_pdf_translation.analysis.source_elements import (  # noqa: E402
+    analyze_job_elements,
+)
+from academic_pdf_translation.contracts.migration import (  # noqa: E402
+    derive_quality_mode,
+)
 from academic_pdf_translation.delivery.first_delivery import (  # noqa: E402
     STATUS_BLOCKED,
     STATUS_DELIVERED,
@@ -31,14 +41,26 @@ from academic_pdf_translation.delivery.first_delivery import (  # noqa: E402
     format_result,
     run_first_delivery,
 )
+from academic_pdf_translation.planning.render_plan import (  # noqa: E402
+    build_render_plan,
+    write_plan,
+)
 from academic_pdf_translation.verify.repair import (  # noqa: E402
     ACTION_PRESERVE_REGION,
     RepairPlan,
 )
 
-from _common import SkillError, load_json, write_json  # noqa: E402
+from _common import (  # noqa: E402
+    SkillError,
+    import_fitz,
+    load_json,
+    write_json,
+)
 from build_first_candidate import build_first_candidate  # noqa: E402
-from build_render_plan import FORCED_STRATEGIES_FILE  # noqa: E402
+from build_render_plan import (  # noqa: E402
+    FORCED_STRATEGIES_FILE,
+    load_forced_strategies,
+)
 
 EXIT_CODES = {
     STATUS_DELIVERED: 0,
@@ -65,17 +87,61 @@ def _job_inputs(job_dir: Path) -> tuple[list, list, list]:
     return (elements, units, bindings)
 
 
+def rebuild_render_plan(job_dir: Path) -> dict[str, str]:
+    """按返修指定的降级重算渲染计划，并返回实际生效的降级。"""
+
+    forced = load_forced_strategies(job_dir)
+    fitz = import_fitz()
+    inventory = analyze_job_elements(
+        job_dir, pymupdf_version=getattr(fitz, "VersionBind", "0")
+    )
+    apply_all(inventory, load_overrides(job_dir))
+    plan = build_render_plan(
+        inventory,
+        derive_quality_mode(load_json(job_dir / "job.json")),
+        forced_strategies=forced,
+    )
+    write_plan(job_dir, plan)
+    applied = {
+        item.element_id: item.strategy
+        for item in plan.elements
+        if item.element_id in forced and item.strategy == forced[item.element_id]
+    }
+    write_json(
+        job_dir / "repair" / "applied_strategies.json",
+        {
+            "requested": forced,
+            "applied": applied,
+            "plan_problems": list(plan.problems),
+        },
+    )
+    return applied
+
+
 def make_builder(job_dir: Path, output: Path | None):
     """把真实的候选生成器包成交付流程要的 build(round_index)。"""
 
     def build(round_index: int) -> Path:
         label = "first" if round_index == 0 else f"repair-{round_index}"
+        if round_index > 0:
+            # 返修那一轮必须先重算渲染计划，降级指令才有机会生效。
+            rebuild_render_plan(job_dir)
         report = build_first_candidate(
             job_dir, output, attempt_label=label
         )
-        candidate = report.get("candidate")
+        # 生成器在输入没准备好时会走 BLOCKED_BEFORE_PREFLIGHT，
+        # 那一条分支的 candidate_pdf 是 None。把它的 issues 原样带出来，
+        # 比只说一句"没有产出候选"有用得多。
+        candidate = report.get("candidate_pdf")
         if not candidate:
-            raise SkillError(f"{label} 轮没有产出候选 PDF")
+            issues = report.get("issues") or []
+            detail = "；".join(str(item) for item in issues[:3])
+            raise SkillError(
+                f"{label} 轮没有产出候选 PDF"
+                f"（{report.get('status')}"
+                f"{' / ' + report.get('blocked_stage', '') if report.get('blocked_stage') else ''}）"
+                + (f": {detail}" if detail else "")
+            )
         return Path(candidate)
 
     return build

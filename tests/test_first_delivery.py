@@ -16,12 +16,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import fitz  # noqa: E402
 import pytest  # noqa: E402
 from academic_pdf_translation.delivery.first_delivery import (  # noqa: E402
+    REPAIR_MADE_NO_DIFFERENCE,
     STAGE_REBUILD,
     STATUS_BLOCKED,
     STATUS_DELIVERED,
     STATUS_HANDOVER,
     DeliveryResult,
     FirstDeliveryError,
+    candidate_content_hash,
     format_result,
     run_first_delivery,
 )
@@ -185,7 +187,11 @@ def test_one_repair_round_can_turn_a_handover_into_a_delivery(
 
 
 def test_the_pipeline_never_rebuilds_twice(tmp_path: Path) -> None:
-    """第二轮返修计划被拒绝，流程里再加一道断言防止有人绕过去。"""
+    """第二轮返修计划被拒绝，流程里再加一道断言防止有人绕过去。
+
+    这里两轮返回的是同一份 PDF，所以结论是 blocked——返修一个字没改。
+    只生成两次这件事本身，才是这条测试要盯的。
+    """
 
     source, elements, units, bindings = _tiny_job(tmp_path)
     bad = _make_pdf(tmp_path / "bad.pdf", [PRESENT])
@@ -205,9 +211,9 @@ def test_the_pipeline_never_rebuilds_twice(tmp_path: Path) -> None:
         output_dir=tmp_path / "out",
         render_pages=False,
     )
-    assert builds == [0, 1]
+    assert builds == [0, 1], "只许生成两次：首版加唯一一轮返修"
     assert result.rebuilds == 1
-    assert result.status == STATUS_HANDOVER
+    assert result.status == STATUS_BLOCKED
 
 
 def test_a_repair_that_breaks_something_else_blocks_delivery(
@@ -400,3 +406,71 @@ def test_the_real_report_names_the_lost_figure(tmp_path: Path) -> None:
     assert "交给人处理" in report
     assert "vector-figure" in report
     assert "证据:" in report
+
+
+# --- 返修必须真的改变产出 ---------------------------------------------------
+
+
+def test_the_content_hash_ignores_pdf_timestamps(tmp_path: Path) -> None:
+    """PDF 里有时间戳，字节每次都不一样，内容却可能一模一样。"""
+
+    first = _make_pdf(tmp_path / "one.pdf", [PRESENT])
+    second = _make_pdf(tmp_path / "two.pdf", [PRESENT])
+    assert first.read_bytes() != second.read_bytes()
+    assert candidate_content_hash(first) == candidate_content_hash(second)
+
+
+def test_the_content_hash_notices_missing_text(tmp_path: Path) -> None:
+    first = _make_pdf(tmp_path / "one.pdf", [PRESENT, ABSENT])
+    second = _make_pdf(tmp_path / "two.pdf", [PRESENT])
+    assert candidate_content_hash(first) != candidate_content_hash(second)
+
+
+def test_a_repair_that_changes_nothing_blocks_delivery(tmp_path: Path) -> None:
+    """返修跑完却一个字没改，说明降级根本没落到生成器上。
+
+    这比"修了没修好"严重得多：报成后者，读的人会以为已经试过了。
+    """
+
+    source, elements, units, bindings = _tiny_job(tmp_path)
+    bad = _make_pdf(tmp_path / "bad.pdf", [PRESENT])
+    same = _make_pdf(tmp_path / "same.pdf", [PRESENT])
+
+    result = run_first_delivery(
+        source,
+        elements,
+        units,
+        bindings,
+        build=lambda round_index: bad if round_index == 0 else same,
+        apply_repair=lambda _plan: None,
+        output_dir=tmp_path / "out",
+        render_pages=False,
+    )
+    assert result.status == STATUS_BLOCKED
+    assert result.problems[0] == REPAIR_MADE_NO_DIFFERENCE
+    rebuild = next(
+        stage for stage in result.stages if stage.name == STAGE_REBUILD
+    )
+    assert rebuild.ok is False
+    assert "内容与返修前完全相同" in rebuild.detail
+
+
+def test_a_repair_that_does_change_things_is_not_flagged(
+    tmp_path: Path,
+) -> None:
+    source, elements, units, bindings = _tiny_job(tmp_path)
+    bad = _make_pdf(tmp_path / "bad.pdf", [PRESENT])
+    fixed = _make_pdf(tmp_path / "fixed.pdf", [PRESENT, ABSENT])
+
+    result = run_first_delivery(
+        source,
+        elements,
+        units,
+        bindings,
+        build=lambda round_index: bad if round_index == 0 else fixed,
+        apply_repair=lambda _plan: None,
+        output_dir=tmp_path / "out",
+        render_pages=False,
+    )
+    assert REPAIR_MADE_NO_DIFFERENCE not in result.problems
+    assert result.status == STATUS_DELIVERED

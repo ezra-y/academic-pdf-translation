@@ -57,6 +57,12 @@ STATUS_DELIVERED = "delivered"
 STATUS_HANDOVER = "handover"
 STATUS_BLOCKED = "blocked"
 
+#: 返修跑完却一个字没改，说明降级根本没落到生成器上。
+#: 这比"修了没修好"严重得多，必须单独报出来。
+REPAIR_MADE_NO_DIFFERENCE = (
+    "返修重建出来的候选与返修前内容完全相同——降级指令没有落到生成器上，这一轮返修等于没跑"
+)
+
 STAGE_BUILD = "build"
 STAGE_MAP = "map"
 STAGE_AUDIT = "audit"
@@ -121,6 +127,26 @@ def _open(path: Path) -> Any:
     if not Path(path).is_file():
         raise FirstDeliveryError(f"PDF 不存在: {path}")
     return fitz.open(path)
+
+
+def candidate_content_hash(path: Path) -> str:
+    """候选的内容哈希。
+
+    用页面文字、绘图对象数量、图像数量算，不用文件字节——PDF 里有时间戳，
+    字节每次都不一样，内容却可能一模一样。要判断"返修到底改没改东西"，
+    只能看内容。
+    """
+
+    import hashlib
+
+    digest = hashlib.sha256()
+    document = _open(path)
+    for index in range(document.page_count):
+        page = document[index]
+        digest.update(page.get_text("text").encode("utf-8"))
+        digest.update(str(len(page.get_drawings())).encode("ascii"))
+        digest.update(str(len(page.get_images())).encode("ascii"))
+    return digest.hexdigest()
 
 
 def _write_json(path: Path, payload: Any) -> str:
@@ -323,8 +349,16 @@ def run_first_delivery(
 
     result.rebuilds = 1
     result.candidate_path = str(repaired_path)
+    unchanged = candidate_content_hash(candidate_path) == (
+        candidate_content_hash(repaired_path)
+    )
     result.stages.append(
-        StageRecord(STAGE_REBUILD, True, f"重建候选 {repaired_path.name}")
+        StageRecord(
+            STAGE_REBUILD,
+            not unchanged,
+            f"重建候选 {repaired_path.name}"
+            + ("（内容与返修前完全相同）" if unchanged else ""),
+        )
     )
 
     second, evidence = verify_candidate(
@@ -354,6 +388,10 @@ def run_first_delivery(
         raise FirstDeliveryError("返修轮数上限失效，流程必须停下")
 
     result.problems = _collect_problems(second)
+    if unchanged:
+        result.problems.insert(0, REPAIR_MADE_NO_DIFFERENCE)
+        result.status = STATUS_BLOCKED
+        return result
     if outcome.regressions:
         result.problems.insert(
             0,
