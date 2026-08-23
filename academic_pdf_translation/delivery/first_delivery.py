@@ -548,11 +548,14 @@ def _apply_visual_gate(
     for item in gate.failed_items:
         result.manual_items.append(
             {
-                "element_id": "",
+                # 返修任务要指到具体元素。只写页码等于让人自己去找
+                #「第 7 页到底哪儿不对」。
+                "element_id": item.element_id,
                 "signal": "visual-fail",
                 "reason": (
                     f"视觉检查不通过：第 {item.candidate_page} 页 "
-                    f"{item.check_code}（{item.detail or '无说明'}），需要返修"
+                    f"{item.element_id} 的 {item.check_code}"
+                    f"（{item.detail or '无说明'}），需要返修"
                 ),
             }
         )

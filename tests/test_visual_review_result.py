@@ -480,6 +480,25 @@ def test_failed_visual_item_creates_repair_task(
     )
 
 
+def test_visual_failure_manual_item_keeps_element_id(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """返修任务要指到具体元素，不能只剩一个页码。"""
+
+    good, _ = _run_with_risky_plan(tmp_path, monkeypatch, None)
+    failed = _result(
+        _item(1, SIGNAL_DRAWING_BOUND, DECISION_FAIL, "图形对不上"),
+        binding=_identity(run_id="run-risky", sha=file_sha256(good)),
+    )
+    _, result = _run_with_risky_plan(tmp_path, monkeypatch, failed, good=good)
+    tasks = [
+        item for item in result.manual_items if item["signal"] == "visual-fail"
+    ]
+    assert tasks, "前提没成立：视觉 FAIL 应当产生返修任务"
+    assert [item["element_id"] for item in tasks] == ["e-1"]
+    assert all("e-1" in item["reason"] for item in tasks)
+
+
 def test_passed_visual_result_allows_next_gate(
     tmp_path: Path, monkeypatch
 ) -> None:
