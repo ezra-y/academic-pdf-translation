@@ -6,6 +6,7 @@ import shutil
 import tempfile
 from pathlib import Path
 
+import perf_trace
 from _common import (
     SCHEMA_VERSION,
     SkillError,
@@ -16,6 +17,7 @@ from _common import (
     utc_now,
     write_json,
 )
+from candidate_analysis import open_candidate_analysis
 from candidate_page_map import (
     candidate_page_map_path,
     validate_candidate_page_map,
@@ -255,7 +257,7 @@ def _archive_previous_iteration(
     return previous_iteration + 1, previous_hash
 
 
-def register_candidate(
+def _timed_register_candidate(
     job_dir: Path,
     generated_pdf: Path,
     renderer: str,
@@ -292,13 +294,14 @@ def register_candidate(
 
     fitz = import_fitz()
     try:
-        candidate_document = fitz.open(generated_pdf)
+        candidate_handle = open_candidate_analysis(generated_pdf)
+        candidate_document = candidate_handle.document
     except Exception as exc:
         raise SkillError(f"候选 PDF 无法打开: {exc}") from exc
     if candidate_document.page_count < 1:
         raise SkillError("候选 PDF 没有页面")
     candidate_page_count = candidate_document.page_count
-    candidate_document.close()
+    candidate_handle.release()
 
     files = job.get("files", {})
     sidecar_map_path = generated_pdf.with_suffix(".page-map.json")
@@ -468,6 +471,14 @@ def register_candidate(
         job["status"] = "translated"
         write_json(job_dir / "job.json", job)
     return provenance
+
+
+
+def register_candidate(*args, **kwargs):
+    """计时包装：阶段耗时进入性能基线，行为与实现完全一致。"""
+
+    with perf_trace.stage("register_candidate"):
+        return _timed_register_candidate(*args, **kwargs)
 
 
 def main() -> int:

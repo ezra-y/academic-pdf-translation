@@ -1,0 +1,84 @@
+{
+  "measurement": "P3 字号搜索：线性扫描 vs 两级二分",
+  "metric": "build_candidate 墙钟；每例重复 3 次（首排即通过一例 5 次）取最小值。本机噪声大，最小值比中位数更抗噪",
+  "candidate_grid": "zh-Hans：6 种行距 x 3 种字号 = 18 个组合",
+  "cases": [
+    {
+      "case": "single-column-body@0.45 (首排即通过)",
+      "outcome": "built",
+      "baseline_render_attempts": 1,
+      "optimized_render_attempts": 1,
+      "baseline_min_seconds": 0.143,
+      "optimized_min_seconds": 0.155,
+      "improvement_ratio": -0.0839,
+      "selection_identical": true
+    },
+    {
+      "case": "single-column-body@0.9",
+      "outcome": "built",
+      "baseline_render_attempts": 3,
+      "optimized_render_attempts": 3,
+      "baseline_min_seconds": 0.876,
+      "optimized_min_seconds": 0.755,
+      "improvement_ratio": 0.1381,
+      "selection_identical": true
+    },
+    {
+      "case": "single-column-body@1.1",
+      "outcome": "built",
+      "baseline_render_attempts": 12,
+      "optimized_render_attempts": 6,
+      "baseline_min_seconds": 5.425,
+      "optimized_min_seconds": 1.688,
+      "improvement_ratio": 0.6888,
+      "selection_identical": true
+    },
+    {
+      "case": "single-column-body@1.2",
+      "outcome": "built",
+      "baseline_render_attempts": 15,
+      "optimized_render_attempts": 5,
+      "baseline_min_seconds": 5.208,
+      "optimized_min_seconds": 1.483,
+      "improvement_ratio": 0.7152,
+      "selection_identical": true
+    },
+    {
+      "case": "two-column-body@0.9",
+      "outcome": "built",
+      "baseline_render_attempts": 15,
+      "optimized_render_attempts": 5,
+      "baseline_min_seconds": 4.065,
+      "optimized_min_seconds": 1.349,
+      "improvement_ratio": 0.6681,
+      "selection_identical": true
+    },
+    {
+      "case": "two-column-body@1.1",
+      "outcome": "no-fit",
+      "baseline_render_attempts": 18,
+      "optimized_render_attempts": 18,
+      "baseline_min_seconds": 5.534,
+      "optimized_min_seconds": 5.921,
+      "improvement_ratio": -0.0699,
+      "selection_identical": true
+    },
+    {
+      "case": "reference-heavy@0.9",
+      "outcome": "no-fit",
+      "baseline_render_attempts": 18,
+      "optimized_render_attempts": 18,
+      "baseline_min_seconds": 2.536,
+      "optimized_min_seconds": 3.121,
+      "improvement_ratio": -0.2307,
+      "selection_identical": true
+    }
+  ],
+  "built_only_improvement_ratio": 0.6545,
+  "equivalence": "成功案例选中的字号、行距、候选页数与线性扫描逐项一致；无解案例报错文本逐字一致。",
+  "fast_paths": "先试排原顺序第一个候选（达标即定案），再试排第一组最紧凑组合（达标则只在组内二分）。这两条让容易排版的论文不比线性扫描多排。",
+  "no_fit_policy": "二分只探测每组最紧凑组合，不足以断定无解。找不到可行组时强制回退完整线性扫描确认，已试排组合复用缓存，试排次数与基线相同（18 次）。",
+  "rejected_change": "曾把试排改为 io.BytesIO 以避免落盘。实测在写时复制文件系统上反而更慢（同样 18 次试排下慢 19%~32%），已回退为写临时文件加内存映射打开。",
+  "known_limitation": "单调性审计只覆盖实际试排过的组合。若两个都未被试排的组合之间存在单调性破坏，可能选到比穷举更小的字号；该结果仍满足页数上限且经过完整试排，不会产生未验证的版式。",
+  "unattributed": "无解路径试排次数与基线相同，但墙钟仍偏高约 13%~17%。直接计时显示 99% 以上耗时在未改动的试排函数内部，未能归因。该路径以硬失败结束，不进入交付。"
+}

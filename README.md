@@ -164,6 +164,7 @@ Workspace/
 
 ## 更多说明
 
+- 变更记录：[CHANGELOG.md](CHANGELOG.md)
 - Agent 执行流程：[SKILL.md](SKILL.md)
 - 质量门槛：[references/quality-contract.md](references/quality-contract.md)
 - 工作区和输出：[references/workspace.md](references/workspace.md)

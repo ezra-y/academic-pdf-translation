@@ -1,10 +1,24 @@
 from __future__ import annotations
 
-import argparse
-import shutil
+import sys
 from pathlib import Path
 
-from _common import (
+# 按 README 的写法 `python3 scripts/X.py` 运行时，sys.path 里只有 scripts/，
+# 没有仓库根，academic_pdf_translation 包就 import 不到。先把根加进去。
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+import argparse  # noqa: E402
+import shutil  # noqa: E402
+from pathlib import Path  # noqa: E402
+
+from academic_pdf_translation.contracts.enums import (  # noqa: E402
+    QUALITY_MODE_TO_REVIEW_MODE,
+    QualityMode,
+)
+from academic_pdf_translation.contracts.migration import MIGRATION_VERSION  # noqa: E402
+
+import perf_trace  # noqa: E402
+from _common import (  # noqa: E402
     SCHEMA_VERSION,
     SkillError,
     load_json,
@@ -13,17 +27,19 @@ from _common import (
     utc_now,
     write_json,
 )
-from extract_source_structure import extract_source_structure
-from pdf_profile import profile_pdf
-from prepare_translation_units import (
+from extract_source_structure import extract_source_structure  # noqa: E402
+from font_preparation import prepare_job_fonts  # noqa: E402
+from pdf_profile import profile_pdf  # noqa: E402
+from prepare_translation_units import (  # noqa: E402
     build_source_units,
     build_translation_skeleton,
 )
-from review_policy import (
+from review_policy import (  # noqa: E402
     post_repair_confirmation_template,
     review_choice_config,
 )
-from workspace import (
+from source_analysis import analysis_record, analyze_source  # noqa: E402
+from workspace import (  # noqa: E402
     TranslationWorkspace,
     open_workspace,
     workspace_job_dir,
@@ -119,7 +135,7 @@ def _existing_workspace_job(
     return matches[0] if matches else None
 
 
-def initialize_job(
+def _timed_initialize_job(
     source: Path,
     job_dir: Path,
     target_language: str,
@@ -148,11 +164,17 @@ def initialize_job(
             )
     canonical_language, profile = resolve_language_profile(target_language)
     try:
+        # 用户选的是质量档位；review.mode 由它派生，不再是两个独立开关。
+        quality_mode = QualityMode.parse(review)
         review_mode, max_review_rounds, max_repair_rounds = (
             review_choice_config(review)
         )
     except ValueError as exc:
         raise SkillError(str(exc)) from exc
+    if review_mode != QUALITY_MODE_TO_REVIEW_MODE[quality_mode]:
+        raise SkillError(
+            f"质量档位 {quality_mode.value} 与复审模式 {review_mode} 不一致"
+        )
     if producer_id is not None and not producer_id.strip():
         raise SkillError("producer_id 不能是空字符串")
     if review_mode in {"independent", "precise"} and not (
@@ -190,19 +212,22 @@ def initialize_job(
     if source != job_source:
         shutil.copy2(source, job_source)
 
-    manifest = profile_pdf(job_source)
-    structure = extract_source_structure(job_source)
+    analysis = analyze_source(job_source, sha256=source_hash)
+    manifest = profile_pdf(job_source, analysis=analysis)
+    structure = extract_source_structure(job_source, analysis=analysis)
     heuristic_candidate_pages = _merge_structure_candidates(
         manifest,
         structure,
     )
     write_json(job_dir / "source_manifest.json", manifest)
     write_json(job_dir / "source_structure.json", structure)
+    write_json(job_dir / "source-analysis.json", analysis_record(analysis))
     detected_source = manifest["source_language_estimate"]
     source_language = detected_source if source_language == "auto" else source_language
     files = {
         "source_manifest": "source_manifest.json",
         "source_structure": "source_structure.json",
+        "source_analysis": "source-analysis.json",
         "source_units": "source_units.json",
         "translation": "translation.json",
         "retained_source": "retained_source.json",
@@ -250,8 +275,12 @@ def initialize_job(
                 "notes": "",
             },
         },
+        "quality_mode": quality_mode.value,
+        "migration_version": MIGRATION_VERSION,
         "review": {
+            # review.mode 由 quality_mode 派生，不再单独选择。
             "mode": review_mode,
+            "derived_from_quality_mode": True,
             "choice_recorded": True,
             "producer_id": producer_id.strip() if producer_id else None,
             "max_review_rounds": max_review_rounds,
@@ -437,7 +466,23 @@ def initialize_job(
             },
         },
     )
+    # 字体在这里就解析：输入就绪检查跑在排版之前，如果留到排版时才选，
+    # 全新作业会永远卡在 SELECTED_FONTS_MISSING。
+    font_report = prepare_job_fonts(job_dir)
+    job = load_json(job_dir / "job.json")
+    job["quality"]["selected_fonts"] = font_report["selected_fonts"]
+    job["quality"]["selected_font_evidence"] = font_report[
+        "selected_font_evidence"
+    ]
     return job
+
+
+
+def initialize_job(*args, **kwargs):
+    """计时包装：阶段耗时进入性能基线，行为与实现完全一致。"""
+
+    with perf_trace.stage("initialize_job"):
+        return _timed_initialize_job(*args, **kwargs)
 
 
 def main() -> int:

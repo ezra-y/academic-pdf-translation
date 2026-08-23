@@ -15,6 +15,7 @@ from _common import (
     load_json,
     write_json,
 )
+from candidate_analysis import open_candidate_analysis
 from candidate_page_map import (
     candidate_pages_for_source,
     load_candidate_page_map,
@@ -26,7 +27,6 @@ from retained_source import (
     strip_retained_blocks,
 )
 from semantic_markers import infer_review_flags
-
 
 YEAR_RE = re.compile(
     r"(?<![A-Za-z0-9])(?:18|19|20)\d{2}(?:[’']?s|[a-z])?(?![A-Za-z0-9])",
@@ -192,8 +192,10 @@ def build_review_risk_report(job_dir: Path) -> dict:
                 )
 
     fitz = import_fitz()
-    source_doc = fitz.open(source_path)
-    candidate_doc = fitz.open(candidate_path)
+    source_handle = open_candidate_analysis(source_path, role="source")
+    candidate_handle = open_candidate_analysis(candidate_path)
+    source_doc = source_handle.document
+    candidate_doc = candidate_handle.document
     candidate_mapping = (
         load_candidate_page_map(
             job_dir,
@@ -412,8 +414,8 @@ def build_review_risk_report(job_dir: Path) -> dict:
             }
         )
 
-    source_doc.close()
-    candidate_doc.close()
+    source_handle.release()
+    candidate_handle.release()
     high_priority_flags = {
         "POSSIBLE_SUMMARY_OR_OMISSION",
         "URL_SEARCH_LOSS",

@@ -1,0 +1,13 @@
+{
+  "measurement": "P6 审查图单页缓存：返修后重新生成对照图",
+  "case": "单栏正文 12 页原文 / 17 页候选，只改动落在候选第 16 页的一个单元",
+  "metric": "make_review_sheet 墙钟与实际渲染页数",
+  "first_run": {"seconds": 2.12, "pages_rendered": 29, "cache_hits": 0},
+  "after_repair": {"seconds": 1.53, "pages_rendered": 1, "cache_hits": 39},
+  "improvement_ratio": 0.277,
+  "correctness": "单页指纹变化的页与逐像素比较得出的变化页完全一致（均为第 16 页）；原文 12 页跨候选版本全部复用。",
+  "cache_key": "页面内容流字节、页面宽高、旋转角、DPI",
+  "cache_location": "作业目录下的 review-page-cache/，刻意放在 comparisons/ 之外：注册新候选时会归档并清空 comparisons/，缓存放在里面就永远不会命中。",
+  "sheet_reuse": "审查图本身的复用只在同一候选版本内生效。注册新候选会清空 comparisons/，因此返修后仍会重新合成 sheet；主要收益来自单页渲染复用。",
+  "page_order": "审查 PDF 的页面顺序不变。"
+}

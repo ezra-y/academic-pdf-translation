@@ -1,0 +1,62 @@
+name: checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # 目标语言是中文：runner 上必须真有一种**可嵌入**的中文字体。
+      # Noto CJK 是 CFF/OTF 轮廓，ReportLab 嵌不进去；文鼎 uming 与
+      # 文泉驿正黑是 TrueType 轮廓，能嵌。三种都装，选哪一把由字体
+      # 解析的真实探测决定，不是这里指定。
+      - name: 安装中文字体
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            fonts-arphic-uming fonts-wqy-zenhei fonts-noto-cjk
+          fc-list :lang=zh : file | head -5
+
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest ruff
+
+      # 打包完整性必须在跑测试之前：pytest 会生成 __pycache__，
+      # 而这项检查的判据之一正是"交付物里没有字节码缓存"。
+      - name: 打包完整性
+        run: python scripts/check_bundle.py
+
+      - name: 代码风格
+        run: ruff check academic_pdf_translation
+
+      # 真实论文与作业受版权保护、不入库，依赖它们的用例会自行 skip。
+      # 其余用例（含合成语料与纯函数）在 CI 上必须全绿。
+      - name: 测试
+        run: python -m pytest tests/ -q
+
+      - name: 自检
+        run: python scripts/self_test.py
+
+      - name: 发布包与复核
+        run: |
+          python scripts/package_release.py \
+            --version 1.2.0-rc.1 \
+            --output dist/academic-pdf-translation-1.2.0-rc.1.zip
+          python scripts/check_release_archive.py \
+            dist/academic-pdf-translation-1.2.0-rc.1.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-archive
+          path: dist/*.zip

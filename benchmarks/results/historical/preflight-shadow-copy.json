@@ -1,0 +1,25 @@
+{
+  "measurement": "P1.4 预检临时副本：整目录复制 vs 硬链接",
+  "platform": "macOS / APFS",
+  "repeats": 5,
+  "metric": "shutil.copytree 墙钟中位数（秒）",
+  "cases": [
+    {
+      "case": "纯文字论文作业",
+      "job_bytes": 1460050,
+      "baseline_copytree_seconds": 0.00356,
+      "hardlink_copytree_seconds": 0.00432,
+      "improvement_ratio": -0.2135
+    },
+    {
+      "case": "带图论文作业（40 MB 源文件）",
+      "job_bytes": 43403099,
+      "baseline_copytree_seconds": 0.01341,
+      "hardlink_copytree_seconds": 0.00391,
+      "improvement_ratio": 0.7084
+    }
+  ],
+  "finding": "APFS 的 copy2 本身就是写时复制，小作业上硬链接反而略慢。硬链接只在源文件真正大时才有优势，且绝对耗时始终在毫秒级。预检临时副本不是瓶颈；计划中『大 PDF 因预检被完整复制多份』的假设在 APFS 上不成立。",
+  "decision": "保留硬链接：在带图论文上确有收益，在不做写时复制的文件系统（如 ext4）收益更大，且成本只有微秒级。不再按显式白名单只复制部分 JSON——测量显示复制不是瓶颈，而白名单会带来『将来某个检查需要的文件被漏掉』的静默风险。",
+  "safety": "该路径上的全部写入都走临时文件加 os.replace 或 unlink，硬链接会被断开而不会改动正式作业。self_test 现对作业目录（不含 staging）做逐文件哈希快照，断言预检前后逐字节不变。"
+}

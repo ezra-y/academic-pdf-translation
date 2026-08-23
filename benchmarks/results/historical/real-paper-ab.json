@@ -1,0 +1,105 @@
+{
+  "measurement": "真实开放获取论文上的 build_candidate A/B：main 01f797a vs perf/pipeline-optimization",
+  "corpus": "arXiv 五篇，覆盖单栏正文、双栏正文、表格与模型图、图片密集、参考文献密集",
+  "papers": {
+    "real-single-column-body": {
+      "file": "arxiv-1912.01703.pdf",
+      "source": "https://arxiv.org/abs/1912.01703"
+    },
+    "real-two-column-body": {
+      "file": "arxiv-1512.03385.pdf",
+      "source": "https://arxiv.org/abs/1512.03385"
+    },
+    "real-table-and-model": {
+      "file": "arxiv-1706.03762.pdf",
+      "source": "https://arxiv.org/abs/1706.03762"
+    },
+    "real-image-heavy": {
+      "file": "arxiv-1703.06870.pdf",
+      "source": "https://arxiv.org/abs/1703.06870"
+    },
+    "real-reference-heavy": {
+      "file": "arxiv-2005.14165.pdf",
+      "source": "https://arxiv.org/abs/2005.14165"
+    }
+  },
+  "translation_fixture": "恒等译文（原文照抄，目标语言 en）。用于在真实版式上跑通排版与 QA，不代表译文质量。",
+  "metric": "每例 3 次取最小值",
+  "cases": [
+    {
+      "case": "real-single-column-body",
+      "outcome": "built",
+      "source_pages": 12,
+      "main_render_attempts": 1,
+      "opt_render_attempts": 1,
+      "main_min_seconds": 0.204,
+      "opt_min_seconds": 0.203,
+      "improvement_ratio": 0.0049,
+      "candidate_pages": 16,
+      "selected_font_pt": 10.5,
+      "selected_leading": 1.5,
+      "page_streams_identical": true,
+      "pixel_diff_pages": []
+    },
+    {
+      "case": "real-two-column-body",
+      "outcome": "built",
+      "source_pages": 12,
+      "main_render_attempts": 25,
+      "opt_render_attempts": 7,
+      "main_min_seconds": 8.192,
+      "opt_min_seconds": 2.241,
+      "improvement_ratio": 0.7264,
+      "candidate_pages": 19,
+      "selected_font_pt": 8.5,
+      "selected_leading": 1.3,
+      "page_streams_identical": true,
+      "pixel_diff_pages": []
+    },
+    {
+      "case": "real-table-and-model",
+      "outcome": "built",
+      "source_pages": 15,
+      "main_render_attempts": 1,
+      "opt_render_attempts": 1,
+      "main_min_seconds": 0.251,
+      "opt_min_seconds": 0.247,
+      "improvement_ratio": 0.0159,
+      "candidate_pages": 24,
+      "selected_font_pt": 10.5,
+      "selected_leading": 1.5,
+      "page_streams_identical": true,
+      "pixel_diff_pages": []
+    },
+    {
+      "case": "real-image-heavy",
+      "outcome": "no-fit",
+      "source_pages": 12,
+      "main_render_attempts": 25,
+      "opt_render_attempts": 25,
+      "main_min_seconds": 9.144,
+      "opt_min_seconds": 9.174,
+      "improvement_ratio": -0.0033,
+      "error_identical": true
+    },
+    {
+      "case": "real-reference-heavy",
+      "outcome": "built",
+      "source_pages": 75,
+      "main_render_attempts": 1,
+      "opt_render_attempts": 1,
+      "main_min_seconds": 1.221,
+      "opt_min_seconds": 1.218,
+      "improvement_ratio": 0.0025,
+      "candidate_pages": 81,
+      "selected_font_pt": 10.5,
+      "selected_leading": 1.5,
+      "page_streams_identical": true,
+      "pixel_diff_pages": []
+    }
+  ],
+  "total_main_min_seconds": 19.01,
+  "total_opt_min_seconds": 13.08,
+  "total_improvement_ratio": 0.3119,
+  "note": "原论文与渲染页图受版权保护，不随仓库分发；视觉抽查材料保存在本机 benchmarks/results/real-visual/。"
+}

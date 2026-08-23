@@ -8,25 +8,34 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any
 
+import perf_trace
 from _common import (
     SkillError,
     complex_payload_replaced_unit_ids,
-    import_fitz,
     internal_job_path,
     load_json,
     write_json,
 )
+from candidate_analysis import open_candidate_analysis
 from candidate_page_map import (
     candidate_pages_for_source,
     load_candidate_page_map,
 )
 from content_anchors import (
     acronyms as extract_acronyms,
+)
+from content_anchors import (
     anchors_present,
-    citation_numbers as extract_citation_numbers,
     converted_statistics,
-    present_acronyms as extract_present_acronyms,
     required_anchors,
+)
+from content_anchors import (
+    citation_numbers as extract_citation_numbers,
+)
+from content_anchors import (
+    present_acronyms as extract_present_acronyms,
+)
+from content_anchors import (
     statistics as extract_statistics,
 )
 from extract_source_structure import extract_source_structure
@@ -37,7 +46,7 @@ from retained_source import (
     retained_regions_by_page,
     strip_retained_blocks,
 )
-
+from translation_truthfulness import evaluate_translation
 
 CONTENT_RE = re.compile(r"[\w\u3400-\u9fff]", re.UNICODE)
 SOURCE_SENTENCE_RE = re.compile(r"(?<=[.!?])(?:[\"')\]]+)?\s+")
@@ -340,13 +349,19 @@ def _page_translation(units: list[dict[str, Any]]) -> str:
 
 
 def _is_reference_unit(unit: dict[str, Any]) -> bool:
+    """只有结构化证据才算参考文献单元。
+
+    自由文本的 keep_source_reason 不再有效：它曾经能把任意正文单元变成
+    “参考文献”，从而跳过后面全部检查。
+    """
+
     kind = str(unit.get("kind") or "").lower()
-    return bool(
-        kind.startswith(("reference", "bibliography"))
-        or (
-            not str(unit.get("translation") or "").strip()
-            and str(unit.get("keep_source_reason") or "").strip()
-        )
+    if kind.startswith(("reference", "bibliography")):
+        return True
+    return (
+        not str(unit.get("translation") or "").strip()
+        and str(unit.get("keep_source_code") or "").strip()
+        == "bibliography-entry"
     )
 
 
@@ -470,7 +485,14 @@ def _unit_compression_flags(
     ratio: float,
     hard_floor: float,
     review_floor: float,
+    *,
+    validated_keep_source: bool = False,
 ) -> list[str]:
+    # 通过真实性检查的保留原文单元本来就没有译文，拿它衡量"译文压缩"没有意义。
+    # 这里只信真实性检查给出的判定：自己写个理由把译文清空的单元，
+    # 在同一次审查里已经被判为 invalid，整篇照样进返修。
+    if validated_keep_source:
+        return []
     compression_exempt = kind.lower() in {
         "title",
         "subtitle",
@@ -569,7 +591,7 @@ def _repair_tasks(pages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return tasks
 
 
-def build_completeness_audit(
+def _timed_build_completeness_audit(
     job_dir: Path,
     *,
     include_candidate: bool = True,
@@ -603,7 +625,8 @@ def build_completeness_audit(
         structure = load_json(structure_path)
     else:
         structure = extract_source_structure(source_path)
-    source_doc = import_fitz().open(source_path)
+    source_analysis = open_candidate_analysis(source_path, role="source")
+    source_doc = source_analysis.document
     retained_payloads = extract_retained_regions(
         source_doc,
         retained,
@@ -618,15 +641,17 @@ def build_completeness_audit(
             units_by_page[page].append(unit)
 
     candidate_path = internal_job_path(job_dir, job["files"]["candidate"])
-    fitz = import_fitz()
     candidate_is_current_stage = (
         include_candidate
         and _candidate_stage_has_current_pdf(job.get("status"))
     )
-    candidate_doc = (
-        fitz.open(candidate_path)
+    candidate_handle = (
+        open_candidate_analysis(candidate_path)
         if candidate_is_current_stage and candidate_path.is_file()
         else None
+    )
+    candidate_doc = (
+        candidate_handle.document if candidate_handle is not None else None
     )
     candidate_mapping = (
         load_candidate_page_map(
@@ -689,6 +714,16 @@ def build_completeness_audit(
     anchor_map = {
         page: _anchors(text)
         for page, text in translations.items()
+    }
+
+    truthfulness = evaluate_translation(
+        translation,
+        retained_source=retained,
+    )
+    validated_keep_source_ids = {
+        verdict["unit_id"]
+        for verdict in truthfulness["units"]
+        if verdict["state"] == "kept-source"
     }
 
     pages: list[dict[str, Any]] = []
@@ -825,6 +860,9 @@ def build_completeness_audit(
                 unit_ratio,
                 hard_floor,
                 review_floor,
+                validated_keep_source=(
+                    str(unit.get("id") or "") in validated_keep_source_ids
+                ),
             )
             source_unit_stats = _stats(unit_source)
             if (
@@ -1096,9 +1134,9 @@ def build_completeness_audit(
             }
         )
 
-    source_doc.close()
-    if candidate_doc is not None:
-        candidate_doc.close()
+    source_analysis.release()
+    if candidate_handle is not None:
+        candidate_handle.release()
     flag_counts = Counter(
         flag for page in pages for flag in page["flags"]
     )
@@ -1111,9 +1149,11 @@ def build_completeness_audit(
     repair_tasks = _repair_tasks(
         [page for page in pages if page["page"] in repair_pages]
     )
+    # 译文真实性不通过时，整篇直接进入返修，不看页级比例结论。
+    # 这一步不读取 translation.coverage.complete：它由制作方自报，不作数。
     decision = (
         "NEEDS_REPAIR"
-        if repair_pages
+        if repair_pages or not truthfulness["complete"]
         else "REVIEW"
         if review_pages
         else "READY"
@@ -1122,6 +1162,35 @@ def build_completeness_audit(
         "schema_version": "1.0",
         "job_id": job.get("job_id"),
         "decision": decision,
+        "translation_truthfulness": {
+            "complete": truthfulness["complete"],
+            "cross_language": truthfulness["cross_language"],
+            "unit_count": truthfulness["unit_count"],
+            "validated_translated_units": truthfulness[
+                "validated_translated_units"
+            ],
+            "validated_kept_source_units": truthfulness[
+                "validated_kept_source_units"
+            ],
+            "invalid_or_unverified_units": truthfulness[
+                "invalid_or_unverified_units"
+            ],
+            "document_target_script_ratio": truthfulness[
+                "document_target_script_ratio"
+            ],
+            "kept_source_content_ratio": truthfulness[
+                "kept_source_content_ratio"
+            ],
+            "thresholds": truthfulness["thresholds"],
+            "problem_counts": dict(
+                sorted(
+                    Counter(
+                        problem["code"] for problem in truthfulness["problems"]
+                    ).items()
+                )
+            ),
+            "problems": truthfulness["problems"][:200],
+        },
         "page_count": len(pages),
         "repair_pages": repair_pages,
         "review_pages": review_pages,
@@ -1185,6 +1254,13 @@ def _markdown(report: dict[str, Any]) -> str:
     lines.extend(["", report["interpretation"], ""])
     return "\n".join(lines)
 
+
+
+def build_completeness_audit(*args, **kwargs):
+    """计时包装：阶段耗时进入性能基线，行为与实现完全一致。"""
+
+    with perf_trace.stage("completeness_audit"):
+        return _timed_build_completeness_audit(*args, **kwargs)
 
 def main() -> int:
     parser = argparse.ArgumentParser(

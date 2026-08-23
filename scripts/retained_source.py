@@ -1,15 +1,26 @@
 from __future__ import annotations
 
+import sys
+from pathlib import Path as _Path
+
+# 按 README 的写法直接跑时 sys.path 里没有仓库根，包就 import 不到。
+sys.path.insert(0, str(_Path(__file__).resolve().parent.parent))
+
 import re
 import unicodedata
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
+import perf_trace
 from _common import SkillError, import_fitz
+from candidate_analysis import open_candidate_analysis
 
-
-REFERENCE_CATEGORIES = {"references", "bibliography"}
+# 文献类目名的唯一定义已移入 academic_pdf_translation.render.reference_data，
+# 这里再导出保持调用路径不变。
+from academic_pdf_translation.render.reference_data import (  # noqa: F401
+    REFERENCE_CATEGORIES,
+)
 REFERENCE_HEADING_RE = re.compile(
     r"^\s*(?:references|bibliography|literature\s+cited|works\s+cited)\s*$",
     re.IGNORECASE,
@@ -635,13 +646,18 @@ def _records_covered_by_source(
     )
 
 
-def extract_retained_regions(
+def _timed_extract_retained_regions(
     source: Path | Any,
     retained: dict[str, Any],
     translation: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     close_document = isinstance(source, Path)
-    document = import_fitz().open(source) if close_document else source
+    handle = (
+        open_candidate_analysis(source, role="source")
+        if close_document
+        else None
+    )
+    document = handle.document if handle is not None else source
     translated_pages = _translation_by_page(translation)
     translated_source_pages = _translated_source_by_page(translation)
     payloads: list[dict[str, Any]] = []
@@ -745,8 +761,8 @@ def extract_retained_regions(
                 }
             )
     finally:
-        if close_document:
-            document.close()
+        if handle is not None:
+            handle.release()
     return payloads
 
 
@@ -866,3 +882,10 @@ def retained_region_covers_page(
     width_ratio = max(0.0, x1 - x0) / max(page_width, 1.0)
     height_ratio = max(0.0, y1 - y0) / max(page_height, 1.0)
     return width_ratio >= 0.82 and height_ratio >= 0.78
+
+
+def extract_retained_regions(*args, **kwargs):
+    """计时包装：阶段耗时进入性能基线，行为与实现完全一致。"""
+
+    with perf_trace.stage("retained_region_extract"):
+        return _timed_extract_retained_regions(*args, **kwargs)

@@ -1,10 +1,20 @@
 from __future__ import annotations
 
-import argparse
+import sys
 from pathlib import Path
 
-from _common import SkillError, load_json, utc_now, write_json
-from review_policy import (
+# 按 README 的写法 `python3 scripts/X.py` 运行时，sys.path 里只有 scripts/，
+# 没有仓库根，academic_pdf_translation 包就 import 不到。先把根加进去。
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+import argparse  # noqa: E402
+from pathlib import Path  # noqa: E402
+
+from academic_pdf_translation.contracts.enums import QualityMode  # noqa: E402
+from academic_pdf_translation.contracts.migration import MIGRATION_VERSION  # noqa: E402
+
+from _common import SkillError, load_json, utc_now, write_json  # noqa: E402
+from review_policy import (  # noqa: E402
     post_repair_confirmation_template,
     review_choice_config,
 )
@@ -73,8 +83,14 @@ def set_review_mode(
             "previous_mode": previous_mode,
             "reason": "用户在正式收尾后要求增加完整独立审查",
         }
+    # 用户改的是质量档位；review.mode 由它派生，两个字段必须一起更新，
+    # 否则一致性检查会（正确地）把作业判为不一致。
+    quality_mode = QualityMode.parse(review)
+    job["quality_mode"] = quality_mode.value
+    job["migration_version"] = MIGRATION_VERSION
     job["review"] = {
         "mode": mode,
+        "derived_from_quality_mode": True,
         "choice_recorded": True,
         "producer_id": effective_producer,
         "max_review_rounds": max_review_rounds,

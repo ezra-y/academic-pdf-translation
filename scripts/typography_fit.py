@@ -58,6 +58,186 @@ def descending_values(upper: float, lower: float, step: float) -> list[float]:
     return values
 
 
+def candidate_groups(
+    *,
+    body_font_range_pt: tuple[float, float],
+    body_font_step_pt: float,
+    leading_range: tuple[float, float],
+    leading_step: float,
+    preferred_body_font_pt: float | None = None,
+    preferred_leading: float | None = None,
+    selection_priority: str = "leading-then-font",
+) -> list[list[tuple[float, float]]]:
+    """构造字号与行距的候选搜索空间，按外层变量分组。
+
+    这是全项目唯一的候选网格定义。排版器和文档级选型都从这里取值，
+    避免两处各写一套而慢慢分叉。
+
+    - 组间按外层变量降序，组内按内层变量降序；
+    - `preferred_body_font_pt` 会把字号上界收到"偏好值加 1pt"以内；
+    - `preferred_leading` 会并入行距集合，再整体降序排列。
+
+    返回值是分组后的候选表；需要原顺序的一维列表时用 `flatten_candidates`。
+    """
+
+    body_lower, body_upper = body_font_range_pt
+    leading_lower, leading_upper = leading_range
+    if preferred_body_font_pt is not None:
+        body_upper = min(body_upper, float(preferred_body_font_pt) + 1.0)
+    body_sizes = descending_values(body_upper, body_lower, body_font_step_pt)
+    leading_ratios = descending_values(
+        leading_upper,
+        leading_lower,
+        leading_step,
+    )
+    if preferred_leading is not None:
+        leading_ratios = sorted(
+            set(leading_ratios) | {round(float(preferred_leading), 3)},
+            reverse=True,
+        )
+
+    if selection_priority == "leading-then-font":
+        return [
+            [(body_size, leading_ratio) for body_size in body_sizes]
+            for leading_ratio in leading_ratios
+        ]
+    if selection_priority == "font-then-leading":
+        return [
+            [
+                (body_size, leading_ratio)
+                for leading_ratio in leading_ratios
+            ]
+            for body_size in body_sizes
+        ]
+    raise TypographyFitError(
+        "selection_priority 仅支持 leading-then-font 或 font-then-leading"
+    )
+
+
+def flatten_candidates(
+    groups: list[list[tuple[float, float]]],
+) -> list[tuple[float, float]]:
+    return [candidate for group in groups for candidate in group]
+
+
+def search_first_acceptable(
+    *,
+    groups: list[list[tuple[float, float]]],
+    evaluate: Callable[[int, int], dict | None],
+) -> tuple[tuple[int, int] | None, str, str]:
+    """在候选表中找出原顺序里第一个可接受的组合。
+
+    `evaluate(组下标, 组内下标)` 由调用方实现，返回含 `fits` 的字典；
+    带上 `page_count` 时还会参与单调性审计。返回 None 表示这次测量失败。
+
+    依据两条单调性：同一组内内层变量变小时页数不增；组间外层变量变小时，
+    该组最紧凑组合的页数也不增。因此可以先在组之间二分，再在组内二分，
+    用对数次测量得到与线性扫描相同的结果。
+
+    每次测量都进入单调性审计。观测到"内层变量更小却页数更多"或"更靠后的
+    组反而更厚"就立即回退，让调用方改用完整线性扫描并记录原因。
+
+    两条快速路径保证容易排版的文档不比线性扫描多测：先测原顺序第一个
+    候选（达标即定案），再测第一组最紧凑的组合（达标则只在组内二分）。
+
+    已知局限：审计只覆盖实际测量过的组合。若两个都未被测量的组合之间存在
+    单调性破坏，本搜索可能选到比穷举更靠后的组合；它仍然通过了真实测量。
+
+    "没有任何组合达标"这一结论不由本函数给出。二分只测每组最紧凑的组合，
+    据此断定无解会把本可排版的文档误报为失败，因此这种情况一律返回
+    linear-fallback，由调用方用完整线性扫描确认。
+    """
+
+    observed: dict[tuple[int, int], int] = {}
+    violation = ""
+    if not groups:
+        return None, "linear-fallback", "no-typography-candidates"
+
+    def probe(group_index: int, item_index: int) -> dict | None:
+        nonlocal violation
+        result = evaluate(group_index, item_index)
+        if result is None:
+            return None
+        pages = result.get("page_count")
+        if not isinstance(pages, int):
+            return result
+        observed[(group_index, item_index)] = pages
+        for (other_group, other_item), other_pages in observed.items():
+            if other_group == group_index:
+                if other_item < item_index and other_pages < pages:
+                    violation = "page-count-not-monotonic-within-leading"
+                elif other_item > item_index and other_pages > pages:
+                    violation = "page-count-not-monotonic-within-leading"
+                continue
+            last_item = len(groups[group_index]) - 1
+            other_last = len(groups[other_group]) - 1
+            if item_index != last_item or other_item != other_last:
+                continue
+            if other_group < group_index and other_pages < pages:
+                violation = "page-count-not-monotonic-across-leading"
+            elif other_group > group_index and other_pages > pages:
+                violation = "page-count-not-monotonic-across-leading"
+        return result
+
+    first = probe(0, 0)
+    if first is None:
+        return None, "linear-fallback", "render-failed-during-search"
+    if first["fits"]:
+        return (0, 0), "bounded-binary", ""
+
+    target_group: int | None = None
+    leading_group = probe(0, len(groups[0]) - 1)
+    if leading_group is None:
+        return None, "linear-fallback", "render-failed-during-search"
+    if leading_group["fits"]:
+        target_group = 0
+
+    low = 1
+    high = len(groups) - 1 if target_group is None else 0
+    while low <= high:
+        middle = (low + high) // 2
+        result = probe(middle, len(groups[middle]) - 1)
+        if result is None:
+            return None, "linear-fallback", "render-failed-during-search"
+        if result["fits"]:
+            target_group = middle
+            high = middle - 1
+        else:
+            low = middle + 1
+    if violation:
+        return None, "linear-fallback", violation
+    if target_group is None:
+        return None, "linear-fallback", "no-feasible-group-verify-exhaustively"
+
+    low = 0
+    high = len(groups[target_group]) - 1
+    target_item = high
+    while low <= high:
+        middle = (low + high) // 2
+        result = probe(target_group, middle)
+        if result is None:
+            return None, "linear-fallback", "render-failed-during-search"
+        if result["fits"]:
+            target_item = middle
+            high = middle - 1
+        else:
+            low = middle + 1
+    if violation:
+        return None, "linear-fallback", violation
+
+    if target_item > 0:
+        previous = probe(target_group, target_item - 1)
+    elif target_group > 0:
+        previous = probe(target_group - 1, len(groups[target_group - 1]) - 1)
+    else:
+        previous = None
+    if violation:
+        return None, "linear-fallback", violation
+    if previous is not None and previous["fits"]:
+        return None, "linear-fallback", "earlier-candidate-also-fits"
+    return (target_group, target_item), "bounded-binary", ""
+
+
 def select_document_typography(
     page_profiles: Iterable[PageTextProfile],
     measure_page: MeasurePage,
@@ -79,28 +259,15 @@ def select_document_typography(
 
     body_lower, body_upper = body_font_range_pt
     leading_lower, leading_upper = leading_range
-    body_sizes = descending_values(body_upper, body_lower, body_font_step_pt)
-    leading_ratios = descending_values(
-        leading_upper,
-        leading_lower,
-        leading_step,
-    )
-    if selection_priority == "leading-then-font":
-        candidates = [
-            (body_size, leading_ratio)
-            for leading_ratio in leading_ratios
-            for body_size in body_sizes
-        ]
-    elif selection_priority == "font-then-leading":
-        candidates = [
-            (body_size, leading_ratio)
-            for body_size in body_sizes
-            for leading_ratio in leading_ratios
-        ]
-    else:
-        raise TypographyFitError(
-            "selection_priority 仅支持 leading-then-font 或 font-then-leading"
+    candidates = flatten_candidates(
+        candidate_groups(
+            body_font_range_pt=body_font_range_pt,
+            body_font_step_pt=body_font_step_pt,
+            leading_range=leading_range,
+            leading_step=leading_step,
+            selection_priority=selection_priority,
         )
+    )
 
     ordered_profiles = sorted(
         profiles,

@@ -4,21 +4,21 @@ import argparse
 from pathlib import Path
 from typing import Any
 
+import perf_trace
 from _common import (
     SkillError,
     character_counts,
-    import_fitz,
     infer_source_language,
-    sha256_file,
     utc_now,
     write_json,
 )
+from source_analysis import PageScan, SourceAnalysis, analyze_source
 
 
-def _image_area_ratio(page: Any) -> float:
-    page_area = max(float(page.rect.width * page.rect.height), 1.0)
+def _image_area_ratio(scan: PageScan) -> float:
+    page_area = max(scan.width * scan.height, 1.0)
     total = 0.0
-    for info in page.get_image_info(xrefs=True):
+    for info in scan.image_info:
         bbox = info.get("bbox")
         if not bbox:
             continue
@@ -27,9 +27,12 @@ def _image_area_ratio(page: Any) -> float:
     return round(min(total / page_area, 1.0), 4)
 
 
-def _page_profile(page: Any, index: int) -> dict[str, Any]:
-    text_dict = page.get_text("dict")
-    blocks = [block for block in text_dict["blocks"] if block.get("type") == 0]
+def _page_profile(scan: PageScan) -> dict[str, Any]:
+    blocks = [
+        block
+        for block in scan.text_dict["blocks"]
+        if block.get("type") == 0
+    ]
     spans = [
         span
         for block in blocks
@@ -39,10 +42,10 @@ def _page_profile(page: Any, index: int) -> dict[str, Any]:
     ]
     text = "\n".join(span["text"] for span in spans)
     counts = character_counts(text)
-    image_ratio = _image_area_ratio(page)
-    drawings = len(page.get_drawings())
-    images = len(page.get_images(full=True))
-    page_width = float(page.rect.width)
+    image_ratio = _image_area_ratio(scan)
+    drawings = scan.drawing_count
+    images = scan.image_count
+    page_width = scan.width
 
     left_chars = 0
     right_chars = 0
@@ -84,10 +87,10 @@ def _page_profile(page: Any, index: int) -> dict[str, Any]:
     )
 
     return {
-        "page": index,
-        "width": round(float(page.rect.width), 3),
-        "height": round(float(page.rect.height), 3),
-        "rotation": int(page.rotation),
+        "page": scan.number,
+        "width": round(scan.width, 3),
+        "height": round(scan.height, 3),
+        "rotation": scan.rotation,
         "text_chars": text_chars,
         "character_counts": counts,
         "text_blocks": len(blocks),
@@ -102,44 +105,53 @@ def _page_profile(page: Any, index: int) -> dict[str, Any]:
     }
 
 
-def profile_pdf(source: Path) -> dict[str, Any]:
-    fitz = import_fitz()
-    if not source.is_file():
-        raise SkillError(f"PDF 不存在: {source}")
-    try:
-        document = fitz.open(source)
-    except Exception as exc:
-        raise SkillError(f"无法打开 PDF: {source}: {exc}") from exc
-    if document.page_count < 1:
-        raise SkillError(f"PDF 没有页面: {source}")
+def profile_pdf(
+    source: Path,
+    *,
+    analysis: SourceAnalysis | None = None,
+) -> dict[str, Any]:
+    """生成版式与文本层画像。
 
-    pages = [_page_profile(page, index) for index, page in enumerate(document, 1)]
-    all_text = "\n".join(page.get_text("text") for page in document)
-    scan_pages = [page["page"] for page in pages if page["scan_risk"]]
-    complex_pages = [page["page"] for page in pages if page["complex_page"]]
-    form_pages = [page["page"] for page in pages if page["form_table_risk"]]
-    page_sizes = {(page["width"], page["height"]) for page in pages}
+    传入 `analysis` 时复用已完成的单次原文扫描，不再重复打开 PDF。
+    """
 
-    reasons: list[str] = []
-    if len(scan_pages) / len(pages) >= 0.25:
-        route = "scan-custom"
-        reasons.append("至少四分之一页面缺少可靠文本层并以图像为主")
-    elif form_pages or len(complex_pages) / len(pages) >= 0.4:
-        route = "custom-layout"
-        reasons.append("固定表格/表单或复杂页占比较高")
-    elif complex_pages or len(page_sizes) > 1:
-        route = "hybrid-complex-pages"
-        reasons.append("存在局部复杂页或多种页面尺寸")
-    else:
-        route = "standard-auto"
-        reasons.append("文本层和页面结构整体规则")
+    if analysis is None:
+        analysis = analyze_source(source)
+    elif Path(source).resolve() != analysis.path:
+        raise SkillError("传入的原文扫描结果与目标 PDF 不一致")
+
+    with perf_trace.stage("source_profile"):
+        pages = [_page_profile(scan) for scan in analysis.pages]
+        all_text = analysis.all_plain_text()
+        scan_pages = [page["page"] for page in pages if page["scan_risk"]]
+        complex_pages = [
+            page["page"] for page in pages if page["complex_page"]
+        ]
+        form_pages = [
+            page["page"] for page in pages if page["form_table_risk"]
+        ]
+        page_sizes = {(page["width"], page["height"]) for page in pages}
+
+        reasons: list[str] = []
+        if len(scan_pages) / len(pages) >= 0.25:
+            route = "scan-custom"
+            reasons.append("至少四分之一页面缺少可靠文本层并以图像为主")
+        elif form_pages or len(complex_pages) / len(pages) >= 0.4:
+            route = "custom-layout"
+            reasons.append("固定表格/表单或复杂页占比较高")
+        elif complex_pages or len(page_sizes) > 1:
+            route = "hybrid-complex-pages"
+            reasons.append("存在局部复杂页或多种页面尺寸")
+        else:
+            route = "standard-auto"
+            reasons.append("文本层和页面结构整体规则")
 
     return {
         "schema_version": "1.0",
         "generated_at": utc_now(),
-        "source": str(source.resolve()),
-        "sha256": sha256_file(source),
-        "page_count": document.page_count,
+        "source": str(analysis.path),
+        "sha256": analysis.sha256,
+        "page_count": analysis.page_count,
         "source_language_estimate": infer_source_language(all_text),
         "page_size_variants": [
             {"width": width, "height": height}

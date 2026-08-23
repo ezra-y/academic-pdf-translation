@@ -1,13 +1,29 @@
 from __future__ import annotations
 
-import argparse
-import re
-import unicodedata
-from difflib import SequenceMatcher
+import sys
 from pathlib import Path
-from typing import Any
 
-from _common import (
+# 按 README 的写法 `python3 scripts/X.py` 运行时，sys.path 里只有 scripts/，
+# 没有仓库根，academic_pdf_translation 包就 import 不到。先把根加进去。
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+import argparse  # noqa: E402
+import re  # noqa: E402
+import unicodedata  # noqa: E402
+from difflib import SequenceMatcher  # noqa: E402
+from pathlib import Path  # noqa: E402
+from typing import Any  # noqa: E402
+
+from academic_pdf_translation.contracts.enums import (  # noqa: E402
+    QUALITY_MODE_TO_REVIEW_MODE,
+    QualityMode,
+)
+from academic_pdf_translation.verify.render_contract import (  # noqa: E402
+    complex_view_is_current,
+)
+
+import perf_trace  # noqa: E402
+from _common import (  # noqa: E402
     COMPLEX_CONTENT_KINDS,
     COMPLEX_CONTENT_METHODS,
     ROUTES,
@@ -23,18 +39,22 @@ from _common import (
     sha256_file,
     write_json,
 )
-from candidate_page_map import (
+from candidate_analysis import open_candidate_analysis  # noqa: E402
+from candidate_page_map import (  # noqa: E402
     candidate_pages_for_unit,
     load_candidate_page_map,
 )
-from set_complex_payload import validate_complex_payload_item
-from semantic_markers import infer_review_flags, validate_terminology
-from i18n import all_messages
-from review_policy import (
+from i18n import all_messages  # noqa: E402
+from review_policy import (  # noqa: E402
     REVIEW_MODE_LIMITS,
     validate_post_repair_confirmation,
 )
-
+from semantic_markers import infer_review_flags, validate_terminology  # noqa: E402
+from set_complex_payload import validate_complex_payload_item  # noqa: E402
+from translation_truthfulness import (  # noqa: E402
+    TruthfulnessError,
+    evaluate_translation,
+)
 
 STAGE_ORDER = {
     "draft": 0,
@@ -299,6 +319,21 @@ def _review_mode(job: dict, errors: list[str]) -> str:
         return "independent"
     if review.get("choice_recorded") is not True:
         errors.append("开始翻译前必须记录用户选择的检查方式")
+    # 质量档位与复审模式必须一致：review.mode 由 quality_mode 派生。
+    quality_mode = job.get("quality_mode")
+    if quality_mode:
+        try:
+            expected_mode = QUALITY_MODE_TO_REVIEW_MODE[
+                QualityMode.parse(quality_mode)
+            ]
+        except ValueError as exc:
+            errors.append(str(exc))
+        else:
+            if expected_mode != str(mode):
+                errors.append(
+                    f"job.quality_mode={quality_mode!r} 派生的复审模式是 "
+                    f"{expected_mode!r}，与 job.review.mode={mode!r} 不一致"
+                )
     expected_review_rounds, expected_repair_rounds = REVIEW_MODE_LIMITS[
         str(mode)
     ]
@@ -345,6 +380,7 @@ def _validate_translation(
     page_count: int,
     target_language: str,
     errors: list[str],
+    retained_source: Any = None,
 ) -> dict:
     translation = _required_mapping(
         translation,
@@ -385,15 +421,25 @@ def _validate_translation(
         if not isinstance(source, str) or not source.strip():
             errors.append(f"{label}.source 不能为空")
         translated = unit.get("translation")
+        keep_code = unit.get("keep_source_code")
         keep_reason = unit.get("keep_source_reason")
-        if not (
-            isinstance(translated, str)
-            and translated.strip()
-            or isinstance(keep_reason, str)
-            and keep_reason.strip()
-        ):
-            errors.append(f"{label} 既没有译文，也没有保留原文理由")
-        elif isinstance(translated, str) and translated.strip():
+        has_translation = isinstance(translated, str) and translated.strip()
+        has_keep_code = isinstance(keep_code, str) and keep_code.strip()
+        has_keep_reason = isinstance(keep_reason, str) and keep_reason.strip()
+        if not has_translation and not has_keep_code:
+            if has_keep_reason:
+                # 旧作业迁移：自由文本理由不能单独豁免，必须补写结构化 code。
+                errors.append(
+                    f"{label} 只有自由文本 keep_source_reason，缺少结构化 "
+                    "keep_source_code。旧作业请为每个保留单元补写 "
+                    "keep_source_code（取值见 translation_truthfulness."
+                    "KEEP_SOURCE_CODES），或改为提供译文"
+                )
+            else:
+                errors.append(f"{label} 既没有译文，也没有保留原文声明")
+        elif has_translation and has_keep_code:
+            errors.append(f"{label} 不能同时给出译文和 keep_source_code")
+        elif has_translation:
             translated_count += 1
             for issue_label, excerpt in _unsourced_review_commentary(unit):
                 errors.append(
@@ -427,9 +473,50 @@ def _validate_translation(
         "translation.coverage",
         errors,
     )
+    # 不相信作业自报的 complete：这里独立重算一次译文真实性。
+    truthfulness = None
+    try:
+        truthfulness = evaluate_translation(
+            translation,
+            retained_source=retained_source,
+        )
+    except (TruthfulnessError, SkillError) as exc:
+        errors.append(f"译文真实性检查无法执行: {exc}")
+    if truthfulness is not None:
+        for problem in truthfulness["problems"][:60]:
+            location = problem.get("unit_id") or problem.get("batch_id") or "全篇"
+            errors.append(
+                f"译文真实性检查未通过 [{problem['code']}] {location}: "
+                f"{problem['message']}"
+            )
+        if truthfulness["invalid_or_unverified_units"]:
+            errors.append(
+                "存在未通过译文真实性检查的单元 "
+                f"{truthfulness['invalid_or_unverified_units']} 个；"
+                "完整性状态不能算通过"
+            )
+
     if coverage:
         if coverage.get("complete") is not True:
             errors.append("translation.coverage.complete 尚未设为 true")
+        if truthfulness is not None:
+            if coverage.get("complete") is True and not truthfulness["complete"]:
+                errors.append(
+                    "translation.coverage.complete 自报为 true，"
+                    "但独立重算的译文真实性检查未通过"
+                )
+            for key in (
+                "validated_translated_units",
+                "validated_kept_source_units",
+                "invalid_or_unverified_units",
+            ):
+                if key not in coverage:
+                    errors.append(f"translation.coverage 缺少字段 {key!r}")
+                elif coverage.get(key) != truthfulness[key]:
+                    errors.append(
+                        f"translation.coverage.{key} 与独立重算结果不一致: "
+                        f"{coverage.get(key)} != {truthfulness[key]}"
+                    )
         if coverage.get("source_units_total") != len(units):
             errors.append("translation.coverage.source_units_total 与单元数不一致")
         if coverage.get("translated_units") != translated_count:
@@ -571,6 +658,12 @@ def _validate_complex_content_payload(
         return
     if data.get("classification_complete") is not True:
         errors.append("复杂内容载荷尚未完成分类")
+    # 视图是否由当前渲染计划派生。派生视图里，计划就是权威：
+    # 计划补进的保留条目和重建表会让页码多于人工确认页，这不是错。
+    plan_path = job_dir / "render_plan.json"
+    derived_current = plan_path.is_file() and complex_view_is_current(
+        data, sha256_file(plan_path)
+    )
     expected = {
         int(item["page"]): item
         for item in route.get("complex_content", {}).get(
@@ -584,21 +677,65 @@ def _validate_complex_content_payload(
         for item in data.get("items", [])
         if isinstance(item, dict) and isinstance(item.get("page"), int)
     }
-    if set(expected) != set(actual):
+    if derived_current:
+        # 人工确认过的复杂页一页都不能少；计划派生的多出来的页是合法的。
+        missing_pages = set(expected) - set(actual)
+        if missing_pages:
+            errors.append(
+                "确认过的复杂页在派生载荷里缺失: "
+                + "、".join(str(page) for page in sorted(missing_pages))
+            )
+    elif set(expected) != set(actual):
         errors.append("复杂内容载荷页码与确认复杂页不一致")
     for page, route_item in expected.items():
         item = actual.get(page)
         if not item:
             continue
-        if item.get("kind") != route_item.get("kind"):
-            errors.append(f"第 {page} 页复杂内容载荷类型不一致")
-        if item.get("method") != route_item.get("method"):
-            errors.append(f"第 {page} 页复杂内容载荷处理方式不一致")
+        if not derived_current:
+            # 派生视图里 kind/method 由渲染计划决定，与旧确认表不逐字比对；
+            # 非派生（手写）载荷仍按旧规矩逐项对齐。
+            if item.get("kind") != route_item.get("kind"):
+                errors.append(f"第 {page} 页复杂内容载荷类型不一致")
+            if item.get("method") != route_item.get("method"):
+                errors.append(f"第 {page} 页复杂内容载荷处理方式不一致")
+    # 每个条目的内容质量检查对派生与否一视同仁：ready 状态与载荷合法性
+    # 是产出门槛，一条都不放松。
+    for item in data.get("items", []):
+        if not isinstance(item, dict) or not isinstance(item.get("page"), int):
+            continue
+        page = int(item["page"])
         if item.get("status") != "ready":
             errors.append(f"第 {page} 页复杂内容载荷尚未 ready")
             continue
         for error in validate_complex_payload_item(item):
             errors.append(f"第 {page} 页复杂内容载荷: {error}")
+
+
+def _bbox_within_page(unit: dict[str, Any], source_doc: Any) -> bool:
+    """单元坐标是否落在所属页面内且非退化。"""
+
+    bbox = unit.get("source_bbox")
+    page_number = unit.get("page")
+    if (
+        not isinstance(page_number, int)
+        or not isinstance(bbox, list)
+        or len(bbox) != 4
+        or not all(isinstance(value, (int, float)) for value in bbox)
+    ):
+        return False
+    try:
+        rect = source_doc[page_number - 1].rect
+    except Exception:
+        return False
+    x0, y0, x1, y1 = (float(value) for value in bbox)
+    if x1 <= x0 or y1 <= y0:
+        return False
+    return (
+        x0 >= float(rect.x0) - 1.0
+        and y0 >= float(rect.y0) - 1.0
+        and x1 <= float(rect.x1) + 1.0
+        and y1 <= float(rect.y1) + 1.0
+    )
 
 
 def _normalize_source_text(text: str) -> str:
@@ -736,9 +873,11 @@ def _validate_source_text_coverage(
     if not translation:
         return
     try:
-        from _common import import_fitz
-
-        source_doc = import_fitz().open(source_path)
+        source_handle = open_candidate_analysis(
+            source_path,
+            role="source",
+        )
+        source_doc = source_handle.document
     except Exception as exc:
         errors.append(f"无法计算原文覆盖率: {exc}")
         return
@@ -752,6 +891,7 @@ def _validate_source_text_coverage(
         page: bytearray(len(text)) for page, text in page_texts.items()
     }
     unmatched: list[str] = []
+    symbol_only: list[str] = []
     sources_by_page: dict[int, list[tuple[str, str, str]]] = {}
     for unit in translation.get("units", []):
         page_number = unit.get("page")
@@ -807,6 +947,15 @@ def _validate_source_text_coverage(
         if _is_nonsemantic_divider_source(raw_source_text):
             continue
         source_text = _normalize_source_text(raw_source_text)
+        if source_text == "" and raw_source_text.strip():
+            # 整段只有符号（公式定界符、感叹号、控制字符等），归一化后没有
+            # 任何字母或数字，靠文本匹配本来就定位不了。改用坐标核对：
+            # bbox 必须落在页面内且非退化，否则仍然算没定位上。
+            if _bbox_within_page(unit, source_doc):
+                symbol_only.append(str(unit.get("id", "?")))
+            else:
+                unmatched.append(str(unit.get("id", "?")))
+            continue
         if not page_text or not source_text:
             unmatched.append(str(unit.get("id", "?")))
             continue
@@ -894,6 +1043,13 @@ def _validate_source_text_coverage(
             + ", ".join(unmatched[:20])
             + (" ..." if len(unmatched) > 20 else "")
         )
+    if symbol_only:
+        warnings.append(
+            "以下翻译单元只含符号，按坐标核对通过，未做文本定位: "
+            + ", ".join(symbol_only[:20])
+            + (" ..." if len(symbol_only) > 20 else "")
+        )
+    source_handle.release()
 
 
 def _validate_candidate_text_presence(
@@ -909,9 +1065,8 @@ def _validate_candidate_text_presence(
     if not translation or not candidate_path.is_file():
         return
     try:
-        from _common import import_fitz
-
-        candidate_doc = import_fitz().open(candidate_path)
+        candidate_handle = open_candidate_analysis(candidate_path)
+        candidate_doc = candidate_handle.document
     except Exception as exc:
         errors.append(f"无法计算候选译文覆盖率: {exc}")
         return
@@ -922,11 +1077,15 @@ def _validate_candidate_text_presence(
     try:
         if source_path is None:
             raise FileNotFoundError
-        source_doc = import_fitz().open(source_path)
+        source_handle = open_candidate_analysis(
+            source_path,
+            role="source",
+        )
         source_page_sizes = {
             index: (float(page.rect.width), float(page.rect.height))
-            for index, page in enumerate(source_doc, 1)
+            for index, page in enumerate(source_handle.document, 1)
         }
+        source_handle.release()
     except Exception:
         source_page_sizes = {}
     total_chars = 0
@@ -1171,6 +1330,7 @@ def _validate_candidate_text_presence(
             + ", ".join(missing_retained[:20])
             + (" ..." if len(missing_retained) > 20 else "")
         )
+    candidate_handle.release()
 
 
 def _candidate_page_text(page: Any) -> str:
@@ -1629,12 +1789,15 @@ def _validate_retained_source(
 
     reference_start = None
     source_doc = None
+    source_handle = None
     if require_reference_boundary and source_path.is_file():
         try:
-            from _common import import_fitz
-            import re
 
-            source_doc = import_fitz().open(source_path)
+            source_handle = open_candidate_analysis(
+                source_path,
+                role="source",
+            )
+            source_doc = source_handle.document
             for index, page in enumerate(source_doc, 1):
                 text = page.get_text("text")
                 if _has_reference_heading(text):
@@ -1684,15 +1847,26 @@ def _validate_retained_source(
                 citation_block_confirmed = _has_source_citation_block(source_text)
             if not citation_block_confirmed:
                 errors.append(f"{label} 位于无法确认的参考文献范围之前")
+    if source_handle is not None:
+        source_handle.release()
 
 
-def validate_job(
+def _timed_validate_job(
     job_dir: Path,
     stage: str,
     advance: bool = False,
     *,
     status_override: str | None = None,
+    qa_report: dict | None = None,
 ) -> dict:
+    """校验作业是否满足某个阶段的门槛。
+
+    `qa_report` 只接受调用方在同一进程里刚对同一份候选跑出的自动 QA 结果。
+    传入时不再重跑 QA，但哈希绑定检查照旧执行：候选或原文哈希对不上仍然
+    判定过期。不传入时行为不变，仍然自己重跑一次，因此单独调用本入口的
+    外部使用者不会被降低门槛。
+    """
+
     job_dir = job_dir.resolve()
     errors: list[str] = []
     warnings: list[str] = []
@@ -1787,9 +1961,9 @@ def validate_job(
         if actual_hash != source.get("sha256"):
             errors.append("作业原文 SHA-256 与 job.json 不一致")
         try:
-            from _common import import_fitz
-
-            page_count = import_fitz().open(source_path).page_count
+            handle = open_candidate_analysis(source_path, role="source")
+            page_count = handle.document.page_count
+            handle.release()
             if page_count != source.get("page_count"):
                 errors.append("作业原文页数与 job.json 不一致")
         except Exception as exc:
@@ -1827,11 +2001,15 @@ def validate_job(
         _, translation_data = _load_job_file(
             job_dir, job, "translation", errors
         )
+        _, retained_for_translation = _load_job_file(
+            job_dir, job, "retained_source", errors
+        )
         translation_data = _validate_translation(
             translation_data,
             int(source.get("page_count") or 0),
             target_language,
             errors,
+            retained_source=retained_for_translation,
         )
         _validate_frozen_source_units(
             job_dir,
@@ -1967,7 +2145,9 @@ def validate_job(
         if not isinstance(selected_fonts, list) or not selected_fonts:
             warnings.append("job.quality.selected_fonts 尚未记录实际使用字体")
         qa = None
-        if candidate_path.is_file():
+        if qa_report is not None:
+            qa = qa_report
+        elif candidate_path.is_file():
             try:
                 from qa_pdf import run_qa
 
@@ -2274,6 +2454,14 @@ def validate_job(
         write_json(job_dir / "job.json", job)
         report["advanced_to"] = stage_status
     return report
+
+
+
+def validate_job(*args, **kwargs):
+    """计时包装：阶段耗时进入性能基线，行为与实现完全一致。"""
+
+    with perf_trace.stage("validate_job"):
+        return _timed_validate_job(*args, **kwargs)
 
 
 def main() -> int:

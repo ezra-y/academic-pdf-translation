@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import io
 from pathlib import Path
 
+import perf_trace
 from _common import (
     SkillError,
     import_fitz,
@@ -13,10 +15,15 @@ from _common import (
     utc_now,
     write_json,
 )
+from candidate_analysis import open_candidate_analysis
 from candidate_page_map import (
     candidate_pages_for_source,
     load_candidate_page_map,
 )
+
+#: 单页缓存必须放在 comparisons/ 之外：注册新候选时会把 comparisons/ 归档
+#: 并清空，而缓存的价值恰恰在于跨候选版本复用原文页。
+PAGE_CACHE_DIR_NAME = "review-page-cache"
 
 
 def _render_page(page, dpi: int):
@@ -27,7 +34,63 @@ def _render_page(page, dpi: int):
     fitz = import_fitz()
     matrix = fitz.Matrix(dpi / 72, dpi / 72)
     pixmap = page.get_pixmap(matrix=matrix, alpha=False)
+    perf_trace.count("review_page_render")
     return Image.open(io.BytesIO(pixmap.tobytes("png"))).convert("RGB")
+
+
+def _page_fingerprint(page, dpi: int) -> str:
+    """一页的渲染身份：内容流、页面尺寸、旋转和 DPI。
+
+    内容流是这一页真正的绘制指令。文字、图形或引用的图像对象一变，
+    它就变；因此同一份原文在不同候选版本之间可以永久复用，
+    而候选只有真正改动过的页才需要重画。
+    """
+
+    payload = bytes(page.read_contents() or b"")
+    meta = (
+        f"|{round(float(page.rect.width), 3)}"
+        f"x{round(float(page.rect.height), 3)}"
+        f"|r{int(page.rotation)}|d{int(dpi)}"
+    )
+    return hashlib.sha256(payload + meta.encode("utf-8")).hexdigest()
+
+
+def _render_page_cached(page, dpi: int, cache_dir: Path, used: set[str]):
+    """按单页指纹缓存渲染结果。"""
+
+    from PIL import Image
+
+    fingerprint = _page_fingerprint(page, dpi)
+    used.add(fingerprint)
+    cached_path = cache_dir / f"{fingerprint}.png"
+    if cached_path.is_file():
+        try:
+            with Image.open(cached_path) as handle:
+                perf_trace.count("review_page_cache_hit")
+                return handle.convert("RGB")
+        except OSError:
+            cached_path.unlink(missing_ok=True)
+    image = _render_page(page, dpi)
+    try:
+        image.save(cached_path, "PNG", compress_level=1)
+    except OSError:
+        cached_path.unlink(missing_ok=True)
+    return image
+
+
+def _prune_page_cache(cache_dir: Path, used: set[str]) -> int:
+    """只保留本轮用到的单页缓存。
+
+    原文页每轮都会用到，所以跨候选版本自然保留；被替代的候选页会被清掉，
+    缓存不会无限增长。
+    """
+
+    removed = 0
+    for path in cache_dir.glob("*.png"):
+        if path.stem not in used:
+            path.unlink(missing_ok=True)
+            removed += 1
+    return removed
 
 
 def _risk_map(job_dir: Path) -> tuple[dict[int, list[str]], str | None]:
@@ -189,7 +252,7 @@ def _cache_matches(
     )
 
 
-def make_review_sheet(
+def _timed_make_review_sheet(
     job_dir: Path,
     dpi: int = 110,
     pages_per_sheet: int = 2,
@@ -213,8 +276,10 @@ def make_review_sheet(
         raise SkillError("生成对照图前必须同时存在 source.pdf 和 candidate.pdf")
 
     fitz = import_fitz()
-    source = fitz.open(source_path)
-    candidate = fitz.open(candidate_path)
+    source_handle = open_candidate_analysis(source_path, role="source")
+    candidate_handle = open_candidate_analysis(candidate_path)
+    source = source_handle.document
+    candidate = candidate_handle.document
     translation = load_json(
         internal_job_path(job_dir, files["translation"])
     )
@@ -233,8 +298,8 @@ def make_review_sheet(
         else None
     )
     if candidate_mapping is None and source.page_count != candidate.page_count:
-        source.close()
-        candidate.close()
+        source_handle.release()
+        candidate_handle.release()
         raise SkillError(
             f"页数不一致，无法生成逐页对照: {source.page_count} vs "
             f"{candidate.page_count}"
@@ -258,8 +323,10 @@ def make_review_sheet(
     comparison_dir = job_dir / "comparisons"
     sheet_dir = comparison_dir / "sheets"
     detail_dir = comparison_dir / "details"
-    for directory in (comparison_dir, sheet_dir, detail_dir):
+    page_cache_dir = job_dir / PAGE_CACHE_DIR_NAME
+    for directory in (comparison_dir, sheet_dir, detail_dir, page_cache_dir):
         directory.mkdir(parents=True, exist_ok=True)
+    used_page_fingerprints: set[str] = set()
 
     manifest_path = comparison_dir / "manifest.json"
     review_pdf_path = comparison_dir / "source-vs-candidate.pdf"
@@ -279,65 +346,138 @@ def make_review_sheet(
         )
 
     if not cache_hit:
-        for old_path in sheet_dir.iterdir():
-            if old_path.is_file() or old_path.is_symlink():
-                old_path.unlink()
+        previous_sheet_keys = (
+            manifest.get("sheet_composition_sha256", {})
+            if isinstance(manifest.get("sheet_composition_sha256"), dict)
+            else {}
+        )
+        previous_sheet_hashes = (
+            manifest.get("sheet_sha256", {})
+            if isinstance(manifest.get("sheet_sha256"), dict)
+            else {}
+        )
 
         sheet_paths: list[Path] = []
         sheet_index: list[dict] = []
+        sheet_keys: dict[str, str] = {}
         pending_pairs: list = []
         pending_pages: list[int] = []
+        pending_keys: list[str] = []
+        reused_sheets = 0
+
+        def _flush_sheet() -> None:
+            nonlocal pending_pairs, pending_pages, pending_keys, reused_sheets
+            sheet_number = len(sheet_paths) + 1
+            sheet_path = sheet_dir / f"sheet-{sheet_number:04d}.png"
+            relative = str(sheet_path.relative_to(comparison_dir))
+            composition = hashlib.sha256(
+                "|".join(pending_keys).encode("utf-8")
+            ).hexdigest()
+            unchanged = (
+                previous_sheet_keys.get(relative) == composition
+                and sheet_path.is_file()
+                and previous_sheet_hashes.get(relative)
+                == sha256_file(sheet_path)
+            )
+            if unchanged:
+                # 组成完全没变，直接沿用上一轮的图，不再重排重存。
+                reused_sheets += 1
+                perf_trace.count("review_sheet_reused")
+                for pending_pair in pending_pairs:
+                    pending_pair.close()
+            else:
+                sheet = _stack_pairs(pending_pairs)
+                sheet.save(sheet_path, "PNG", compress_level=3)
+                sheet.close()
+                for pending_pair in pending_pairs:
+                    pending_pair.close()
+                perf_trace.count("review_sheet_composed")
+            sheet_paths.append(sheet_path)
+            sheet_keys[relative] = composition
+            sheet_index.append(
+                {
+                    "sheet": sheet_number,
+                    "file": relative,
+                    "pages": list(pending_pages),
+                    "risk_pages": [
+                        page for page in pending_pages if page in risks
+                    ],
+                }
+            )
+            pending_pairs = []
+            pending_pages = []
+            pending_keys = []
+
         for index in range(source.page_count):
             page_number = index + 1
-            source_image = _render_page(source[index], dpi)
+            source_image = _render_page_cached(
+                source[index],
+                dpi,
+                page_cache_dir,
+                used_page_fingerprints,
+            )
             candidate_page_numbers = candidate_pages_for_source(
                 candidate_mapping,
                 page_number,
             )
             candidate_images = [
-                _render_page(candidate[candidate_page - 1], dpi)
+                _render_page_cached(
+                    candidate[candidate_page - 1],
+                    dpi,
+                    page_cache_dir,
+                    used_page_fingerprints,
+                )
                 for candidate_page in candidate_page_numbers
                 if 1 <= candidate_page <= candidate.page_count
             ]
             if not candidate_images:
                 source_image.close()
                 raise SkillError(f"源页 {page_number} 没有可渲染的候选页")
+            risk_flags = risks.get(page_number, [])
             pair = _labeled_pair(
                 source_image,
                 candidate_images,
                 page_number,
                 candidate_page_numbers,
-                risks.get(page_number, []),
+                risk_flags,
             )
             source_image.close()
             for candidate_image in candidate_images:
                 candidate_image.close()
             pending_pairs.append(pair)
             pending_pages.append(page_number)
+            pending_keys.append(
+                "|".join(
+                    [
+                        str(page_number),
+                        _page_fingerprint(source[index], dpi),
+                        *(
+                            _page_fingerprint(
+                                candidate[candidate_page - 1],
+                                dpi,
+                            )
+                            for candidate_page in candidate_page_numbers
+                            if 1 <= candidate_page <= candidate.page_count
+                        ),
+                        ",".join(map(str, candidate_page_numbers)),
+                        ",".join(risk_flags),
+                    ]
+                )
+            )
             if (
                 len(pending_pairs) == pages_per_sheet
                 or page_number == source.page_count
             ):
-                sheet_number = len(sheet_paths) + 1
-                sheet_path = sheet_dir / f"sheet-{sheet_number:04d}.png"
-                sheet = _stack_pairs(pending_pairs)
-                sheet.save(sheet_path, "PNG", compress_level=3)
-                sheet.close()
-                for pending_pair in pending_pairs:
-                    pending_pair.close()
-                sheet_paths.append(sheet_path)
-                sheet_index.append(
-                    {
-                        "sheet": sheet_number,
-                        "file": str(sheet_path.relative_to(comparison_dir)),
-                        "pages": pending_pages,
-                        "risk_pages": [
-                            page for page in pending_pages if page in risks
-                        ],
-                    }
-                )
-                pending_pairs = []
-                pending_pages = []
+                _flush_sheet()
+
+        # 组成改变或页数变化时，旧的多余审查图必须清掉，页面顺序不受影响。
+        keep = {path.name for path in sheet_paths}
+        for old_path in sheet_dir.iterdir():
+            if (
+                old_path.name not in keep
+                and (old_path.is_file() or old_path.is_symlink())
+            ):
+                old_path.unlink()
 
         review_pdf = fitz.open()
         for sheet_path in sheet_paths:
@@ -369,6 +509,8 @@ def make_review_sheet(
                 for path in sheet_paths
             },
             "sheet_index": sheet_index,
+            "sheet_composition_sha256": sheet_keys,
+            "reused_sheet_count": reused_sheets,
             "review_pdf": review_pdf_path.name,
             "review_pdf_sha256": sha256_file(review_pdf_path),
         }
@@ -379,13 +521,23 @@ def make_review_sheet(
             old_path.unlink()
     detail_paths: list[str] = []
     for page_number in detail_pages:
-        source_image = _render_page(source[page_number - 1], detail_dpi)
+        source_image = _render_page_cached(
+            source[page_number - 1],
+            detail_dpi,
+            page_cache_dir,
+            used_page_fingerprints,
+        )
         candidate_page_numbers = candidate_pages_for_source(
             candidate_mapping,
             page_number,
         )
         candidate_images = [
-            _render_page(candidate[candidate_page - 1], detail_dpi)
+            _render_page_cached(
+                candidate[candidate_page - 1],
+                detail_dpi,
+                page_cache_dir,
+                used_page_fingerprints,
+            )
             for candidate_page in candidate_page_numbers
             if 1 <= candidate_page <= candidate.page_count
         ]
@@ -407,9 +559,17 @@ def make_review_sheet(
         pair.close()
         detail_paths.append(str(detail_path))
 
-    source.close()
-    candidate.close()
+    pruned = (
+        _prune_page_cache(page_cache_dir, used_page_fingerprints)
+        if used_page_fingerprints
+        else 0
+    )
+    source_handle.release()
+    candidate_handle.release()
     return {
+        "page_cache_entries": len(used_page_fingerprints),
+        "page_cache_pruned": pruned,
+        "reused_sheet_count": int(manifest.get("reused_sheet_count") or 0),
         "pages": int(manifest["page_count"]),
         "page_count": int(manifest["page_count"]),
         "dpi": int(manifest["dpi"]),
@@ -424,6 +584,13 @@ def make_review_sheet(
         "cache_hit": cache_hit,
     }
 
+
+
+def make_review_sheet(*args, **kwargs):
+    """计时包装：阶段耗时进入性能基线，行为与实现完全一致。"""
+
+    with perf_trace.stage("review_sheet"):
+        return _timed_make_review_sheet(*args, **kwargs)
 
 def main() -> int:
     parser = argparse.ArgumentParser(

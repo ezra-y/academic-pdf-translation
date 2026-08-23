@@ -1,0 +1,69 @@
+{
+  "measurement": "翻译阶段墙钟：旧的逐单元流程 vs 新的批处理流程",
+  "method": "在 arXiv:1912.01703 的 2 Background 一节上实测同一批内容的两种流程",
+  "measured": {
+    "batch": {
+      "units": 20,
+      "source_chars": 4037,
+      "round_trips": 1,
+      "seconds": 50,
+      "seconds_per_unit": 2.5
+    },
+    "per_unit": {
+      "units": 7,
+      "round_trips": 7,
+      "seconds": 94,
+      "seconds_per_unit": 13.43
+    }
+  },
+  "per_unit_improvement_ratio": 0.8138,
+  "extrapolated_per_paper": [
+    {
+      "case": "real-single-column-body",
+      "pages": 12,
+      "units": 252,
+      "batches": 13,
+      "old_flow_seconds": 3384,
+      "batch_flow_seconds": 650,
+      "machine_seconds": 0.203
+    },
+    {
+      "case": "real-two-column-body",
+      "pages": 12,
+      "units": 558,
+      "batches": 28,
+      "old_flow_seconds": 7493,
+      "batch_flow_seconds": 1400,
+      "machine_seconds": 2.241
+    },
+    {
+      "case": "real-table-and-model",
+      "pages": 15,
+      "units": 567,
+      "batches": 28,
+      "old_flow_seconds": 7614,
+      "batch_flow_seconds": 1400,
+      "machine_seconds": 0.247
+    },
+    {
+      "case": "real-image-heavy",
+      "pages": 12,
+      "units": 812,
+      "batches": 41,
+      "old_flow_seconds": 10904,
+      "batch_flow_seconds": 2050,
+      "machine_seconds": 9.174
+    },
+    {
+      "case": "real-reference-heavy",
+      "pages": 75,
+      "units": 1190,
+      "batches": 60,
+      "old_flow_seconds": 15980,
+      "batch_flow_seconds": 3000,
+      "machine_seconds": 1.218
+    }
+  ],
+  "caveat": "整篇数字是按实测单元成本线性外推，不是完整跑完全篇的实测值。逐单元一侧只测了 7 个正文单元；标题和代码单元更短，实际会略低于线性外推。",
+  "context": "机器时间一列是本分支优化的全部范围。它是秒级，翻译是十分钟到小时级。"
+}

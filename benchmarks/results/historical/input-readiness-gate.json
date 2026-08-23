@@ -1,0 +1,21 @@
+{
+  "measurement": "P1.1 输入就绪检查提前到渲染之前",
+  "case": "8 页合成论文，作业已初始化但尚未翻译",
+  "repeats": 3,
+  "metric": "build_first_candidate() 走到阻断为止的墙钟中位数",
+  "baseline": {
+    "median_seconds": 0.2712,
+    "status": "BLOCKED_BEFORE_PREFLIGHT",
+    "staging_pdfs": ["candidate-first.pdf"],
+    "generator_layout_log_written": true
+  },
+  "optimized": {
+    "median_seconds": 0.057,
+    "status": "BLOCKED_BEFORE_PREFLIGHT",
+    "blocked_stage": "input-readiness",
+    "staging_pdfs": [],
+    "generator_layout_log_written": false
+  },
+  "improvement_ratio": 0.7898,
+  "note": "错误码保持 BLOCKED_BEFORE_PREFLIGHT，新增 blocked_stage 字段区分输入就绪与排版合同。合法作业的输出不变，由 self_test 全套用例守护。"
+}

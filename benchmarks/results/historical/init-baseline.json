@@ -1,0 +1,165 @@
+{
+  "scripts_dir": "/private/tmp/claude-501/-Users-ezra-Downloads-my-output-skills-academic-pdf-translation/fa69f767-d272-426b-9c92-1af734536b02/scratchpad/baseline/scripts",
+  "repeats": 3,
+  "total_median_seconds": 1.1587,
+  "cases": [
+    {
+      "case": "image-heavy",
+      "pdf": "image-heavy.pdf",
+      "size_bytes": 94648,
+      "page_count": 8,
+      "route": "custom-layout",
+      "complex_pages": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
+      ],
+      "visual_pages": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
+      ],
+      "median_seconds": 0.0763,
+      "min_seconds": 0.0732,
+      "counters_per_run": {
+        "get_drawings": 16,
+        "get_image_info": 16,
+        "get_images": 24,
+        "get_text_blocks": 8,
+        "get_text_dict": 16,
+        "get_text_text": 16,
+        "pdf_open": 2
+      },
+      "stable_across_runs": true,
+      "manifest_digest": "c24bd25efb74a42c",
+      "structure_digest": "18a4a77689a432db"
+    },
+    {
+      "case": "reference-heavy",
+      "pdf": "reference-heavy.pdf",
+      "size_bytes": 18130,
+      "page_count": 6,
+      "route": "custom-layout",
+      "complex_pages": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "visual_pages": [],
+      "median_seconds": 0.2192,
+      "min_seconds": 0.2178,
+      "counters_per_run": {
+        "get_drawings": 12,
+        "get_image_info": 12,
+        "get_images": 18,
+        "get_text_blocks": 6,
+        "get_text_dict": 12,
+        "get_text_text": 12,
+        "pdf_open": 2
+      },
+      "stable_across_runs": true,
+      "manifest_digest": "95c36dd8934bdfe0",
+      "structure_digest": "b1e419555d9a49ad"
+    },
+    {
+      "case": "single-column-body",
+      "pdf": "single-column-body.pdf",
+      "size_bytes": 25574,
+      "page_count": 12,
+      "route": "standard-auto",
+      "complex_pages": [],
+      "visual_pages": [],
+      "median_seconds": 0.393,
+      "min_seconds": 0.3924,
+      "counters_per_run": {
+        "get_drawings": 24,
+        "get_image_info": 24,
+        "get_images": 36,
+        "get_text_blocks": 12,
+        "get_text_dict": 24,
+        "get_text_text": 24,
+        "pdf_open": 2
+      },
+      "stable_across_runs": true,
+      "manifest_digest": "3629dbdf21934eb8",
+      "structure_digest": "aeb2a201bde74293"
+    },
+    {
+      "case": "structured-table-and-model",
+      "pdf": "structured-table-and-model.pdf",
+      "size_bytes": 20329,
+      "page_count": 8,
+      "route": "custom-layout",
+      "complex_pages": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
+      ],
+      "visual_pages": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8
+      ],
+      "median_seconds": 0.0539,
+      "min_seconds": 0.0536,
+      "counters_per_run": {
+        "get_drawings": 16,
+        "get_image_info": 16,
+        "get_images": 24,
+        "get_text_blocks": 8,
+        "get_text_dict": 16,
+        "get_text_text": 16,
+        "pdf_open": 2
+      },
+      "stable_across_runs": true,
+      "manifest_digest": "2673a9836e929ab5",
+      "structure_digest": "b9cd82c28e71568b"
+    },
+    {
+      "case": "two-column-body",
+      "pdf": "two-column-body.pdf",
+      "size_bytes": 30610,
+      "page_count": 12,
+      "route": "standard-auto",
+      "complex_pages": [],
+      "visual_pages": [],
+      "median_seconds": 0.4163,
+      "min_seconds": 0.4083,
+      "counters_per_run": {
+        "get_drawings": 24,
+        "get_image_info": 24,
+        "get_images": 36,
+        "get_text_blocks": 12,
+        "get_text_dict": 24,
+        "get_text_text": 24,
+        "pdf_open": 2
+      },
+      "stable_across_runs": true,
+      "manifest_digest": "65b5036aaa48ae21",
+      "structure_digest": "b9baf4153598a7aa"
+    }
+  ]
+}

@@ -1,8 +1,68 @@
+# 系统文件
 .DS_Store
+Thumbs.db
+
+# Python 环境与字节码缓存
 .venv/
+venv/
 __pycache__/
 *.py[cod]
+*.egg-info/
+build/
+dist/
 
+# 开发工具缓存
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# 工作区：只保留说明文件，全部批次与作业过程数据不入库
 Workspace/*
 !Workspace/.gitignore
 !Workspace/README.md
+
+# 作业过程缓存（即使作业目录被放到 Workspace 之外也不入库）
+**/.work/
+**/staging/
+**/history/iteration-*/
+**/comparisons/sheets/
+**/review-page-cache/
+**/comparisons/*.pdf
+**/source-analysis.json
+**/translation-batches/
+**/translation-cache.json
+**/translation-plan.json
+**/candidate-*.pdf
+
+# 基准测试
+# corpus.json 用相对路径，可以入库；papers/ 与 jobs/ 由脚本重建，不入库
+# benchmarks/results/*.json 属于报告，允许提交
+benchmarks/papers/
+benchmarks/papers-real/
+benchmarks/jobs/
+benchmarks/jobs-real/
+benchmarks/tmp/
+# 真实论文的渲染页图属于论文内容，受版权保护，不入库
+benchmarks/results/real-visual/
+benchmarks/**/cache/
+
+# 临时与草稿产物
+*.tmp
+*.bak
+*.log
+scratch/
+
+# 审查复现作业目录：由 audit/tools 脚本重建，不入库
+audit/evidence/**/job-*/
+
+# 真实论文原文与候选属于论文内容，受版权保护，只保留审查证据里的对照图
+audit/evidence/real/*.pdf
+
+# 开发过程材料，只留本地，不上传
+local-dev/
+
+# 测试留在源码仓库；发布包由 scripts/package_release.py 按允许名单挑选，
+# 不靠忽略测试来给用户瘦身

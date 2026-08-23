@@ -1,0 +1,368 @@
+{
+  "schema_version": "2.0",
+  "label": "current",
+  "provenance": {
+    "renderer_build_id": "fda590c33b786385413c857326beb23121a358d0a3e3078f7179c7b7d2c165b8",
+    "git_commit": "fe5c4386aac7e339af00d32ec50f1ad6062b386b",
+    "git_branch": "refactor/element-pipeline-v2",
+    "git_dirty": true,
+    "python": "3.14.5",
+    "load_average_1m": 8.1,
+    "cpu_count": 15,
+    "corpus": "synthetic-representative-v1",
+    "corpus_manifest_cases": 5
+  },
+  "repeats": 3,
+  "model_translation": {
+    "measured": false,
+    "reason": "本次运行没有调用真实翻译模型；译文由确定性伪译文替代，只用于触发同一批代码路径。",
+    "model": null,
+    "model_calls": null,
+    "batches": null,
+    "retries": null,
+    "input_tokens": null,
+    "output_tokens": null,
+    "seconds": null
+  },
+  "cases": [
+    {
+      "id": "single-column-body",
+      "status": "NEEDS_REPAIR",
+      "repeats": 3,
+      "cold": {
+        "seconds": [
+          2.0834,
+          2.1258,
+          2.3154
+        ],
+        "median_seconds": 2.1258,
+        "translation_stage_seconds": {},
+        "pdf_stage_seconds": {
+          "build_candidate": 0.129,
+          "retained_region_extract": 0.0008,
+          "candidate_fingerprint": 0.1104,
+          "register_candidate": 0.0071,
+          "qa_candidate": 0.8399,
+          "validate_job": 0.2415,
+          "completeness_audit": 0.3055,
+          "preflight": 1.2806
+        },
+        "counters": {
+          "candidate_analysis_reuse": 6,
+          "candidate_pdf_open": 3,
+          "expensive_audit_cache_hit": 1,
+          "pdf_open": 15,
+          "render_attempt": 1,
+          "sha256_cache_hit": 47,
+          "sha256_file_read": 23,
+          "source_pdf_open": 12
+        }
+      },
+      "warm": {
+        "seconds": [
+          2.1868,
+          1.9654,
+          1.8805
+        ],
+        "median_seconds": 1.9654,
+        "translation_stage_seconds": {},
+        "pdf_stage_seconds": {
+          "build_candidate": 0.1182,
+          "retained_region_extract": 0.0011,
+          "candidate_fingerprint": 0.1079,
+          "register_candidate": 0.0067,
+          "qa_candidate": 0.7831,
+          "validate_job": 0.2211,
+          "completeness_audit": 0.2746,
+          "preflight": 1.1847
+        },
+        "counters": {
+          "candidate_analysis_reuse": 6,
+          "candidate_pdf_open": 3,
+          "expensive_audit_cache_hit": 1,
+          "pdf_open": 15,
+          "render_attempt": 1,
+          "sha256_cache_hit": 50,
+          "sha256_file_read": 20,
+          "source_pdf_open": 12
+        }
+      },
+      "page_count": 12,
+      "frozen_unit_count": 134,
+      "tags": [
+        "body",
+        "single-column"
+      ]
+    },
+    {
+      "id": "two-column-body",
+      "status": "NEEDS_REPAIR",
+      "repeats": 3,
+      "cold": {
+        "seconds": [
+          2.344,
+          2.2295,
+          2.0346
+        ],
+        "median_seconds": 2.2295,
+        "translation_stage_seconds": {},
+        "pdf_stage_seconds": {
+          "build_candidate": 0.308,
+          "retained_region_extract": 0.001,
+          "candidate_fingerprint": 0.1106,
+          "register_candidate": 0.008,
+          "qa_candidate": 0.7521,
+          "validate_job": 0.2296,
+          "completeness_audit": 0.331,
+          "preflight": 1.1577
+        },
+        "counters": {
+          "candidate_analysis_reuse": 6,
+          "candidate_pdf_open": 5,
+          "expensive_audit_cache_hit": 1,
+          "pdf_open": 17,
+          "render_attempt": 3,
+          "sha256_cache_hit": 47,
+          "sha256_file_read": 23,
+          "source_pdf_open": 12
+        }
+      },
+      "warm": {
+        "seconds": [
+          2.0334,
+          2.1143,
+          2.485
+        ],
+        "median_seconds": 2.1143,
+        "translation_stage_seconds": {},
+        "pdf_stage_seconds": {
+          "build_candidate": 0.287,
+          "retained_region_extract": 0.0009,
+          "candidate_fingerprint": 0.1013,
+          "register_candidate": 0.0052,
+          "qa_candidate": 0.7601,
+          "validate_job": 0.2109,
+          "completeness_audit": 0.3348,
+          "preflight": 1.1855
+        },
+        "counters": {
+          "candidate_analysis_reuse": 6,
+          "candidate_pdf_open": 5,
+          "expensive_audit_cache_hit": 1,
+          "pdf_open": 17,
+          "render_attempt": 3,
+          "sha256_cache_hit": 50,
+          "sha256_file_read": 20,
+          "source_pdf_open": 12
+        }
+      },
+      "page_count": 12,
+      "frozen_unit_count": 180,
+      "tags": [
+        "body",
+        "two-column"
+      ]
+    },
+    {
+      "id": "structured-table-and-model",
+      "status": "NEEDS_REPAIR",
+      "repeats": 3,
+      "cold": {
+        "seconds": [
+          1.1433,
+          1.0154,
+          0.916
+        ],
+        "median_seconds": 1.0154,
+        "translation_stage_seconds": {},
+        "pdf_stage_seconds": {
+          "build_candidate": 0.1081,
+          "retained_region_extract": 0.0009,
+          "candidate_fingerprint": 0.0215,
+          "register_candidate": 0.0085,
+          "qa_candidate": 0.1274,
+          "validate_job": 0.0536,
+          "completeness_audit": 0.0841,
+          "preflight": 0.248
+        },
+        "counters": {
+          "candidate_analysis_reuse": 6,
+          "candidate_pdf_open": 3,
+          "expensive_audit_cache_hit": 1,
+          "pdf_open": 15,
+          "render_attempt": 1,
+          "sha256_cache_hit": 47,
+          "sha256_file_read": 23,
+          "source_pdf_open": 12
+        }
+      },
+      "warm": {
+        "seconds": [
+          0.7585,
+          0.7432,
+          0.7311
+        ],
+        "median_seconds": 0.7432,
+        "translation_stage_seconds": {},
+        "pdf_stage_seconds": {
+          "build_candidate": 0.0686,
+          "retained_region_extract": 0.0006,
+          "candidate_fingerprint": 0.0147,
+          "register_candidate": 0.0075,
+          "qa_candidate": 0.1023,
+          "validate_job": 0.0387,
+          "completeness_audit": 0.0686,
+          "preflight": 0.197
+        },
+        "counters": {
+          "candidate_analysis_reuse": 6,
+          "candidate_pdf_open": 3,
+          "expensive_audit_cache_hit": 1,
+          "pdf_open": 15,
+          "render_attempt": 1,
+          "sha256_cache_hit": 50,
+          "sha256_file_read": 20,
+          "source_pdf_open": 12
+        }
+      },
+      "page_count": 8,
+      "frozen_unit_count": 128,
+      "tags": [
+        "table",
+        "diagram"
+      ]
+    },
+    {
+      "id": "image-heavy",
+      "status": "NEEDS_REPAIR",
+      "repeats": 3,
+      "cold": {
+        "seconds": [
+          0.6285,
+          0.605,
+          0.5932
+        ],
+        "median_seconds": 0.605,
+        "translation_stage_seconds": {},
+        "pdf_stage_seconds": {
+          "build_candidate": 0.0355,
+          "retained_region_extract": 0.0009,
+          "candidate_fingerprint": 0.0084,
+          "register_candidate": 0.0058,
+          "qa_candidate": 0.0661,
+          "validate_job": 0.0307,
+          "completeness_audit": 0.0209,
+          "preflight": 0.123
+        },
+        "counters": {
+          "candidate_analysis_reuse": 6,
+          "candidate_pdf_open": 3,
+          "expensive_audit_cache_hit": 1,
+          "pdf_open": 15,
+          "render_attempt": 1,
+          "sha256_cache_hit": 47,
+          "sha256_file_read": 23,
+          "source_pdf_open": 12
+        }
+      },
+      "warm": {
+        "seconds": [
+          0.628,
+          0.5592,
+          0.5112
+        ],
+        "median_seconds": 0.5592,
+        "translation_stage_seconds": {},
+        "pdf_stage_seconds": {
+          "build_candidate": 0.0351,
+          "retained_region_extract": 0.0007,
+          "candidate_fingerprint": 0.0066,
+          "register_candidate": 0.0041,
+          "qa_candidate": 0.0592,
+          "validate_job": 0.0265,
+          "completeness_audit": 0.0195,
+          "preflight": 0.1053
+        },
+        "counters": {
+          "candidate_analysis_reuse": 6,
+          "candidate_pdf_open": 3,
+          "expensive_audit_cache_hit": 1,
+          "pdf_open": 15,
+          "render_attempt": 1,
+          "sha256_cache_hit": 50,
+          "sha256_file_read": 20,
+          "source_pdf_open": 12
+        }
+      },
+      "page_count": 8,
+      "frozen_unit_count": 32,
+      "tags": [
+        "figure",
+        "image"
+      ]
+    },
+    {
+      "id": "reference-heavy",
+      "status": "ERROR: 统一生成器无法在可读字号和页数扩张上限内完成首版。最紧凑的可读试排为 11 页，扩张比 1.833；当前异常保护上限为 1.6。请优先检查重复内容、错误保留区域或异常复杂页载荷。",
+      "repeats": 3,
+      "cold": {
+        "seconds": [
+          1.5309,
+          1.6039,
+          1.4944
+        ],
+        "median_seconds": 1.5309,
+        "translation_stage_seconds": {},
+        "pdf_stage_seconds": {
+          "build_candidate": 1.1018,
+          "retained_region_extract": 0.0002,
+          "validate_job": 0.0422,
+          "completeness_audit": 0.1445
+        },
+        "counters": {
+          "candidate_pdf_open": 18,
+          "pdf_open": 23,
+          "render_attempt": 18,
+          "sha256_cache_hit": 8,
+          "sha256_file_read": 13,
+          "source_pdf_open": 5
+        }
+      },
+      "warm": {
+        "seconds": [
+          1.8031,
+          1.5355,
+          1.8246
+        ],
+        "median_seconds": 1.8031,
+        "translation_stage_seconds": {},
+        "pdf_stage_seconds": {
+          "build_candidate": 1.0042,
+          "retained_region_extract": 0.0003,
+          "validate_job": 0.046,
+          "completeness_audit": 0.1526
+        },
+        "counters": {
+          "candidate_pdf_open": 18,
+          "pdf_open": 23,
+          "render_attempt": 18,
+          "sha256_cache_hit": 11,
+          "sha256_file_read": 10,
+          "source_pdf_open": 5
+        }
+      },
+      "page_count": 6,
+      "frozen_unit_count": 313,
+      "tags": [
+        "references"
+      ]
+    }
+  ],
+  "totals": {
+    "cold_median_seconds": 7.5066,
+    "warm_median_seconds": 7.1852,
+    "cold_case_median_seconds": 1.5309,
+    "warm_case_median_seconds": 1.8031
+  },
+  "note": "合成语料只用于比较耗时与重复读取，不能替代真实论文的视觉抽查。模型翻译阶段未测量。"
+}

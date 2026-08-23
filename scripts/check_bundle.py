@@ -1,9 +1,17 @@
 from __future__ import annotations
 
-import ast
-import json
-import re
-from pathlib import Path
+import sys
+
+# 这两个工具要审计"交付物里有没有字节码缓存"，可它们自己一导入模块就会生成
+# __pycache__——于是干净安装后按 README 跑一遍必然失败。先关掉字节码写入，
+# 别让检查工具弄脏它正在检查的目录。
+sys.dont_write_bytecode = True
+
+import ast  # noqa: E402
+import json  # noqa: E402
+import re  # noqa: E402
+import subprocess  # noqa: E402
+from pathlib import Path  # noqa: E402
 
 
 class BundleCheckError(RuntimeError):
@@ -198,6 +206,168 @@ def _check_requirements(root: Path) -> None:
         )
 
 
+def _check_module_reachability(root: Path) -> None:
+    """每个模块要么是命令行入口，要么被生产代码引用。
+
+    只被 self_test.py 引用、又没有命令行入口的模块，就是"文档说该用、
+    实际没人调用"的死抽象。这类模块会让文档和真实调用链慢慢分叉。
+    """
+
+    scripts_dir = root / "scripts"
+    modules = {path.stem: path for path in sorted(scripts_dir.glob("*.py"))}
+    imported_by: dict[str, set[str]] = {name: set() for name in modules}
+    entry_points: set[str] = set()
+
+    for name, path in modules.items():
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        has_main = any(
+            isinstance(node, ast.FunctionDef) and node.name == "main"
+            for node in tree.body
+        )
+        runs_standalone = any(
+            isinstance(node, ast.If)
+            and ast.dump(node.test).find("__main__") >= 0
+            for node in tree.body
+        )
+        if has_main and runs_standalone:
+            entry_points.add(name)
+        for node in ast.walk(tree):
+            targets: list[str] = []
+            if isinstance(node, ast.Import):
+                targets = [alias.name.split(".", 1)[0] for alias in node.names]
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                targets = [node.module.split(".", 1)[0]]
+            for target in targets:
+                if target in modules and target != name:
+                    imported_by[target].add(name)
+
+    unreachable = sorted(
+        name
+        for name in modules
+        if name not in entry_points
+        and not (imported_by[name] - {"self_test"})
+    )
+    if unreachable:
+        raise BundleCheckError(
+            "以下模块既不是命令行入口，也没有被生产代码引用，"
+            "属于失效抽象: " + ", ".join(unreachable)
+        )
+
+
+CACHE_DIR_NAMES = {"__pycache__", ".pytest_cache", ".ruff_cache", ".mypy_cache"}
+CACHE_FILE_SUFFIXES = {".pyc", ".pyo"}
+PACKAGE_IGNORED_DIRS = {".git", ".venv", "venv", "Workspace", "audit"}
+
+
+def _is_cache_path(relative: Path) -> bool:
+    return (
+        any(part in CACHE_DIR_NAMES for part in relative.parts)
+        or relative.suffix in CACHE_FILE_SUFFIXES
+    )
+
+
+def _tracked_files(root: Path) -> list[str] | None:
+    """git 跟踪的文件列表；不是 git 仓库时返回 None。"""
+
+    if not (root / ".git").exists():
+        return None
+    try:
+        completed = subprocess.run(
+            ["git", "-C", str(root), "ls-files", "-z"],
+            capture_output=True,
+            check=False,
+        )
+    except OSError:
+        return None
+    if completed.returncode != 0:
+        return None
+    return [
+        value.decode("utf-8")
+        for value in completed.stdout.split(b"\0")
+        if value
+    ]
+
+
+def _check_no_cache_artifacts(root: Path) -> None:
+    """交付物里不得存在字节码或工具缓存。
+
+    这些文件跟着压缩包发出去，既没用，又会泄漏本机路径和 Python 版本。
+
+    判定范围按仓库形态决定：
+    - 在 git 仓库里，只看被跟踪的文件。开发时本地生成的 `__pycache__`
+      已经被 .gitignore 挡住，不会进交付物，不该让检查失败。
+    - 不是 git 仓库时（例如解压后的发布包），扫描整个目录树。
+      这时出现缓存文件，就是打包本身漏了。
+    """
+
+    tracked = _tracked_files(root)
+    if tracked is not None:
+        offenders = sorted(
+            value for value in tracked if _is_cache_path(Path(value))
+        )
+    else:
+        offenders = sorted(
+            str(path.relative_to(root))
+            for path in root.rglob("*")
+            if not (
+                path.relative_to(root).parts
+                and path.relative_to(root).parts[0] in PACKAGE_IGNORED_DIRS
+            )
+            and (
+                (path.is_dir() and path.name in CACHE_DIR_NAMES)
+                or (path.is_file() and path.suffix in CACHE_FILE_SUFFIXES)
+            )
+        )
+    if offenders:
+        raise BundleCheckError(
+            "交付物含缓存或字节码文件，请先删除: "
+            + ", ".join(offenders[:20])
+            + (" ..." if len(offenders) > 20 else "")
+        )
+
+
+def _check_version_sync(root: Path) -> str:
+    """plugin.json、pyproject.toml 与 CHANGELOG 最新条目的版本必须一致。
+
+    版本号散在三个地方，改一处忘两处是迟早的事；忘了改 CHANGELOG，
+    用户拿到的就是一份说不清自己是哪一版的交付物。"""
+
+    plugin = json.loads(
+        (root / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8")
+    )
+    plugin_version = str(plugin.get("version") or "")
+    match = re.search(
+        r'^version\s*=\s*"([^"]+)"',
+        (root / "pyproject.toml").read_text(encoding="utf-8"),
+        re.MULTILINE,
+    )
+    project_version = match.group(1) if match else ""
+    if not plugin_version or not project_version:
+        raise BundleCheckError("plugin.json 或 pyproject.toml 缺少版本号")
+    if plugin_version != project_version:
+        raise BundleCheckError(
+            f"版本不一致: plugin.json {plugin_version} != "
+            f"pyproject.toml {project_version}"
+        )
+
+    changelog = root / "CHANGELOG.md"
+    if not changelog.is_file():
+        raise BundleCheckError("缺少 CHANGELOG.md")
+    heading = re.search(
+        r"^##\s+(\d+\.\d+\.\d+)\s*$",
+        changelog.read_text(encoding="utf-8"),
+        re.MULTILINE,
+    )
+    if heading is None:
+        raise BundleCheckError("CHANGELOG.md 里没有版本小节")
+    if heading.group(1) != plugin_version:
+        raise BundleCheckError(
+            f"版本不一致: CHANGELOG 最新条目 {heading.group(1)} != "
+            f"plugin.json {plugin_version}"
+        )
+    return plugin_version
+
+
 def check_bundle(root: Path | None = None) -> dict[str, int | str]:
     skill_root = (root or _skill_dir()).resolve()
     required = [
@@ -242,8 +412,12 @@ def check_bundle(root: Path | None = None) -> dict[str, int | str]:
     _check_json_assets(skill_root)
     _check_python_sources(skill_root)
     _check_requirements(skill_root)
+    _check_module_reachability(skill_root)
+    _check_no_cache_artifacts(skill_root)
+    version = _check_version_sync(skill_root)
     return {
         "status": "PASS",
+        "version": version,
         "python_files": len(list((skill_root / "scripts").glob("*.py"))),
         "json_assets": len(list((skill_root / "assets").glob("*.json"))),
     }
@@ -256,7 +430,7 @@ def main() -> int:
         print(f"BUNDLE CHECK FAIL: {exc}")
         return 1
     print(
-        "BUNDLE CHECK PASS "
+        f"BUNDLE CHECK PASS v{report['version']} "
         f"({report['python_files']} Python files, "
         f"{report['json_assets']} JSON assets)"
     )

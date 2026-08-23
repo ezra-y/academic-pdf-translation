@@ -150,6 +150,10 @@ Workspace/
 When the task finishes, the Agent returns a clickable filename and absolute
 path for every translated PDF.
 
+## More
+
+- Changelog: [CHANGELOG.md](CHANGELOG.md)
+
 ## License
 
 Released under the [MIT License](LICENSE).

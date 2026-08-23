@@ -3,13 +3,14 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import shutil
 import tempfile
 from pathlib import Path
 
+import perf_trace
 from _common import (
     SkillError,
-    import_fitz,
     internal_job_path,
     load_json,
     sha256_file,
@@ -17,11 +18,14 @@ from _common import (
     write_json,
 )
 from audit_translation_completeness import build_completeness_audit
+from candidate_analysis import (
+    open_candidate_analysis,
+    shared_candidate_analysis,
+)
 from qa_pdf import run_qa
 from register_candidate import register_candidate
 from renderer_identity import renderer_build_id as current_renderer_build_id
 from validate_job import validate_job
-
 
 IGNORED_SHADOW_PATHS = (
     "history",
@@ -30,6 +34,20 @@ IGNORED_SHADOW_PATHS = (
     "staging",
     "__pycache__",
 )
+
+
+def _link_or_copy(source: str, destination: str) -> str:
+    """预检副本优先使用硬链接，不支持时回退为普通复制。
+
+    这条路径上的所有写入都走“临时文件加 os.replace”或 unlink，两者都只
+    改动目录项，不会原地截断共享 inode。因此硬链接不会让预检修改正式作业。
+    """
+
+    try:
+        os.link(source, destination)
+        return destination
+    except OSError:
+        return shutil.copy2(source, destination)
 
 
 def _technical_repair_tasks(
@@ -145,9 +163,9 @@ def _jsonable(value):
     return str(value)
 
 
-def _candidate_content_fingerprint(path: Path) -> str:
-    fitz = import_fitz()
-    document = fitz.open(path)
+def _timed__candidate_content_fingerprint(path: Path) -> str:
+    analysis = open_candidate_analysis(path)
+    document = analysis.document
     pages = []
     for page in document:
         text_blocks = []
@@ -196,7 +214,7 @@ def _candidate_content_fingerprint(path: Path) -> str:
                 "images": _jsonable(page.get_image_info(hashes=True)),
             }
         )
-    document.close()
+    analysis.release()
     payload = json.dumps(
         pages,
         ensure_ascii=False,
@@ -313,7 +331,28 @@ def _preflight_cycle(
     return ledger_path, ledger, cycle, len(runs) + 1, False
 
 
-def preflight_candidate(
+def _timed_preflight_candidate(
+    job_dir: Path,
+    generated_pdf: Path,
+    renderer: str,
+    renderer_version: str | None = None,
+    renderer_build_id: str | None = None,
+) -> dict:
+    """预检期间全程持有待检 PDF 的分析，指纹与注册共用同一次打开。"""
+
+    if not Path(generated_pdf).resolve().is_file():
+        raise SkillError(f"待预检 PDF 不存在: {generated_pdf}")
+    with shared_candidate_analysis(Path(generated_pdf).resolve()):
+        return _preflight_candidate(
+            job_dir,
+            generated_pdf,
+            renderer,
+            renderer_version,
+            renderer_build_id,
+        )
+
+
+def _preflight_candidate(
     job_dir: Path,
     generated_pdf: Path,
     renderer: str,
@@ -444,6 +483,7 @@ def preflight_candidate(
             job_dir,
             shadow,
             ignore=shutil.ignore_patterns(*IGNORED_SHADOW_PATHS),
+            copy_function=_link_or_copy,
         )
         for relative in (
             "reviews",
@@ -462,13 +502,23 @@ def preflight_candidate(
             renderer_build_id=renderer_build_id,
             allow_additional_iteration=True,
         )
-        qa = run_qa(shadow)
-        validation = validate_job(
+        # QA、作业校验和完整性审查读的是同一份影子候选。这里先把它打开一次，
+        # 三步各自的 open 都会命中同一个分析对象，不再重复完整解析。
+        shadow_candidate = internal_job_path(
             shadow,
-            "candidate",
-            advance=True,
+            load_json(shadow / "job.json")["files"]["candidate"],
         )
-        completeness = build_completeness_audit(shadow)
+        with shared_candidate_analysis(shadow_candidate):
+            qa = run_qa(shadow)
+            validation = validate_job(
+                shadow,
+                "candidate",
+                advance=True,
+                # QA 刚在本进程对同一份候选跑完，直接复用；
+                # 哈希绑定检查照旧执行。
+                qa_report=qa,
+            )
+            completeness = build_completeness_audit(shadow)
         completeness_needs_repair = (
             completeness["decision"] == "NEEDS_REPAIR"
         )
@@ -605,6 +655,21 @@ def preflight_candidate(
             "formal_job_unchanged": True,
             "staging_ledger_updated": True,
         }
+
+
+
+def _candidate_content_fingerprint(*args, **kwargs):
+    """计时包装：阶段耗时进入性能基线，行为与实现完全一致。"""
+
+    with perf_trace.stage("candidate_fingerprint"):
+        return _timed__candidate_content_fingerprint(*args, **kwargs)
+
+
+def preflight_candidate(*args, **kwargs):
+    """计时包装：阶段耗时进入性能基线，行为与实现完全一致。"""
+
+    with perf_trace.stage("preflight"):
+        return _timed_preflight_candidate(*args, **kwargs)
 
 
 def main() -> int:
