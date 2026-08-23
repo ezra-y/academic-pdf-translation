@@ -191,6 +191,15 @@ def _assert_truthful(
         for unit in translation.get("units", [])
         if isinstance(unit, dict)
     }
+    # unit_bindings.json 是角色的权威来源：元素纠正后重新绑定，
+    # 那里是新的，translation.json 里单元自带的可能还是旧的。
+    bindings_path = job_dir / "unit_bindings.json"
+    if bindings_path.is_file():
+        for binding in load_json(bindings_path).get("bindings") or []:
+            if isinstance(binding, dict) and binding.get("unit_id"):
+                role = str(binding.get("element_role") or "")
+                if role:
+                    element_roles[str(binding["unit_id"])] = role
     report = evaluate_batch(
         _truthfulness_units(batch, accepted, element_roles),
         translation_document=translation,

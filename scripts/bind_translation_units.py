@@ -68,6 +68,28 @@ def main() -> int:
                 )
             )
         write_json(job_dir / BINDING_FILE_NAME, report.as_dict())
+        # 角色回写：元素纠正（例如把一段误判成正文的题录 retype 成
+        # reference-entry）之后重新绑定，translation.json 里各单元自带的
+        # element_role 还是旧的，批次写回那一关会按旧角色拒绝保留原文。
+        # 绑定是角色的唯一权威来源，绑完就同步回去。
+        translation_path = job_dir / "translation.json"
+        if translation_path.is_file():
+            translation = load_json(translation_path)
+            roles = {
+                binding.unit_id: binding.element_role
+                for binding in report.bindings
+            }
+            changed = 0
+            for unit in translation.get("units", []):
+                if not isinstance(unit, dict):
+                    continue
+                fresh = roles.get(str(unit.get("id") or ""))
+                if fresh and unit.get("element_role") != fresh:
+                    unit["element_role"] = fresh
+                    changed += 1
+            if changed:
+                write_json(translation_path, translation)
+                print(f"已同步 {changed} 个单元的元素角色进 translation.json")
     except (SkillError, OSError, ValueError) as exc:
         print(f"错误: {exc}")
         return 1
