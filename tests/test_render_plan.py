@@ -333,6 +333,45 @@ def test_figure_inventory_covers_tables_and_figures() -> None:
         assert item["render_strategy"], f"{item['id']} 没有渲染策略"
 
 
+def test_inventory_policy_and_text_status_use_one_yardstick() -> None:
+    """保留原图就是保留原图：清单不能一边说保留、一边说图内文字已翻。
+
+    两个字段口径不一致时，导出前的作业校验会直接 BLOCKED，
+    整条链在"图明明画出来了"的情况下停下。
+    """
+
+    inventory = _real_inventory()
+    plan = build_render_plan(inventory, QualityMode.FAST)
+    figure_inventory = build_figure_inventory(inventory, plan)
+    seen = set()
+    for item in figure_inventory["items"]:
+        policy = item["translation_policy"]
+        seen.add(policy)
+        if policy == "translate-embedded-text":
+            assert item["text_status"] == "translated"
+        else:
+            assert item["text_status"] == "not-applicable"
+        assert str(item["translation_policy_reason"]).strip()
+    assert "preserve-original" in seen
+
+
+def test_a_preserved_bitmap_is_not_reported_as_omitted() -> None:
+    """位图按保留策略渲染出来了，就不该被记成"省略"。"""
+
+    inventory = _real_inventory()
+    plan = build_render_plan(inventory, QualityMode.FAST)
+    figure_inventory = build_figure_inventory(inventory, plan)
+    bitmaps = [
+        item
+        for item in figure_inventory["items"]
+        if item["render_strategy"] == "preserve-original-image"
+    ]
+    assert bitmaps
+    for item in bitmaps:
+        assert item["translation_policy"] == "preserve-original"
+    assert figure_inventory["omitted_visual_elements"] == 0
+
+
 def test_incomplete_visual_arrangement_shows_in_inventory() -> None:
     inventory = _real_inventory()
     plan = build_render_plan(inventory, QualityMode.FAST)
