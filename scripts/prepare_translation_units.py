@@ -267,11 +267,24 @@ def prepare_translation_units(
         "source_units.json",
     )
     write_json(source_units_path, source_units)
+    # 元素角色沿用初始化时算好的那一份：重建骨架不该把角色丢掉，
+    # 丢了角色，参考文献和署名区就又只能被当普通正文量占比。
+    bindings_path = job_dir / "unit_bindings.json"
+    roles_by_unit: dict[str, str] = {}
+    if bindings_path.is_file():
+        roles_by_unit = {
+            str(binding.get("unit_id") or ""): str(
+                binding.get("element_role") or ""
+            )
+            for binding in load_json(bindings_path).get("bindings") or []
+            if isinstance(binding, dict) and binding.get("unit_id")
+        }
     translation = build_translation_skeleton(
         source_units,
         source_language=str(job["translation"]["source_language"]),
         target_language=str(job["translation"]["target_language"]),
         source_units_sha256=sha256_file(source_units_path),
+        roles_by_unit=roles_by_unit,
     )
     write_json(translation_path, translation)
     return source_units, translation

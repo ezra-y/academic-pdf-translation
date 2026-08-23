@@ -133,6 +133,16 @@ python3 scripts/set_complex_content.py /path/to/job \
 存在任一复杂页时，整篇路线最低为 `hybrid-complex-pages`；复杂页多或结构贯穿
 全文时使用 `custom-layout`。具体类型见 [routing.md](references/routing.md)。
 
+登记完复杂页后记录实际选择的路线。进入 `translated` 阶段之前必须有它：
+
+```bash
+python3 scripts/set_complex_content.py /path/to/job \
+  --route standard-auto \
+  --route-reason "全文为标准单栏正文与参考文献，普通正文路线即可完整重建。"
+```
+
+`--route` 可以和 `--none`、`--page` 写在同一条命令里，也可以单独执行。
+
 ### 复杂页默认走元素管线
 
 图、表、公式**默认保留原文那一块**，不重画。初始化已经生成
@@ -196,6 +206,17 @@ python3 scripts/set_complex_payload.py /path/to/job \
 
 先确认术语表，再编排批次。`translation.terminology_reviewed` 不是 `true`
 时命令会拒绝正式编排；只想看分批结果用 `--preview`，它不写任何文件。
+
+确认术语表（没有需要锁定的术语时也要执行一次）：
+
+```bash
+python3 scripts/set_terminology.py /path/to/job \
+  --term "meaning in life=人生意义" \
+  --reviewed
+```
+
+术语写成 `原文=译文`；译文与原文相同表示这一条按原文保留。术语表在编排
+批次前锁定，锁定后不在批次之间改动。
 
 ```bash
 python3 scripts/plan_translation_batches.py /path/to/job --model <实际模型标识>
@@ -319,9 +340,8 @@ python3 scripts/apply_translation_batch.py /path/to/job --from-cache
 要求：
 
 - 保持整篇上下文和统一术语，不按孤立字符或碎 span 翻译；
-- 翻译前确认 `translation.terminology`，即使为空也把
-  `terminology_reviewed` 设为 `true`；术语表在编排批次前锁定，锁定后
-  不在批次之间改动；
+- 翻译前用 `set_terminology.py --reviewed` 确认术语表，术语为空时也要执行
+  一次；术语表在编排批次前锁定，锁定后不在批次之间改动；
 - 不修改 `source_ref`、`source`、`page` 或 `source_bbox`；
 - 每个冻结原文单元必须恰好出现一次，不得遗漏、重复或合并；
 - 跨栏和跨页续句只翻译一次；

@@ -6,10 +6,14 @@ from pathlib import Path
 from _common import (
     COMPLEX_CONTENT_KINDS,
     COMPLEX_CONTENT_METHODS,
+    ROUTES,
     SkillError,
     load_json,
     write_json,
 )
+
+#: 有复杂页时最低只能选这两条路线之一。
+COMPLEX_PAGE_ROUTES = ("hybrid-complex-pages", "custom-layout", "scan-custom")
 
 
 def _payload_template(method: str) -> dict[str, object]:
@@ -49,6 +53,38 @@ def _parse_page_spec(value: str, page_count: int) -> dict[str, object]:
         "method": method,
         "reason": reason,
     }
+
+
+def select_route(
+    job_dir: Path,
+    route_name: str,
+    reason: str,
+) -> dict[str, object]:
+    """记录实际选择的路线和理由。
+
+    进入 translated 阶段之前这两项必须齐备，这里是它们唯一的写入口，
+    不需要手改 job.json。
+    """
+
+    if route_name not in ROUTES:
+        raise SkillError(
+            f"无效路线 {route_name!r}；可选: " + "、".join(sorted(ROUTES))
+        )
+    if not reason.strip():
+        raise SkillError("选择路线必须写明理由")
+    job_path = job_dir.resolve() / "job.json"
+    job = load_json(job_path)
+    route = job.setdefault("route", {})
+    confirmed = route.get("complex_content", {}).get("confirmed_pages") or []
+    if confirmed and route_name not in COMPLEX_PAGE_ROUTES:
+        raise SkillError(
+            "已登记复杂页时路线最低为 hybrid-complex-pages，"
+            f"不能选 {route_name}"
+        )
+    route["selected"] = route_name
+    route["decision_reason"] = reason.strip()
+    write_json(job_path, job)
+    return {"selected": route_name, "decision_reason": reason.strip()}
 
 
 def set_complex_content(
@@ -179,21 +215,45 @@ def main() -> int:
         help="目视检查全部原文页后，确认没有需要专用处理的复杂页",
     )
     parser.add_argument("--notes", default="")
+    parser.add_argument(
+        "--route",
+        choices=sorted(ROUTES),
+        help="记录实际选择的路线；可与 --none/--page 同时使用，也可单独使用",
+    )
+    parser.add_argument(
+        "--route-reason",
+        default="",
+        help="路线选择理由；与 --route 一起给出",
+    )
     args = parser.parse_args()
     try:
-        pages = set_complex_content(
-            args.job_dir,
-            args.page,
-            confirmed_none=args.none,
-            notes=args.notes,
-        )
-        if pages:
-            print(
-                "复杂页处理计划已记录: "
-                + ", ".join(str(item["page"]) for item in pages)
+        if args.route is None and args.route_reason:
+            raise SkillError("--route-reason 必须与 --route 一起使用")
+        registered = args.none or args.page
+        if not registered and args.route is None:
+            raise SkillError("必须使用 --none、--page 或 --route")
+        pages: list[dict[str, object]] = []
+        if registered:
+            pages = set_complex_content(
+                args.job_dir,
+                args.page,
+                confirmed_none=args.none,
+                notes=args.notes,
             )
-        else:
-            print("复杂页处理计划已记录: 全文无复杂页")
+            if pages:
+                print(
+                    "复杂页处理计划已记录: "
+                    + ", ".join(str(item["page"]) for item in pages)
+                )
+            else:
+                print("复杂页处理计划已记录: 全文无复杂页")
+        if args.route is not None:
+            decision = select_route(
+                args.job_dir,
+                args.route,
+                args.route_reason,
+            )
+            print(f"实际路线已记录: {decision['selected']}")
         return 0
     except SkillError as exc:
         print(f"错误: {exc}")
