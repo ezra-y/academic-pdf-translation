@@ -180,12 +180,33 @@ def _front_matter_ordered(
     )
 
 
+def _footnotes_last(
+    page_units: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """脚注排到本页正文之后。
+
+    脚注在原文里印在页底，按坐标读出来却常夹在两段正文中间——通讯作者
+    地址插在两个论点之间，读者的句子就被劈成两半。译本重新分页，"页底"
+    这个位置没法照搬，但"正文读完再读注"这个次序照搬得了。
+    """
+
+    footnotes = [
+        unit for unit in page_units if _unit_role(unit) == "footnote"
+    ]
+    if not footnotes or len(footnotes) == len(page_units):
+        return page_units
+    body = [unit for unit in page_units if _unit_role(unit) != "footnote"]
+    # 第一条脚注前画一条短分隔线：读者据此知道下面不再是正文。
+    footnotes = [{**footnotes[0], "_footnote_zone_start": True}] + footnotes[1:]
+    return body + footnotes
+
+
 def _ordered_page_units(
     page_units: list[dict[str, Any]],
     page_complex: list[dict[str, Any]],
     source_structure_page: dict[str, Any] | None,
 ) -> list[dict[str, Any]]:
-    page_units = _front_matter_ordered(page_units)
+    page_units = _footnotes_last(_front_matter_ordered(page_units))
     if not page_units or not isinstance(source_structure_page, dict):
         return page_units
     ordered_block_ids: list[int] = []

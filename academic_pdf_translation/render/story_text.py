@@ -25,7 +25,8 @@ from typing import Any
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
 from reportlab.lib.styles import ParagraphStyle
-from reportlab.platypus import Flowable, Paragraph
+from reportlab.platypus import Flowable, Paragraph, Spacer
+from reportlab.platypus.flowables import HRFlowable
 
 from .font_runs import SUPERSCRIPT_PATTERN_CLASS, _markup
 from .mapping import MappingAnchor
@@ -34,6 +35,13 @@ from .text_blocks import HEADING_KINDS, REFERENCE_KINDS
 from .text_blocks import looks_like_heading as _looks_like_heading
 from .text_blocks import role_may_head as _role_may_head
 from .text_blocks import unit_text_blocks as _unit_text_blocks
+
+#: 正文与脚注区之间的间距（点）。
+FOOTNOTE_ZONE_GAP_PT = 8.0
+#: 脚注分隔线的宽度占版心的比例。学术排版的惯例是短短一条，不是通栏。
+FOOTNOTE_SEPARATOR_WIDTH = "30%"
+#: 分隔线与脚注文字之间的间距（点）。
+FOOTNOTE_SEPARATOR_GAP_PT = 4.0
 
 
 class StoryError(RuntimeError):
@@ -245,6 +253,17 @@ def _unit_flowables(
     blocks = _unit_text_blocks(unit, text)
     kind = str(kind_override or unit.get("kind") or "").lower()
     layout_role = str(unit.get("_layout_role") or "").lower()
+    if unit.get("_footnote_zone_start") and blocks:
+        result.append(Spacer(1, FOOTNOTE_ZONE_GAP_PT))
+        result.append(
+            HRFlowable(
+                width=FOOTNOTE_SEPARATOR_WIDTH,
+                thickness=0.5,
+                color=colors.grey,
+                spaceAfter=FOOTNOTE_SEPARATOR_GAP_PT,
+                hAlign="LEFT",
+            )
+        )
     for index, block in enumerate(blocks):
         if unit.get("_element_role") == "footnote":
             # 脚注不是正文：字号小一档、无缩进。分隔线由页面单元的
