@@ -103,6 +103,8 @@ AUTHOR_YEAR_CITATION_RE = re.compile(
 NUMERIC_CITATION_RE = re.compile(r"\[\s*\d+(?:\s*[-–,;]\s*\d+)*\s*\]")
 SENTENCE_INSIDE_RE = re.compile(r"[.!?。！？][\s\"'”’)\]]")
 WORD_RE = re.compile(r"[A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ'-]*")
+#: 任意语言的一个字母。整段没有字母的单元没有可译的内容。
+LETTER_RE = re.compile(r"[^\W\d_]", re.UNICODE)
 CONTENT_RE = re.compile(r"[\w㐀-鿿]", re.UNICODE)
 
 
@@ -315,6 +317,17 @@ def reference_regions(retained: Any) -> list[dict[str, Any]]:
     return regions
 
 
+def has_translatable_letters(source: str) -> bool:
+    """这段原文里有没有可译的内容。
+
+    坐标轴刻度 "0 5 10 15"、页码 "561"、纯符号片段没有字母，任何语言写
+    出来都是同一串字符。要求它们"必须和原文不同"，只会逼出把数字改写成
+    中文数字这种破坏图表的做法。正文一定含字母，这条门槛碰不到它。
+    """
+
+    return bool(LETTER_RE.search(source or ""))
+
+
 def unit_kind(unit: dict[str, Any]) -> str:
     return str(unit.get("kind") or unit.get("kind_hint") or "").lower()
 
@@ -492,6 +505,9 @@ def check_translation_language(
     problems: list[dict[str, Any]] = []
     source = _text(unit.get("source"))
     if not cross_language:
+        return problems
+    if not has_translatable_letters(source):
+        # 纯数字或纯符号：照抄就是正确译法。
         return problems
     if normalize_for_comparison(translation) == normalize_for_comparison(source):
         problems.append(
