@@ -79,6 +79,26 @@ class BuildOutcome:
         return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+#: 这一轮公式裁切证据的快照文件名。裁切证据必须随 attempt 固定：
+#: 作业目录里那份两次执行之间可能被改，而候选、计划、五元身份都不变，
+#: 视觉计划却会因此从"公式必须检查"变成"有裁切证据可免检"。
+FORMULA_CROPS_FILE = "formula-crops.json"
+
+
+def formula_crops_sha256(crops: dict[str, dict[str, Any]] | None) -> str:
+    """公式裁切证据的指纹。
+
+    单独留一个字段，不并进一个统一的 verification_inputs_sha256：
+    统一哈希只能告诉你"有东西变了"，分开的哈希能直接说出是哪一样
+    核查输入变了，排查时少一轮二分。
+    """
+
+    canonical = json.dumps(
+        crops or {}, ensure_ascii=False, sort_keys=True
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
 def file_sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with open(path, "rb") as handle:

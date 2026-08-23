@@ -49,6 +49,7 @@ from academic_pdf_translation.delivery.first_delivery import (  # noqa: E402
     run_first_delivery,
 )
 from academic_pdf_translation.delivery.models import (  # noqa: E402
+    FORMULA_CROPS_FILE,
     KNOWN_BUILD_STATUSES,
     BuildOutcome,
     build_outcome_from_report,
@@ -138,6 +139,26 @@ def read_formula_crops(job_dir: Path) -> dict[str, dict]:
         if element_id and isinstance(crop, dict):
             crops[element_id] = crop
     return crops
+
+
+def read_formula_crop_snapshot(directory: Path) -> dict[str, dict]:
+    """读这一轮 attempt 目录里的公式裁切快照。
+
+    没有快照就返回空：拿不出裁切证据的公式一律进视觉检查。宁可多看
+    几页，也不能让一份可以被改的作业文件把公式变成免检。
+    """
+
+    path = Path(directory) / FORMULA_CROPS_FILE
+    if not path.is_file():
+        return {}
+    data = load_json(path)
+    if not isinstance(data, dict):
+        return {}
+    return {
+        str(key): value
+        for key, value in data.items()
+        if isinstance(value, dict)
+    }
 
 
 def generate_render_plan(job_dir: Path, forced: dict[str, str]):
@@ -317,9 +338,10 @@ def make_resume_builder(delivery_dir: Path, job_dir: Path | None = None):
             render_plan_sha256=identity.render_plan_sha256,
             render_plan=plan,
             reused=True,
-            formula_crops=(
-                read_formula_crops(job_dir) if job_dir is not None else {}
-            ),
+            # 裁切证据只认这一轮自己的快照，不重读作业目录——作业目录
+            # 里那份两次执行之间可能被改，而候选、计划和五元身份都不会
+            # 察觉。快照缺失就当没有裁切证据：公式默认进视觉检查。
+            formula_crops=read_formula_crop_snapshot(directory),
         )
 
     return build

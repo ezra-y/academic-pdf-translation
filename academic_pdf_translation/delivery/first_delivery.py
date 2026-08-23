@@ -43,9 +43,11 @@ from academic_pdf_translation.delivery.gates import (
 )
 from academic_pdf_translation.delivery.models import (
     BUILD_READY,
+    FORMULA_CROPS_FILE,
     KNOWN_BUILD_STATUSES,
     BuildOutcome,
     file_sha256,
+    formula_crops_sha256,
 )
 from academic_pdf_translation.verify.candidate_mapping import (
     CandidateMapping,
@@ -406,6 +408,28 @@ def _write_plan_snapshot(
     )
 
 
+def _write_formula_crop_snapshot(
+    result: DeliveryResult,
+    outcome: BuildOutcome,
+    evidence_dir: Path,
+    label: str,
+) -> None:
+    """把这一轮的公式裁切证据存进本轮的 attempt 目录。
+
+    作业目录里的 ``complex_content.json`` 只有"现在"这一份，两次执行
+    之间可能被改。恢复时重读它，等于让一份可变的文件去决定"这个公式
+    要不要人看"，而候选、计划、五元身份全都察觉不到。存快照之后，
+    恢复只认自己这一轮的证据。
+
+    空字典也要写：空快照和"没有快照"是两回事，前者是这一轮确实没有
+    裁切证据，后者是证据丢了。
+    """
+
+    result.evidence[f"{label}-formula-crops"] = _write_json(
+        evidence_dir / FORMULA_CROPS_FILE, outcome.formula_crops
+    )
+
+
 def _record_build(
     result: DeliveryResult,
     outcome: BuildOutcome,
@@ -418,6 +442,9 @@ def _record_build(
 
     record = outcome.as_dict()
     record["report_sha256"] = outcome.report_sha256()
+    record["formula_crops_sha256"] = formula_crops_sha256(
+        outcome.formula_crops
+    )
     record["binding"] = identity.as_dict()
     result.builds.append(record)
     result.evidence[f"{label}-build"] = _write_json(
@@ -460,11 +487,26 @@ def verify_existing_attempt_evidence(
         raise FirstDeliveryError(
             "构建记录与当前运行身份对不上：" + "；".join(problems)
         )
+    crops_path = evidence_dir / FORMULA_CROPS_FILE
+    expected_crops = str(record.get("formula_crops_sha256") or "")
+    if crops_path.is_file() and expected_crops:
+        # 快照还在就必须和构建记录对得上：有人改过它就是旧证据。
+        # 快照丢了不拦——没有裁切证据意味着公式默认进视觉检查，
+        # 那是更保守的方向，不是放松。
+        actual = formula_crops_sha256(
+            json.loads(crops_path.read_text(encoding="utf-8"))
+        )
+        if actual != expected_crops:
+            raise FirstDeliveryError(
+                f"{EVIDENCE_STALE}: 公式裁切快照与构建记录的指纹不一致"
+            )
     result.builds.append(record)
     result.evidence[f"{label}-build"] = str(record_path)
     snapshot = evidence_dir / "render-plan.json"
     if snapshot.is_file():
         result.evidence[f"{label}-render-plan"] = str(snapshot)
+    if crops_path.is_file():
+        result.evidence[f"{label}-formula-crops"] = str(crops_path)
 
 
 def _apply_visual_gate(
@@ -641,6 +683,9 @@ def run_first_delivery(
             return result
     else:
         _write_plan_snapshot(result, outcome, evidence_dir, first_label)
+        _write_formula_crop_snapshot(
+            result, outcome, evidence_dir, first_label
+        )
         _record_build(
             result, outcome, evidence_dir, first_label, identity=identity
         )
@@ -821,6 +866,9 @@ def run_first_delivery(
     evidence_dir = attempt_dir(output_dir, run_id, second_attempt)
     second_label = f"round-{second_attempt}"
     _write_plan_snapshot(result, repaired_outcome, evidence_dir, second_label)
+    _write_formula_crop_snapshot(
+        result, repaired_outcome, evidence_dir, second_label
+    )
     _record_build(
         result, repaired_outcome, evidence_dir, second_label, identity=identity
     )

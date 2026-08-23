@@ -112,7 +112,7 @@ def _hash_tree(root: Path) -> dict[str, str]:
     }
 
 
-def _first_run(tmp_path: Path):
+def _first_run(tmp_path: Path, formula_crops: dict | None = None):
     """跑出一个停在 attempt-2 的运行：首版不合格，返修后合格。"""
 
     source, elements, units, bindings = _tiny_job(tmp_path)
@@ -130,6 +130,7 @@ def _first_run(tmp_path: Path):
             attempt_id=f"attempt-{round_index + 1}",
             render_plan_sha256=f"{round_index}" * 64,
             render_plan=_plan(["e1"] if round_index == 0 else ["e1", "e2"]),
+            formula_crops=dict(formula_crops or {}),
         )
 
     out = tmp_path / "out"
@@ -334,6 +335,92 @@ def test_resume_after_interrupted_attempt_fails_closed(tmp_path: Path) -> None:
     result = _resume(source, elements, units, bindings, out)
     assert result.status == "blocked"
     assert any("EVIDENCE_STALE" in problem for problem in result.problems)
+
+
+CROP_OK = {"e2": {"status": "ok", "bbox": [60, 130, 400, 150]}}
+
+
+def _fake_job_with_crops(tmp_path: Path, crops: dict) -> Path:
+    """造一个作业目录，里面的 complex_content.json 声称公式裁切干净。"""
+
+    job_dir = tmp_path / "job"
+    job_dir.mkdir(parents=True, exist_ok=True)
+    (job_dir / "complex_content.json").write_text(
+        json.dumps(
+            {
+                "items": [
+                    {
+                        "source_element_id": element_id,
+                        "payload": {"formula_crop": crop},
+                    }
+                    for element_id, crop in crops.items()
+                ]
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    return job_dir
+
+
+def test_resume_uses_attempt_formula_crop_snapshot(tmp_path: Path) -> None:
+    """恢复拿的是这一轮 attempt 里的裁切快照，不是作业目录里的现况。"""
+
+    source, elements, units, bindings, out = _first_run(
+        tmp_path, formula_crops=CROP_OK
+    )
+    snapshot = attempt_dir(out, "run-resume", 2) / "formula-crops.json"
+    assert json.loads(snapshot.read_text(encoding="utf-8")) == CROP_OK
+
+    # 作业目录改成完全不同的说法，恢复也不许采信它。
+    job_dir = _fake_job_with_crops(
+        tmp_path, {"e1": {"status": "clipped"}, "e2": {"status": "clipped"}}
+    )
+    outcome = make_resume_builder(out, job_dir)(0)
+    assert outcome.formula_crops == CROP_OK
+
+
+def test_changed_job_complex_content_cannot_change_review_plan(
+    tmp_path: Path,
+) -> None:
+    """作业目录里的裁切证据被改，视觉计划不许跟着变。"""
+
+    source, elements, units, bindings, out = _first_run(tmp_path)
+    review_path = attempt_dir(out, "run-resume", 2) / "round-2-review.json"
+    before = review_path.read_text(encoding="utf-8")
+
+    job_dir = _fake_job_with_crops(tmp_path, CROP_OK)
+    # 这一轮本来就没有裁切证据；作业目录后来声称有，也进不了恢复。
+    assert make_resume_builder(out, job_dir)(0).formula_crops == {}
+    result = run_first_delivery(
+        source,
+        elements,
+        units,
+        bindings,
+        build=make_resume_builder(out, job_dir),
+        apply_repair=None,
+        output_dir=out,
+        require_render_plan=False,
+        render_pages=False,
+    )
+    assert result.status != "blocked"
+    assert review_path.read_text(encoding="utf-8") == before
+
+
+def test_missing_formula_crop_snapshot_defaults_to_visual_review(
+    tmp_path: Path,
+) -> None:
+    """快照丢了就当没有裁切证据：公式默认进视觉检查，不许免检。"""
+
+    source, elements, units, bindings, out = _first_run(
+        tmp_path, formula_crops=CROP_OK
+    )
+    snapshot = attempt_dir(out, "run-resume", 2) / "formula-crops.json"
+    snapshot.unlink()
+
+    job_dir = _fake_job_with_crops(tmp_path, CROP_OK)
+    outcome = make_resume_builder(out, job_dir)(0)
+    assert outcome.formula_crops == {}
 
 
 if __name__ == "__main__":
