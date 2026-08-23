@@ -50,9 +50,16 @@ BARE_HEADING_WORDS = frozenset(
 )
 #: 预印本或出版标识戳。
 PUBLICATION_STAMP_RE = re.compile(
-    r"(?:arxiv\s*:\s*\d|doi\s*:\s*10\.|bioRxiv|medRxiv|©|\bISSN\b|\bISBN\b)",
+    r"(?:arxiv\s*:\s*\d|doi\s*:\s*10\.|bioRxiv|medRxiv|©|\bISSN\b"
+    r"|\bISBN\b)",
     re.IGNORECASE,
 )
+#: 没有 "doi:" 前缀的裸 DOI。期刊排版常在首页最顶端印一条生产代码条：
+#: "<稿件号> <刊物代码>10.xxxx/<DOI><作者><刊名> research-article<年份>"。
+#: 它是出版元数据，不是标题，更不是编号章节标题。
+BARE_DOI_RE = re.compile(r"(?<![\d.])10\.\d{4,9}/\S")
+#: 只有短块才按裸 DOI 判为标识戳。正文里顺手引一个 DOI 的长段落仍是正文。
+MAX_STAMP_CHARS = 200
 #: 作者单位常见词。
 AFFILIATION_WORDS = re.compile(
     r"(?:university|universit|institute|department|dept\.|laborator|college|"
@@ -92,7 +99,10 @@ def looks_like_heading(text: str) -> bool:
 
 
 def is_publication_stamp(text: str) -> bool:
-    return bool(PUBLICATION_STAMP_RE.search(_plain(text)))
+    value = _plain(text)
+    if PUBLICATION_STAMP_RE.search(value):
+        return True
+    return len(value) <= MAX_STAMP_CHARS and bool(BARE_DOI_RE.search(value))
 
 
 def is_affiliation(text: str) -> bool:

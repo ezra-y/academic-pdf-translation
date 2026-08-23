@@ -373,6 +373,7 @@ def _likely_heading(
 def _page_data(
     scan: PageScan,
     furniture_keys: set[str],
+    furniture_geometry: set[tuple[int, ...]] | None = None,
 ) -> dict[str, Any]:
     page_number = scan.number
     page_width = scan.width
@@ -414,6 +415,37 @@ def _page_data(
                 "page_furniture": furniture,
             }
         )
+
+    # 位置指纹只作用在本页的页眉页脚候选上：本页最上/最下、且与正文有
+    # 明显空隙的那一块。栏首的题录哪怕每页都在同一高度，也不是页眉。
+    if furniture_geometry:
+        candidate_boxes = {
+            _geometry_key((row[0], row[1], row[2], row[3]))
+            for row in _furniture_candidates(
+                [
+                    (
+                        float(row["bbox"][0]),
+                        float(row["bbox"][1]),
+                        float(row["bbox"][2]),
+                        float(row["bbox"][3]),
+                        str(row["text"]),
+                    )
+                    for row in block_rows
+                ],
+                page_height,
+            )
+        }
+        for row in block_rows:
+            key = _geometry_key(
+                (
+                    float(row["bbox"][0]),
+                    float(row["bbox"][1]),
+                    float(row["bbox"][2]),
+                    float(row["bbox"][3]),
+                )
+            )
+            if key in candidate_boxes and key in furniture_geometry:
+                row["page_furniture"] = True
 
     content_blocks = [block for block in block_rows if not block["page_furniture"]]
     sizes = sorted(all_sizes)
@@ -547,24 +579,105 @@ def _page_data(
     }
 
 
-def _repeated_furniture_keys(analysis: SourceAnalysis) -> set[str]:
-    counts: Counter[str] = Counter()
+#: 页眉页脚与正文之间至少留这么多点，才算独立的一条。
+FURNITURE_GAP_PT = 8.0
+
+
+def _geometry_key(
+    bbox: tuple[float, float, float, float],
+) -> tuple[int, int, int]:
+    """页眉页脚的位置指纹：左边界与上下沿，按 1 点取整。
+
+    版式排出来的页眉每页落在同一条基线上，页码换了、刊名换了都不影响。
+    文字指纹只认得每页一字不差的那种页眉；左右页轮换的"刊名 / 作者"
+    页眉，两半各自的重复次数都不够，就漏了下来，最后混进正文。
+    位置指纹不看文字，两种页眉都认得出。宽度不进指纹，页眉文字长短
+    每页都不同。
+    """
+
+    return (int(round(bbox[0])), int(round(bbox[1])), int(round(bbox[3])))
+
+
+def _furniture_candidates(
+    rows: list[tuple[float, float, float, float, str]],
+    height: float,
+) -> list[tuple[float, float, float, float, str]]:
+    """本页可能是页眉页脚的块。
+
+    只有本页最上面（或最下面）那一块才有资格，而且它与相邻正文之间要有
+    明显空隙。少了这一条，栏首的参考文献题录也会因为每页都排在同一个
+    高度而被当成页眉。
+    """
+
+    ordered = sorted(
+        (row for row in rows if _clean_text(row[4])),
+        key=lambda row: (row[1], row[0]),
+    )
+    if len(ordered) < 2:
+        return []
+    candidates: list[tuple[float, float, float, float, str]] = []
+    top = ordered[0]
+    if (
+        top[3] <= height * 0.1
+        and ordered[1][1] - top[3] >= FURNITURE_GAP_PT
+    ):
+        candidates.append(top)
+    bottom = ordered[-1]
+    if (
+        bottom[1] >= height * 0.9
+        and bottom[1] - ordered[-2][3] >= FURNITURE_GAP_PT
+    ):
+        candidates.append(bottom)
+    return candidates
+
+
+def _repeated_furniture_keys(
+    analysis: SourceAnalysis,
+) -> tuple[set[str], set[tuple[int, ...]]]:
+    """返回 (重复的文字指纹, 重复的位置指纹)。"""
+
+    text_counts: Counter[str] = Counter()
+    geometry_counts: Counter[tuple[int, int, int]] = Counter()
     for scan in analysis.pages:
         height = scan.height
-        seen: set[str] = set()
-        for block in scan.text_blocks:
-            text = _clean_text(str(block[4]))
+        rows = [
+            (
+                float(block[0]),
+                float(block[1]),
+                float(block[2]),
+                float(block[3]),
+                str(block[4]),
+            )
+            for block in scan.text_blocks
+        ]
+        seen_text: set[str] = set()
+        for row in rows:
+            text = _clean_text(row[4])
             if not text:
                 continue
-            y0, y1 = float(block[1]), float(block[3])
-            if y1 > height * 0.1 and y0 < height * 0.9:
+            if row[3] > height * 0.1 and row[1] < height * 0.9:
                 continue
             key = _furniture_key(text)
             if len(key) >= 8:
-                seen.add(key)
-        counts.update(seen)
+                seen_text.add(key)
+        text_counts.update(seen_text)
+        geometry_counts.update(
+            {
+                _geometry_key((row[0], row[1], row[2], row[3]))
+                for row in _furniture_candidates(rows, height)
+            }
+        )
     minimum = max(2, math.ceil(analysis.page_count * 0.35))
-    return {key for key, count in counts.items() if count >= minimum}
+    # 位置指纹更严：至少要在三页上出现，才排除"两页正好对齐"的巧合。
+    geometry_minimum = max(3, minimum)
+    return (
+        {key for key, count in text_counts.items() if count >= minimum},
+        {
+            key
+            for key, count in geometry_counts.items()
+            if count >= geometry_minimum
+        },
+    )
 
 
 def extract_source_structure(
@@ -584,9 +697,12 @@ def extract_source_structure(
         raise SkillError("传入的原文扫描结果与目标 PDF 不一致")
 
     with perf_trace.stage("source_structure"):
-        furniture_keys = _repeated_furniture_keys(analysis)
+        furniture_keys, furniture_geometry = _repeated_furniture_keys(
+            analysis
+        )
         pages = [
-            _page_data(scan, furniture_keys) for scan in analysis.pages
+            _page_data(scan, furniture_keys, furniture_geometry)
+            for scan in analysis.pages
         ]
     visual_pages = [
         page["page"]

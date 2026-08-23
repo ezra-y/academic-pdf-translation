@@ -258,8 +258,11 @@ def _unit_flowables(
         elif kind in REFERENCE_KINDS or unit.get("keep_source_reason"):
             style = styles["reference"]
         elif (
-            kind == "title"
-            and index == 0
+            index == 0
+            and (
+                kind == "title"
+                or unit.get("_element_role") == "document-title"
+            )
             and _role_may_head(unit)
         ):
             style = styles["title"]
