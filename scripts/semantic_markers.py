@@ -3,7 +3,6 @@ from __future__ import annotations
 import re
 from typing import Any
 
-
 SEMANTIC_BOUNDARY_PATTERNS = {
     "en": re.compile(
         r"\b(?:not|no|without|neither|nor|may|might|could|suggest(?:s|ed)?|"
@@ -158,6 +157,10 @@ def validate_terminology(
             continue
         accepted = [target, *variants]
         for unit in matching_units:
+            if str(unit.get("keep_source_code") or "").strip():
+                # 保留原文的单元（题录、署名、DOI 等）没有译文可查：
+                # 术语门槛管的是译文里术语用得对不对，不是逼保留区翻译。
+                continue
             translated = str(unit.get("translation") or "")
             if not any(value in translated for value in accepted):
                 errors.append(
