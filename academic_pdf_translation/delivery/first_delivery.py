@@ -34,6 +34,7 @@ from academic_pdf_translation.delivery.evidence import (
     attempt_dir,
     new_run_id,
     read_current_run,
+    verify_binding,
     write_current_run,
 )
 from academic_pdf_translation.delivery.gates import (
@@ -42,6 +43,7 @@ from academic_pdf_translation.delivery.gates import (
 )
 from academic_pdf_translation.delivery.models import (
     BUILD_READY,
+    KNOWN_BUILD_STATUSES,
     BuildOutcome,
     file_sha256,
 )
@@ -423,6 +425,48 @@ def _record_build(
     )
 
 
+def verify_existing_attempt_evidence(
+    result: DeliveryResult,
+    evidence_dir: Path,
+    label: str,
+    *,
+    identity: RunIdentity,
+) -> None:
+    """恢复时只核对既有构建证据，一个字节都不写。
+
+    ``--resume`` 造出来的 :class:`BuildOutcome` 是从磁盘反推的简化版，
+    缺预检路径、缺 issues 原文。拿它再写一遍 ``round-N-build.json`` 和
+    ``render-plan.json``，等于用简化记录替换原件——历史证据当场被改。
+
+    所以恢复只做三件事：确认记录在、确认状态是已知状态、确认记录的
+    五元绑定就是当前身份。任何一条不成立都停，绝不替它补一个默认值。
+    """
+
+    record_path = evidence_dir / f"{label}-build.json"
+    if not record_path.is_file():
+        raise FirstDeliveryError(
+            f"{EVIDENCE_STALE}: 当前 attempt 缺少构建记录，禁止恢复"
+            f"（{record_path}）"
+        )
+    record = json.loads(record_path.read_text(encoding="utf-8"))
+    status = str(record.get("status") or "")
+    if status not in KNOWN_BUILD_STATUSES:
+        raise FirstDeliveryError(
+            f"{EVIDENCE_STALE}: 构建记录里的状态 {status!r} 不是已知状态，"
+            "禁止恢复"
+        )
+    problems = verify_binding(record.get("binding") or {}, identity)
+    if problems:
+        raise FirstDeliveryError(
+            "构建记录与当前运行身份对不上：" + "；".join(problems)
+        )
+    result.builds.append(record)
+    result.evidence[f"{label}-build"] = str(record_path)
+    snapshot = evidence_dir / "render-plan.json"
+    if snapshot.is_file():
+        result.evidence[f"{label}-render-plan"] = str(snapshot)
+
+
 def _apply_visual_gate(
     result: DeliveryResult,
     plan: VisualReviewPlan,
@@ -581,10 +625,25 @@ def run_first_delivery(
         )
     evidence_dir = attempt_dir(output_dir, run_id, first_attempt)
     first_label = f"round-{first_attempt}"
-    _write_plan_snapshot(result, outcome, evidence_dir, first_label)
-    _record_build(
-        result, outcome, evidence_dir, first_label, identity=identity
-    )
+    if outcome.reused:
+        # 恢复只允许新增（新视觉结果、新门槛结果、新 delivery.json），
+        # 不许重写原候选、原计划快照、原构建记录。
+        try:
+            verify_existing_attempt_evidence(
+                result, evidence_dir, first_label, identity=identity
+            )
+        except FirstDeliveryError as exc:
+            result.stages.append(
+                StageRecord(STAGE_BUILD, False, f"恢复失败: {exc}")
+            )
+            result.problems.append(str(exc))
+            result.status = STATUS_BLOCKED
+            return result
+    else:
+        _write_plan_snapshot(result, outcome, evidence_dir, first_label)
+        _record_build(
+            result, outcome, evidence_dir, first_label, identity=identity
+        )
     if outcome.candidate_path is not None:
         # 候选留作证据——它是不是"能交付的候选"由门槛说了算。
         result.candidate_path = str(outcome.candidate_path)

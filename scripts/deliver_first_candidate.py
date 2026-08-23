@@ -35,8 +35,10 @@ from academic_pdf_translation.contracts.migration import (  # noqa: E402
     derive_quality_mode,
 )
 from academic_pdf_translation.delivery.evidence import (  # noqa: E402
+    EVIDENCE_STALE,
     attempt_dir,
     read_current_run,
+    verify_binding,
 )
 from academic_pdf_translation.delivery.first_delivery import (  # noqa: E402
     STATUS_BLOCKED,
@@ -47,6 +49,7 @@ from academic_pdf_translation.delivery.first_delivery import (  # noqa: E402
     run_first_delivery,
 )
 from academic_pdf_translation.delivery.models import (  # noqa: E402
+    KNOWN_BUILD_STATUSES,
     BuildOutcome,
     build_outcome_from_report,
     file_sha256,
@@ -265,12 +268,34 @@ def make_resume_builder(delivery_dir: Path, job_dir: Path | None = None):
             raise SkillError(
                 "EVIDENCE_STALE: 候选副本与 current-run.json 指纹不一致"
             )
-        record = {}
+        # 构建记录是这一轮"生成到底成没成"的唯一证据。没有它就没有
+        # 结论可恢复：新建 attempt 的写入顺序是 复制候选 → 写指针 →
+        # 写计划快照 → 写构建记录，程序在中途挂掉时目录里会只剩候选和
+        # 指针。那种半截目录必须停下，不能替它补一个"看起来成功"的状态。
         record_path = (
             directory / f"round-{identity.attempt_id}-build.json"
         )
-        if record_path.is_file():
-            record = load_json(record_path)
+        if not record_path.is_file():
+            raise SkillError(
+                f"{EVIDENCE_STALE}: 当前 attempt 缺少构建记录，禁止恢复"
+                f"（{record_path}）"
+            )
+        record = load_json(record_path)
+        status = str(record.get("status") or "")
+        if status not in KNOWN_BUILD_STATUSES:
+            raise SkillError(
+                f"{EVIDENCE_STALE}: 构建记录里的状态 {status!r} 不是已知状态，"
+                "禁止恢复"
+            )
+        # 光验候选 PDF 不够：构建记录本身也要属于当前
+        # run / attempt / 候选 / 计划 / 渲染器，五项差一项就是旧证据。
+        binding_problems = verify_binding(
+            record.get("binding") or {}, identity
+        )
+        if binding_problems:
+            raise SkillError(
+                "构建记录与当前运行身份对不上：" + "；".join(binding_problems)
+            )
         # 计划取这一轮自己的快照，不取作业目录里"现在"那一份——
         # 作业目录里的可能已经是后来重算的了。
         snapshot = directory / "render-plan.json"
@@ -282,7 +307,7 @@ def make_resume_builder(delivery_dir: Path, job_dir: Path | None = None):
             if plan_sha and plan_sha == identity.render_plan_sha256:
                 plan = current_plan
         return BuildOutcome(
-            status=str(record.get("status") or "READY_TO_REGISTER"),
+            status=status,
             candidate_path=candidate,
             issues=list(record.get("issues") or []),
             candidate_sha256=identity.candidate_sha256,

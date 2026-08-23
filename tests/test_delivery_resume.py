@@ -14,6 +14,7 @@ attempt-2 的候选重新复制进 attempt-1、把指针指回 attempt-1、覆�
 from __future__ import annotations
 
 import json
+import shutil
 import sys
 from pathlib import Path
 
@@ -23,8 +24,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import fitz  # noqa: E402
 import pytest  # noqa: E402
 from academic_pdf_translation.delivery.evidence import (  # noqa: E402
+    RunIdentity,
     attempt_dir,
     read_current_run,
+    write_current_run,
 )
 from academic_pdf_translation.delivery.first_delivery import (  # noqa: E402
     run_first_delivery,
@@ -233,11 +236,104 @@ def test_resume_only_writes_result_into_current_attempt(
         for name in set(before) | set(after)
         if before.get(name) != after.get(name)
     }
-    assert changed, "恢复总得写点东西，否则这条用例没在测东西"
+    # 恢复只允许往当前 attempt 里写。没有新结果要写时它什么都不写，
+    # 那也算对——"没动别人的东西"才是这条用例要证明的事。
     for name in changed:
         assert name.startswith(current_prefix), name
+    assert result.evidence, "恢复总得给出证据路径，否则这条用例没在测东西"
     for path in result.evidence.values():
         assert str(attempt_dir(out, "run-resume", 2)) in path, path
+
+
+def _build_record_path(out: Path, attempt: int = 2) -> Path:
+    return attempt_dir(out, "run-resume", attempt) / f"round-{attempt}-build.json"
+
+
+def _patch_build_record(out: Path, **changes) -> None:
+    path = _build_record_path(out)
+    record = json.loads(path.read_text(encoding="utf-8"))
+    record.update(changes)
+    path.write_text(
+        json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
+
+def test_resume_blocks_when_build_record_is_missing(tmp_path: Path) -> None:
+    """没有构建记录就没有"生成成功"这个结论，禁止替它补一个。"""
+
+    source, elements, units, bindings, out = _first_run(tmp_path)
+    _build_record_path(out).unlink()
+    result = _resume(source, elements, units, bindings, out)
+    assert result.status == "blocked"
+    assert any("EVIDENCE_STALE" in problem for problem in result.problems)
+
+
+def test_resume_blocks_when_build_status_is_missing(tmp_path: Path) -> None:
+    """记录在但状态不是已知状态，一样算证据不可用。"""
+
+    source, elements, units, bindings, out = _first_run(tmp_path)
+    _patch_build_record(out, status="")
+    result = _resume(source, elements, units, bindings, out)
+    assert result.status == "blocked"
+    assert any("EVIDENCE_STALE" in problem for problem in result.problems)
+
+
+def test_resume_rejects_stale_build_binding(tmp_path: Path) -> None:
+    """构建记录本身也要属于当前候选，只验 PDF 不够。"""
+
+    source, elements, units, bindings, out = _first_run(tmp_path)
+    record = json.loads(_build_record_path(out).read_text(encoding="utf-8"))
+    binding = dict(record["binding"])
+    binding["candidate_sha256"] = "f" * 64
+    _patch_build_record(out, binding=binding)
+    result = _resume(source, elements, units, bindings, out)
+    assert result.status == "blocked"
+    assert any("EVIDENCE_STALE" in problem for problem in result.problems)
+
+
+def test_resume_does_not_rewrite_build_record(tmp_path: Path) -> None:
+    """原构建记录逐字节不变——恢复只新增，不覆盖。"""
+
+    source, elements, units, bindings, out = _first_run(tmp_path)
+    path = _build_record_path(out)
+    before = file_sha256(path)
+    _resume(source, elements, units, bindings, out)
+    assert file_sha256(path) == before
+
+
+def test_resume_does_not_rewrite_render_plan_snapshot(tmp_path: Path) -> None:
+    """原计划快照逐字节不变。"""
+
+    source, elements, units, bindings, out = _first_run(tmp_path)
+    path = attempt_dir(out, "run-resume", 2) / "render-plan.json"
+    assert path.is_file(), "前提没成立：当前 attempt 应当有计划快照"
+    before = file_sha256(path)
+    _resume(source, elements, units, bindings, out)
+    assert file_sha256(path) == before
+
+
+def test_resume_after_interrupted_attempt_fails_closed(tmp_path: Path) -> None:
+    """模拟写完指针和候选就挂掉：目录里没有构建记录，恢复必须停。"""
+
+    source, elements, units, bindings = _tiny_job(tmp_path)
+    candidate = _make_pdf(tmp_path / "half.pdf", [PRESENT, ABSENT])
+    out = tmp_path / "out"
+    identity = RunIdentity(
+        run_id="run-interrupted",
+        attempt_id=2,
+        candidate_sha256=file_sha256(candidate),
+        render_plan_sha256="a" * 64,
+        renderer_build_id="build-r",
+    )
+    directory = attempt_dir(out, identity.run_id, identity.attempt_id)
+    directory.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(candidate, directory / "candidate.pdf")
+    write_current_run(out, identity)
+    # 故意不写 round-2-build.json：这就是异常退出留下的现场。
+
+    result = _resume(source, elements, units, bindings, out)
+    assert result.status == "blocked"
+    assert any("EVIDENCE_STALE" in problem for problem in result.problems)
 
 
 if __name__ == "__main__":
