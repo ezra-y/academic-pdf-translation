@@ -490,3 +490,52 @@ def test_a_photo_that_is_really_missing_is_still_reported(
     assert not location.located
     assert location.method == METHOD_NOT_FOUND
     assert "像素指纹" in location.evidence
+
+
+# --- 元素横跨候选分页 -------------------------------------------------------
+
+
+def _two_page_candidate(first: str, second: str) -> Any:
+    document = fitz.open()
+    for text in (first, second):
+        page = document.new_page(width=300, height=400)
+        page.insert_text((40, 60), text, fontsize=11)
+    return document
+
+
+def test_an_element_split_across_a_page_break_is_still_located() -> None:
+    """摘要的标题留在上一页、正文落到下一页时，从头取的探针哪一页都不在。"""
+
+    source = fitz.open()
+    source.new_page(width=300, height=400)
+    elements = [
+        {
+            "id": "p0001-body-009",
+            "type": "body",
+            "page": 1,
+            "bbox": [40, 40, 260, 120],
+            "required": True,
+            "detail": {},
+        }
+    ]
+    tail = "ABSTRACT-TAIL-TEXT-THAT-IS-LONG-ENOUGH"
+    candidate = _two_page_candidate("Abstract", tail)
+    mapping = build_mapping(
+        source,
+        candidate,
+        elements,
+        element_texts={"p0001-body-009": f"Abstract {tail}"},
+    )
+    location = mapping.locations[0]
+    assert location.located
+    assert location.candidate_pages == [2]
+
+
+def test_text_probes_are_consecutive_windows() -> None:
+    from academic_pdf_translation.verify.candidate_mapping import text_probes
+
+    windows = text_probes("A" * 60)
+    assert windows[0] == "A" * 24
+    assert windows[1] == "A" * 24
+    assert windows[2] == "A" * 12
+    assert text_probes("") == []

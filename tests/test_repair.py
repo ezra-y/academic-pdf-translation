@@ -414,3 +414,72 @@ def test_the_real_second_round_is_refused() -> None:
     second = plan_repair(mapping, audit, round_index=1)
     assert second.allowed is False
     assert second.actions == []
+
+
+# --- 动作必须落得进渲染计划 -------------------------------------------------
+
+
+def _missing_body_mapping() -> CandidateMapping:
+    return CandidateMapping(
+        source_pages=1,
+        candidate_pages=1,
+        locations=[
+            ElementLocation(
+                element_id="p0001-body-009",
+                element_type="body",
+                source_page=1,
+                required=True,
+            )
+        ],
+    )
+
+
+def test_an_action_off_the_chain_becomes_a_manual_item() -> None:
+    """正文元素没有区域级降级；发这个动作只会让整轮返修卡在 BLOCKED。"""
+
+    plan = plan_repair(
+        _missing_body_mapping(),
+        StructuralAudit(),
+        fallback_levels={"p0001-body-009": ["translate-and-reflow"]},
+    )
+    assert plan.actions == []
+    assert [item.element_id for item in plan.manual] == ["p0001-body-009"]
+    assert "降级链" in plan.manual[0].reason
+
+
+def test_an_action_on_the_chain_is_still_issued() -> None:
+    plan = plan_repair(
+        _missing_body_mapping(),
+        StructuralAudit(),
+        fallback_levels={
+            "p0001-body-009": ["translate-and-reflow", ACTION_PRESERVE_REGION]
+        },
+    )
+    assert [item.action for item in plan.actions] == [ACTION_PRESERVE_REGION]
+    assert plan.manual == []
+
+
+def test_without_chain_information_nothing_changes() -> None:
+    """拿不到降级链时保持原样，不凭空多挡一层。"""
+
+    plan = plan_repair(_missing_body_mapping(), StructuralAudit())
+    assert [item.action for item in plan.actions] == [ACTION_PRESERVE_REGION]
+
+
+def test_fallback_levels_are_read_from_the_render_plan() -> None:
+    from academic_pdf_translation.verify.repair import (
+        fallback_levels_by_element,
+    )
+
+    levels = fallback_levels_by_element(
+        {
+            "elements": [
+                {
+                    "element_id": "e1",
+                    "fallback_levels": ["translate-and-reflow"],
+                },
+                {"element_id": "e2"},
+            ]
+        }
+    )
+    assert levels == {"e1": ["translate-and-reflow"]}
