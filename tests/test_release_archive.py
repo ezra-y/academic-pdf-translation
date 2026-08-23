@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 import zipfile
 from pathlib import Path
@@ -140,3 +141,40 @@ def test_checker_catches_a_polluted_archive(tmp_path: Path) -> None:
         )
     problems = check_archive(polluted)
     assert any("settings.local.json" in problem for problem in problems)
+
+
+def test_checker_catches_bytecode_in_the_archive(tmp_path: Path) -> None:
+    """包里混进 __pycache__ 字节码，检查必须失败。"""
+
+    polluted = tmp_path / f"academic-pdf-translation-{VERSION}.zip"
+    build_archive(VERSION, polluted)
+    with zipfile.ZipFile(polluted, "a") as handle:
+        handle.writestr(
+            f"academic-pdf-translation-{VERSION}"
+            "/scripts/__pycache__/_common.cpython-312.pyc",
+            "\x00\x00",
+        )
+    problems = check_archive(polluted)
+    assert any("__pycache__" in problem for problem in problems)
+    assert any("解压后含缓存或字节码文件" in problem for problem in problems)
+
+
+def test_bundle_check_passes_on_a_used_install(tmp_path: Path) -> None:
+    """装好的包被用过之后，Python 自己写的 __pycache__ 不算打包问题。"""
+
+    archive_path = tmp_path / f"academic-pdf-translation-{VERSION}.zip"
+    build_archive(VERSION, archive_path)
+    with zipfile.ZipFile(archive_path) as handle:
+        handle.extractall(tmp_path / "install")
+    install = tmp_path / "install" / f"academic-pdf-translation-{VERSION}"
+    cache = install / "scripts" / "__pycache__"
+    cache.mkdir(parents=True)
+    (cache / "_common.cpython-312.pyc").write_bytes(b"\x00\x00")
+    result = subprocess.run(
+        [sys.executable, "scripts/check_bundle.py"],
+        cwd=install,
+        capture_output=True,
+        text=True,
+        timeout=300,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr

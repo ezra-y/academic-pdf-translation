@@ -92,6 +92,28 @@ TEXT_SUFFIXES = (
 )
 
 
+#: 缓存目录名与字节码后缀。刚解压的目录里出现它们，就是打包漏了。
+CACHE_DIR_NAMES = (
+    "__pycache__",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".mypy_cache",
+)
+CACHE_FILE_SUFFIXES = (".pyc", ".pyo")
+
+
+def _extracted_cache_problems(root: Path) -> list[str]:
+    """刚解压的目录里的缓存与字节码。"""
+
+    offenders = sorted(
+        str(path.relative_to(root))
+        for path in root.rglob("*")
+        if (path.is_dir() and path.name in CACHE_DIR_NAMES)
+        or (path.is_file() and path.suffix in CACHE_FILE_SUFFIXES)
+    )
+    return [f"解压后含缓存或字节码文件: {name}" for name in offenders[:20]]
+
+
 def check_archive(archive_path: Path) -> list[str]:
     problems: list[str] = []
     if not archive_path.is_file():
@@ -184,6 +206,8 @@ def check_archive(archive_path: Path) -> list[str]:
         if not roots:
             problems.append("解压后没有内容")
         else:
+            # 刚解压、还没人跑过任何脚本：此时出现的缓存只可能来自打包。
+            problems.extend(_extracted_cache_problems(roots[0]))
             result = subprocess.run(
                 [sys.executable, "scripts/check_bundle.py"],
                 cwd=roots[0],

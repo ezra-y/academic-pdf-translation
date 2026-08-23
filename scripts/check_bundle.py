@@ -256,7 +256,6 @@ def _check_module_reachability(root: Path) -> None:
 
 CACHE_DIR_NAMES = {"__pycache__", ".pytest_cache", ".ruff_cache", ".mypy_cache"}
 CACHE_FILE_SUFFIXES = {".pyc", ".pyo"}
-PACKAGE_IGNORED_DIRS = {".git", ".venv", "venv", "Workspace", "audit"}
 
 
 def _is_cache_path(relative: Path) -> bool:
@@ -289,38 +288,26 @@ def _tracked_files(root: Path) -> list[str] | None:
 
 
 def _check_no_cache_artifacts(root: Path) -> None:
-    """交付物里不得存在字节码或工具缓存。
+    """仓库里不得提交字节码或工具缓存。
 
-    这些文件跟着压缩包发出去，既没用，又会泄漏本机路径和 Python 版本。
+    这些文件一旦被跟踪就会跟着交付物发出去，既没用，又会泄漏本机路径和
+    Python 版本。所以这里只看 git 跟踪的文件。
 
-    判定范围按仓库形态决定：
-    - 在 git 仓库里，只看被跟踪的文件。开发时本地生成的 `__pycache__`
-      已经被 .gitignore 挡住，不会进交付物，不该让检查失败。
-    - 不是 git 仓库时（例如解压后的发布包），扫描整个目录树。
-      这时出现缓存文件，就是打包本身漏了。
+    装好的发布包不是 git 仓库，用户跑一次脚本，Python 自己就会写出
+    `__pycache__`——那是"用过"的痕迹，不是"打包漏了"。发布包干不干净
+    由 `check_release_archive.py` 直接查 ZIP 和刚解压的目录，
+    那时候还没人跑过任何脚本，判得准。
     """
 
     tracked = _tracked_files(root)
-    if tracked is not None:
-        offenders = sorted(
-            value for value in tracked if _is_cache_path(Path(value))
-        )
-    else:
-        offenders = sorted(
-            str(path.relative_to(root))
-            for path in root.rglob("*")
-            if not (
-                path.relative_to(root).parts
-                and path.relative_to(root).parts[0] in PACKAGE_IGNORED_DIRS
-            )
-            and (
-                (path.is_dir() and path.name in CACHE_DIR_NAMES)
-                or (path.is_file() and path.suffix in CACHE_FILE_SUFFIXES)
-            )
-        )
+    if tracked is None:
+        return
+    offenders = sorted(
+        value for value in tracked if _is_cache_path(Path(value))
+    )
     if offenders:
         raise BundleCheckError(
-            "交付物含缓存或字节码文件，请先删除: "
+            "仓库里提交了缓存或字节码文件，请先删除: "
             + ", ".join(offenders[:20])
             + (" ..." if len(offenders) > 20 else "")
         )
