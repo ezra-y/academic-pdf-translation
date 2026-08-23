@@ -209,7 +209,9 @@ python3 scripts/apply_translation_batch.py /path/to/job \
 1. **原文原样冒充译文。** 跨语言任务里，标准化后 `translation` 与 `source`
    相同的单元一律拒绝。
 2. **译文不是目标语言。** 普通正文和标题的译文要含合理比例的目标语言字符。
-   单元 0.50、批次 0.70、文档 0.80，三层分别判定。
+   单元 0.50、批次 0.70、文档 0.80，三层分别判定。作者署名、单位、出版
+   元数据、DOI/URL 和参考文献题录不受这一条约束：它们的正确形态本来就是
+   原文，照原样留着即可，不要扩写成中文解释句。
 3. **用自由文本理由整段保留原文。** 保留原文必须填结构化
    `keep_source_code`，`keep_source_reason` 只作补充说明，单独不能豁免。
 
@@ -225,6 +227,7 @@ python3 scripts/apply_translation_batch.py /path/to/job \
 | `citation` | 基本只有引文标记的单元 |
 | `bibliography-entry` | 单元类型是 reference/bibliography，或 `retained_source.json` 中有覆盖该单元坐标的参考文献区域 |
 | `required-original-term` | `translation.terminology` 中登记了 target 与 source 相同的术语 |
+| `publication-front-matter` | 作者署名、单位、出版元数据或 DOI/URL 单元 |
 
 普通正文、摘要、标题和章节标题**不能**整单元保留原文：上面每一个 code 都
 用不上它们。
@@ -285,7 +288,8 @@ python3 scripts/apply_translation_batch.py /path/to/job --from-cache
   `complete` 只在全部单元通过检查后才会变成 `true`，同时给出
   `validated_translated_units`、`validated_kept_source_units` 和
   `invalid_or_unverified_units`；
-- 参考文献等保留原文区域写入 `retained_source.json`；
+- 参考文献题录按学术惯例默认保留原文，只做断词修复与 URL 合行，不逐条
+  译成中文；保留原文区域写入 `retained_source.json`；
 - 同页存在分栏参考文献时，每个逻辑栏单独登记区域；保留区按左栏到右栏、
   栏内从上到下排版，并排除页眉、页脚和孤立页码；
 - 图表、截图和复杂页状态写入 `figure_inventory.json`，并为每项选择

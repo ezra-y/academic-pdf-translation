@@ -163,11 +163,15 @@ def test_allow_bibliography_with_structured_evidence(tmp_path: Path) -> None:
     assert report["validated_kept_source_units"] == len(kept_ids)
     for verdict in report["units"]:
         if verdict["unit_id"] in kept_ids:
-            assert verdict["evidence"]["basis"] == "retained-source-region"
+            # 单元类型和保留区域都算结构化证据，取到哪一个都行。
+            assert verdict["evidence"]["basis"] in {
+                "retained-source-region",
+                "reference-unit-kind",
+            }
 
 
-def test_bibliography_code_needs_matching_coordinates(tmp_path: Path) -> None:
-    """区域存在但不覆盖该单元时，同一个 code 也不能豁免。"""
+def test_bibliography_code_needs_reference_evidence(tmp_path: Path) -> None:
+    """既不是题录单元、区域又不覆盖它时，同一个 code 不能豁免。"""
 
     job_dir = make_job(tmp_path)
     region = _reference_region(job_dir)
@@ -176,12 +180,15 @@ def test_bibliography_code_needs_matching_coordinates(tmp_path: Path) -> None:
     retained["regions"] = [region]
 
     translation = load_json(job_dir / "translation.json")
+    marked = 0
     for unit in translation["units"]:
-        if unit["source"].lstrip().startswith("["):
+        if not unit["source"].lstrip().startswith("[") and marked == 0:
             unit["translation"] = None
             unit["keep_source_code"] = "bibliography-entry"
+            marked += 1
         else:
             unit["translation"] = "已翻译的中文段落。"
+    assert marked == 1
     report = evaluate_translation(translation, retained_source=retained)
     assert report["invalid_or_unverified_units"] > 0
 

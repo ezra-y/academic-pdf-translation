@@ -32,10 +32,31 @@ KEEP_SOURCE_CODES = (
     "citation",
     "bibliography-entry",
     "required-original-term",
+    "publication-front-matter",
 )
 
 #: 普通正文类单元：这些类型不允许整单元保留原文。
 PROSE_KINDS = ("body", "heading", "abstract", "title", "section-heading")
+
+#: 署名区单元：作者、单位、出版元数据、DOI/URL。
+FRONT_MATTER_KINDS = (
+    "author-block",
+    "affiliation",
+    "publication-metadata",
+    "doi-url",
+)
+
+#: 这些单元本来就以原文形态存在：人名、单位、DOI、网址、题录。
+#: 拿正文的目标语言占比门槛去量它们，只会逼出"本文共有三位作者……"
+#: 这种硬凑的解释句。门槛不该管人名和网址，所以这里免除比例检查。
+#: 正文、标题、摘要不在此列，它们的门槛一字不动。
+SOURCE_FORM_KINDS = FRONT_MATTER_KINDS + ("reference", "bibliography")
+
+#: 同样的判断，按 unit_bindings.json 给出的元素角色表达。
+#: 角色由原文元素清单算出，比 kind_hint 可靠，两者取其一命中即可。
+FRONT_MATTER_ROLES = ("author", "affiliation", "publication-metadata")
+REFERENCE_ROLES = ("reference-entry",)
+SOURCE_FORM_ROLES = FRONT_MATTER_ROLES + REFERENCE_ROLES
 
 #: 目标语言字符占比下限。三层分别收紧，不允许只看全篇一个比例。
 UNIT_TARGET_SCRIPT_RATIO_MIN = 0.50
@@ -61,6 +82,7 @@ FRAGMENT_LIMITS = {
 }
 
 REFERENCE_KIND_PREFIXES = ("reference", "bibliography")
+FRONT_MATTER_KIND_PREFIXES = FRONT_MATTER_KINDS
 #: 与 retained_source.py 的 REFERENCE_CATEGORIES 保持一致，
 #: 但本模块不导入 PyMuPDF，因此在这里重新声明常量。
 REFERENCE_CATEGORIES = frozenset({"references", "bibliography"})
@@ -293,9 +315,34 @@ def reference_regions(retained: Any) -> list[dict[str, Any]]:
     return regions
 
 
+def unit_kind(unit: dict[str, Any]) -> str:
+    return str(unit.get("kind") or unit.get("kind_hint") or "").lower()
+
+
+def unit_element_role(unit: dict[str, Any]) -> str:
+    """单元绑定到的原文元素角色，由 unit_bindings.json 算出。"""
+
+    return str(unit.get("element_role") or "").lower()
+
+
 def _is_reference_kind(unit: dict[str, Any]) -> bool:
-    kind = str(unit.get("kind") or unit.get("kind_hint") or "").lower()
-    return kind.startswith(REFERENCE_KIND_PREFIXES)
+    return unit_kind(unit).startswith(REFERENCE_KIND_PREFIXES) or (
+        unit_element_role(unit) in REFERENCE_ROLES
+    )
+
+
+def _is_front_matter_kind(unit: dict[str, Any]) -> bool:
+    return unit_kind(unit).startswith(FRONT_MATTER_KIND_PREFIXES) or (
+        unit_element_role(unit) in FRONT_MATTER_ROLES
+    )
+
+
+def is_source_form_kind(unit: dict[str, Any]) -> bool:
+    """这个单元本来就该以原文形态出现吗。"""
+
+    return unit_kind(unit).startswith(SOURCE_FORM_KINDS) or (
+        unit_element_role(unit) in SOURCE_FORM_ROLES
+    )
 
 
 def _fragment_problem(code: str, source: str) -> str | None:
@@ -409,6 +456,15 @@ def check_keep_source(
             "或 retained_source.json 中有覆盖该单元坐标的参考文献区域",
             evidence,
         )
+    if code == "publication-front-matter":
+        if _is_front_matter_kind(unit):
+            evidence["basis"] = "front-matter-unit-kind"
+            return None, evidence
+        return (
+            "publication-front-matter 只能用在作者、单位、出版元数据或 "
+            "DOI/URL 单元上",
+            evidence,
+        )
     if code in {"person-name", "official-product-name"}:
         return _check_person_or_product(code, source), evidence
     if code == "acronym":
@@ -448,6 +504,9 @@ def check_translation_language(
         # 目标语言同为拉丁字母时，字符集无法区分语种，只做等同检查。
         return problems
     if not is_prose(source):
+        return problems
+    if is_source_form_kind(unit):
+        # 人名、单位、DOI、网址、题录：原文形态本身就是正确形态。
         return problems
     target_chars = target_character_count(translation, writing_system)
     if target_chars == 0:
@@ -655,10 +714,12 @@ def evaluate_batch(
     problems = [
         problem for verdict in verdicts for problem in verdict["problems"]
     ]
+    # 署名、DOI、题录即使被翻了，也不该拉低整批的目标语言占比：
+    # 它们的正确形态本来就含大量原文字符。
     translated = [
         _text(unit.get("translation"))
         for unit, verdict in zip(units, verdicts, strict=True)
-        if verdict["state"] == "translated"
+        if verdict["state"] == "translated" and not is_source_form_kind(unit)
     ]
     ratio = context.ratio(translated)
     if ratio is not None and ratio < BATCH_TARGET_SCRIPT_RATIO_MIN:
@@ -723,6 +784,7 @@ def evaluate_translation(
         for unit in units
     ]
     by_id = {verdict["unit_id"]: verdict for verdict in verdicts}
+    by_unit_id = {str(unit.get("id") or ""): unit for unit in units}
     translation_by_id = {
         str(unit.get("id") or ""): _text(unit.get("translation"))
         for unit in units
@@ -737,6 +799,7 @@ def evaluate_translation(
             translation_by_id.get(unit_id, "")
             for unit_id in unit_ids
             if by_id.get(unit_id, {}).get("state") == "translated"
+            and not is_source_form_kind(by_unit_id.get(unit_id, {}))
         ]
         ratio = (
             _aggregate_ratio(texts, writing_system, terminology_terms)
@@ -767,6 +830,7 @@ def evaluate_translation(
         translation_by_id.get(verdict["unit_id"], "")
         for verdict in verdicts
         if verdict["state"] == "translated"
+        and not is_source_form_kind(by_unit_id.get(verdict["unit_id"], {}))
     ]
     document_ratio = (
         _aggregate_ratio(translated_texts, writing_system, terminology_terms)

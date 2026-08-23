@@ -160,13 +160,24 @@ def build_translation_skeleton(
     source_language: str,
     target_language: str,
     source_units_sha256: str,
+    roles_by_unit: dict[str, str] | None = None,
 ) -> dict[str, Any]:
+    """搭出待翻译骨架。
+
+    ``roles_by_unit`` 是 ``unit_bindings.json`` 算出的元素角色。它决定
+    哪些单元本来就该保留原文形态（作者、单位、出版元数据、题录），
+    检查据此免除这些单元的目标语言占比门槛。角色是附加字段，
+    不改 ``kind``——排版器按 kind 分流，动它会牵到版式。
+    """
+
+    roles = roles_by_unit or {}
     units = [
         {
             "id": unit["id"],
             "source_ref": unit["id"],
             "page": unit["page"],
             "kind": unit["kind_hint"],
+            "element_role": roles.get(str(unit["id"]), ""),
             "heading_level": unit.get("heading_level"),
             "source": unit["source"],
             "source_bbox": unit["source_bbox"],
