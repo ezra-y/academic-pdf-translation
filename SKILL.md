@@ -93,10 +93,13 @@ python3 scripts/init_job.py \
 
 初始化会自动生成：
 
-- `source_structure.json`：PDF 自带文字顺序、坐标推断顺序、文字块坐标、
-  栏位、图片和矢量图信号；
+- `source_structure.json`：PDF 自带文字顺序、坐标推断顺序、实际阅读顺序、
+  文字块坐标、栏位、图片和矢量图信号；
 - `source_units.json`：按段落或语义区域拆分并冻结的原文单元；
-- `translation.json`：与每个冻结单元一一绑定的待翻译骨架。
+- `source_elements.json` 与 `unit_bindings.json`：原文元素清单，以及每个
+  单元属于哪个元素、担任什么角色；
+- `translation.json`：与每个冻结单元一一绑定的待翻译骨架，每个单元带上
+  它的元素角色。
 
 两种阅读顺序冲突、缺少文本层或存在图表时，只标记需要看图的页，不擅自宣称
 提取顺序正确。不得删除冻结单元，也不得把多个单元重新合成“整页原文加一段
@@ -124,16 +127,51 @@ python3 scripts/set_complex_content.py /path/to/job \
 ```bash
 python3 scripts/set_complex_content.py /path/to/job \
   --page "6,structured-table,structured-table-rebuild,统计表需保持行列关系" \
-  --page "8,figure-with-text,vector-rebuild,模型图需保持标签和箭头关系"
+  --page "8,figure-with-text,image-text-localization,模型图保留原图并叠中文标签"
 ```
 
-命令会同时生成 `complex_content.json` 模板。复杂页翻译前必须把原页结构写成
-机器可检查的载荷：
+存在任一复杂页时，整篇路线最低为 `hybrid-complex-pages`；复杂页多或结构贯穿
+全文时使用 `custom-layout`。具体类型见 [routing.md](references/routing.md)。
+
+### 复杂页默认走元素管线
+
+图、表、公式**默认保留原文那一块**，不重画。初始化已经生成
+`source_elements.json` 与 `unit_bindings.json`；接着一条命令给每个元素定
+策略：
+
+```bash
+python3 scripts/build_render_plan.py /path/to/job
+```
+
+计划会把图整块定为保留（`preserve-*`），并把图内标签按坐标叠成中文；
+`figure_inventory.json` 同时由程序派生，不需要手写。保留下来的元素就是
+已渲染的元素，不需要另写省略理由。
+
+自动识别认错了才手工纠正一条：
+
+```bash
+python3 scripts/set_element_override.py /path/to/job \
+  --element p0006-figure-001 \
+  --action retype \
+  --type chart
+```
+
+改完重新运行 `build_render_plan.py`。
+
+### 手写载荷：确认画得出来才用
+
+只有当结构化重建**确实画得出来**，而且比保留原图更有用时，才手工填写
+`complex_content.json` 载荷：
 
 - 表格：表题、行数、列数、单元格和表注；
 - 模型图：图、标签、节点及边/连线；
 - 需要本地化的截图、统计图或 OCR：区域、显示尺寸和承担信息的区域文字；
 - 阅读顺序重建：按顺序排列的原文块 ID。
+
+`vector-rebuild` 的载荷必须用渲染器认识的结构键：`nodes`、`edges`、
+`connectors`、`series`、`panels`、`circles`、`levels`。只给标签文字画不出
+任何图形，导出前总检查会报 `VECTOR_REBUILD_PAYLOAD_NOT_DRAWABLE` 并停下。
+画不出来就别写载荷，让计划把原图整块保留。
 
 填写完成后：
 
@@ -144,9 +182,6 @@ python3 scripts/set_complex_payload.py /path/to/job \
   --source-evidence "已按原尺寸核对全部节点、箭头、标签和数值" \
   --ready
 ```
-
-存在任一复杂页时，整篇路线最低为 `hybrid-complex-pages`；复杂页多或结构贯穿
-全文时使用 `custom-layout`。具体类型见 [routing.md](references/routing.md)。
 
 跨页表格、跨页模型或其他跨页复杂结构必须在同一载荷中列出全部
 `source_pages` 和逐页 `source_bboxes`。生成器按这些坐标替代原始碎片，
@@ -292,9 +327,9 @@ python3 scripts/apply_translation_batch.py /path/to/job --from-cache
   译成中文；保留原文区域写入 `retained_source.json`；
 - 同页存在分栏参考文献时，每个逻辑栏单独登记区域；保留区按左栏到右栏、
   栏内从上到下排版，并排除页眉、页脚和孤立页码；
-- 图表、截图和复杂页状态写入 `figure_inventory.json`，并为每项选择
-  `translate-embedded-text`、`translate-caption-only`、
-  `preserve-original` 或 `omit-nonsemantic`；
+- 图表、截图和复杂页状态由 `build_render_plan.py` 派生进
+  `figure_inventory.json`，不手写：保留下来的图就是渲染出来的图，
+  不需要为它写省略理由；
 - 高风险语句使用 [semantic-review.md](references/semantic-review.md) 的稳定标记。
 
 超过 10 页时，每约 5 页保存一次可恢复检查点：
@@ -442,11 +477,14 @@ python3 scripts/deliver_first_candidate.py /path/to/job --visual-result /path/to
 结果绑定候选文件哈希；候选一换，旧结果自动作废。没有高风险页时
 结论记 `NOT_REQUIRED`，不需要以上两步。
 
-前置：作业需要先有 `source_elements.json` 与 `unit_bindings.json`。
+前置：作业需要先有 `source_elements.json`、`unit_bindings.json` 与
+`render_plan.json`。前两份由初始化生成，第三份由
+`build_render_plan.py` 生成。原文换了或改过元素纠正时重跑：
 
 ```bash
 python3 scripts/analyze_source_elements.py /path/to/job
 python3 scripts/bind_translation_units.py /path/to/job
+python3 scripts/build_render_plan.py /path/to/job
 ```
 
 详见 [references/element-pipeline.md](references/element-pipeline.md)。

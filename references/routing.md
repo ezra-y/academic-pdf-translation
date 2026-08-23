@@ -49,15 +49,32 @@
 
 | 内容 | 首选处理 |
 |---|---|
-| 密集表格、统计表 | `structured-table-rebuild` |
+| 图表、流程图、模型图、直方图、公式 | 元素管线保留原图，图内标签叠中文 |
+| 照片、装饰图、不依赖内部文字理解的截图 | 元素管线保留原图，只翻译图注 |
+| 承担研究信息的图内文字、界面截图 | 元素管线保留原图，图内标签叠中文 |
+| 密集表格、统计表 | 行列与数值全部确定时 `structured-table-rebuild`，否则保留原表区域加中文翻译键 |
 | 量表、表单、题项网格 | `semantic-grid-rebuild` |
-| 图表、流程图、模型图、公式密集页 | `vector-rebuild` |
-| 承担研究信息的图内文字、界面截图 | `image-text-localization` |
-| 照片、装饰图、不依赖内部文字理解的截图 | 保留原图，只翻译图注；不列为复杂翻译页 |
 | 扫描页 | `ocr-region-rebuild` |
 | 横向页、混合尺寸、特殊版心 | `custom-page-reflow` |
 | 多栏错序、阅读顺序异常 | `manual-reading-order-rebuild` |
 | 多种复杂内容叠加 | 按 `mixed-complex` 登记，并选择风险最高的专用方法 |
+
+## 图默认保留，不重画
+
+图的默认路线是元素管线：
+
+```bash
+python3 scripts/build_render_plan.py /path/to/job
+```
+
+计划按元素类型给出 `preserve-*` 策略，把图整块搬过来，再按坐标把图内标签
+叠成中文。这条路不会丢柱子、不会丢坐标轴，也不需要人把图读成数据。
+保留下来的元素就是已渲染的元素，图表清单里不需要另写省略理由。
+
+`vector-rebuild` 是可选路径，只在**确认画得出来**时用：载荷必须含
+`nodes`、`edges`、`connectors`、`series`、`panels`、`circles`、`levels`
+中的至少一种结构。只给标签文字，渲染器画不出任何图形，导出前总检查会报
+`VECTOR_REBUILD_PAYLOAD_NOT_DRAWABLE` 并停下构建。
 
 确认存在任一复杂页时，整篇路线最低为 `hybrid-complex-pages`；复杂页占比高、
 结构相互依赖或量表/表单贯穿全文时，直接使用 `custom-layout`。不得先使用
@@ -69,8 +86,9 @@
 只写“已重建”或一段图意摘要不能通过。
 
 截图和普通图片先判断内部文字是否承担证据、操作步骤或变量含义。若不承担，
-在 `figure_inventory.json` 选择 `translate-caption-only`、
-`preserve-original` 或 `omit-nonsemantic`，不得为了形式统一给图片覆盖译文。
+只翻译图注，不给图片覆盖译文。`figure_inventory.json` 由
+`build_render_plan.py` 程序派生，不手写：保留下来的图就是渲染出来的图，
+不需要为它写省略理由。
 
 ## 引擎政策
 
@@ -78,7 +96,7 @@
 - 共享同一 BabelDOC 核心的包装器不算独立排版引擎。
 - PyMuPDF 的逐 span 替换只适用于短标签，不得用于正文。
 - 需要 OCR、图内文字或截图本地化时必须作为显式任务存在；无需本地化的图片
-  也必须在图表清单中记录保留或省略策略。
+  按保留策略整块搬过来，由程序记进图表清单。
 
 ## 升级条件
 
