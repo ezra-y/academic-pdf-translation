@@ -467,7 +467,10 @@ def locate_element(
         return result
 
     # 1. 位图：按图像字节哈希一一对上，最硬的证据。
+    #    哈希对不上不等于图不在：按区域保留时图片被重新裁切、重新编码，
+    #    字节必然变。所以哈希只在命中时下结论，落空就交给下面的像素指纹。
     digest = source_image_digest(source_document, element)
+    digest_miss = ""
     if digest:
         hits = digests.get(digest, [])
         if hits:
@@ -479,10 +482,7 @@ def locate_element(
             location.confidence = EXACT_CONFIDENCE
             location.evidence = f"图像字节哈希 {digest[:12]} 命中"
             return finish(location)
-        location.method = METHOD_NOT_FOUND
-        location.confidence = 0.0
-        location.evidence = f"图像字节哈希 {digest[:12]} 在候选里找不到"
-        return finish(location)
+        digest_miss = f"图像字节哈希 {digest[:12]} 在候选里找不到"
 
     # 2. 文字元素：按译文（或按策略保留的原文）查。
     probe = normalize_text((element_texts or {}).get(element_id, ""))
@@ -554,7 +554,11 @@ def locate_element(
         return finish(location)
 
     usable_probe = len(probe) >= MIN_TEXT_PROBE_CHARS
-    if usable_probe or anchors:
+    if digest_miss:
+        location.method = METHOD_NOT_FOUND
+        location.confidence = 0.0
+        location.evidence = f"{digest_miss}，区域像素指纹也没有对上"
+    elif usable_probe or anchors:
         location.method = METHOD_NOT_FOUND
         location.evidence = "文字探针与锚点都没有命中任何一页"
     elif probe or (element_texts or {}).get(element_id, "").strip():
