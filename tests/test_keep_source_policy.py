@@ -208,7 +208,17 @@ def test_residual_source_not_whitelisted_by_arbitrary_reason(
 
     report = build_completeness_audit(job_dir)
     assert report["decision"] == "NEEDS_REPAIR"
-    assert not any(page["reference_page"] for page in report["pages"])
+    # 参考文献页只能由原文结构认定：单元绑定到题录元素的那一页。
+    # 自由文本理由一页也不许多标出来。
+    reference_role_pages = {
+        unit["page"]
+        for unit in translation["units"]
+        if unit.get("element_role") == "reference-entry"
+    }
+    assert not any(
+        page["reference_page"] and page["page"] not in reference_role_pages
+        for page in report["pages"]
+    )
     assert report["translation_truthfulness"]["validated_kept_source_units"] == 0
 
 

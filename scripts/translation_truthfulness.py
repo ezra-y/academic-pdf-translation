@@ -452,7 +452,8 @@ def check_keep_source(
             evidence["retained_region_id"] = region_id
             return None, evidence
         return (
-            "bibliography-entry 需要单元类型是 reference/bibliography，"
+            "bibliography-entry 需要单元类型是 reference/bibliography、"
+            "元素角色是 reference-entry，"
             "或 retained_source.json 中有覆盖该单元坐标的参考文献区域",
             evidence,
         )
@@ -462,7 +463,7 @@ def check_keep_source(
             return None, evidence
         return (
             "publication-front-matter 只能用在作者、单位、出版元数据或 "
-            "DOI/URL 单元上",
+            "DOI/URL 单元上（单元类型或元素角色任一命中即可）",
             evidence,
         )
     if code in {"person-name", "official-product-name"}:

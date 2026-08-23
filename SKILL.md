@@ -209,6 +209,12 @@ python3 scripts/plan_translation_batches.py /path/to/job --model <实际模型�
 说明、跨页续句都保证同批。每个批次文件已带好论文标题、摘要摘录、章节目录、
 当前章节标题、已锁定术语，以及上一批结尾和下一批开头的少量上下文。
 
+批次里每个单元还带一个 `element_role`，取自原文元素清单。它决定这条单元
+本来该是什么形态：`reference-entry` 是参考文献题录，`author`、
+`affiliation`、`publication-metadata` 是署名区。这些单元照原样保留原文，
+把 `translation` 留空、填对应的 `keep_source_code` 即可，不要扩写成中文
+解释句。`body`、`heading` 等普通正文单元必须给出译文。
+
 按批次翻译后，只返回本批单元的结果数组：
 
 ```json
@@ -260,9 +266,9 @@ python3 scripts/apply_translation_batch.py /path/to/job \
 | `formula-or-statistical-symbol` | 公式或统计符号片段，普通词不超过 2 个 |
 | `doi-or-url` | 基本只有 DOI 或 URL 的单元 |
 | `citation` | 基本只有引文标记的单元 |
-| `bibliography-entry` | 单元类型是 reference/bibliography，或 `retained_source.json` 中有覆盖该单元坐标的参考文献区域 |
+| `bibliography-entry` | 单元类型是 reference/bibliography，或批次里的 `element_role` 是 `reference-entry` |
 | `required-original-term` | `translation.terminology` 中登记了 target 与 source 相同的术语 |
-| `publication-front-matter` | 作者署名、单位、出版元数据或 DOI/URL 单元 |
+| `publication-front-matter` | 作者署名、单位、出版元数据或 DOI/URL 单元；批次里的 `element_role` 为 `author`、`affiliation`、`publication-metadata` 时同样适用 |
 
 普通正文、摘要、标题和章节标题**不能**整单元保留原文：上面每一个 code 都
 用不上它们。

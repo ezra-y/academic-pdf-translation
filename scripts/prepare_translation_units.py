@@ -159,6 +159,21 @@ def _timed_build_source_units(
     }
 
 
+#: 元素角色说这是一条参考文献题录时，单元类型就写 reference。
+#: 题录默认保留原文，排版也按题录那一套走；类型停在 body，
+#: 保留原文这条路在批次写回那一关就走不通。
+REFERENCE_ROLE_KINDS = {"reference-entry": "reference"}
+
+
+def _kind_for(unit: dict[str, Any], element_role: str) -> str:
+    """单元类型：元素角色能定的按角色定，其余沿用扫描时的推断。"""
+
+    return REFERENCE_ROLE_KINDS.get(
+        str(element_role or "").lower(),
+        str(unit["kind_hint"]),
+    )
+
+
 def build_translation_skeleton(
     source_units: dict[str, Any],
     *,
@@ -181,7 +196,7 @@ def build_translation_skeleton(
             "id": unit["id"],
             "source_ref": unit["id"],
             "page": unit["page"],
-            "kind": unit["kind_hint"],
+            "kind": _kind_for(unit, roles.get(str(unit["id"]), "")),
             "element_role": roles.get(str(unit["id"]), ""),
             "heading_level": unit.get("heading_level"),
             "source": unit["source"],

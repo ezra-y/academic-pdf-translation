@@ -138,9 +138,17 @@ def _validate_against_batch(
 def _truthfulness_units(
     batch: dict[str, Any],
     accepted: dict[str, dict[str, Any]],
+    element_roles: dict[str, str] | None = None,
 ) -> list[dict[str, Any]]:
-    """把批次里的冻结原文和本次结果拼成待检查的单元。"""
+    """把批次里的冻结原文和本次结果拼成待检查的单元。
 
+    元素角色必须一起带上：作者、单位、出版元数据和参考文献题录按角色
+    免除目标语言占比门槛，也按角色允许 `publication-front-matter` 与
+    `bibliography-entry` 保留原文。批次文件里带了就用批次里的，
+    早先编排的批次没有这个字段，回 `translation.json` 查同一个单元。
+    """
+
+    roles = element_roles or {}
     merged: list[dict[str, Any]] = []
     for unit in batch.get("units", []):
         unit_id = str(unit.get("id") or "")
@@ -152,6 +160,9 @@ def _truthfulness_units(
                 "id": unit_id,
                 "page": unit.get("page"),
                 "kind": unit.get("kind"),
+                "element_role": str(
+                    unit.get("element_role") or roles.get(unit_id) or ""
+                ),
                 "source": unit.get("source"),
                 "source_bbox": unit.get("source_bbox"),
                 "translation": item.get("translation"),
@@ -175,8 +186,13 @@ def _assert_truthful(
 
     retained_path = job_dir / "retained_source.json"
     retained = load_json(retained_path) if retained_path.is_file() else None
+    element_roles = {
+        str(unit.get("id") or ""): str(unit.get("element_role") or "")
+        for unit in translation.get("units", [])
+        if isinstance(unit, dict)
+    }
     report = evaluate_batch(
-        _truthfulness_units(batch, accepted),
+        _truthfulness_units(batch, accepted, element_roles),
         translation_document=translation,
         retained_source=retained,
         batch_id=str(batch.get("batch_id") or ""),
