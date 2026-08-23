@@ -505,6 +505,14 @@ def _page_data(
     elif not two_column:
         selected_order = "layout"
 
+    # 真正拿去切单元的顺序。两种顺序打架时，按几何算出来的那份赢：
+    # 期刊首页的标题、作者、单位横跨栏顶，PDF 自带的块顺序常把双栏正文
+    # 排在它们前面，照抄就会让标题掉到正文后面。这一页仍旧进"需要看图"
+    # 的清单，标记不变，只是默认顺序改成看得懂的那一份。
+    reading_order = (
+        native_order if selected_order == "native" else layout_order
+    )
+
     return {
         "page": page_number,
         "width": round(page_width, 3),
@@ -522,6 +530,7 @@ def _page_data(
             "layout_order": layout_order,
             "order_disagreement_ratio": disagreement,
             "selected_order": selected_order,
+            "reading_order": reading_order,
         },
         "blocks": block_rows,
         "images": images,

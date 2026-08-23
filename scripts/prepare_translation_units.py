@@ -72,7 +72,12 @@ def _timed_build_source_units(
         page_number = int(page["page"])
         page_table = bool(page.get("signals", {}).get("table"))
         page_figure = bool(page.get("signals", {}).get("figure"))
-        ordered_ids = page.get("layout", {}).get("native_order", [])
+        layout = page.get("layout", {})
+        # 阅读顺序以 reading_order 为准：它已经在两种顺序打架时选好了
+        # 看得懂的那一份。老作业没有这个字段，退回自带顺序。
+        ordered_ids = layout.get("reading_order") or layout.get(
+            "native_order", []
+        )
         by_id = {
             int(block["id"]): block
             for block in page.get("blocks", [])
