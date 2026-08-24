@@ -542,6 +542,13 @@ def main() -> int:
     parser.add_argument("job_dir", type=Path)
     parser.add_argument("--batch", help="批次 ID，例如 batch-0001")
     parser.add_argument(
+        "--results-dir",
+        type=Path,
+        help="按批次顺序串行写回该目录下的全部结果文件"
+        "（<batch_id>.result.json）。翻译可以并行，写回必须由"
+        "唯一的写回者走这一个入口，检查逐批照跑",
+    )
+    parser.add_argument(
         "--result",
         type=Path,
         help="批次结果 JSON；使用 - 表示从标准输入读取",
@@ -563,6 +570,37 @@ def main() -> int:
             print(
                 "从缓存写回批次: " + (", ".join(restored) or "无")
             )
+            return 0
+        if args.results_dir is not None:
+            plan = load_json(args.job_dir / "translation-plan.json")
+            applied: list[str] = []
+            missing: list[str] = []
+            for batch in plan.get("batches", []):
+                batch_id = str(batch.get("batch_id") or "")
+                result_path = args.results_dir / f"{batch_id}.result.json"
+                if batch.get("status") == "applied":
+                    continue
+                if not result_path.is_file():
+                    missing.append(batch_id)
+                    continue
+                payload = json.loads(
+                    result_path.read_text(encoding="utf-8")
+                )
+                apply_translation_batch(
+                    args.job_dir,
+                    batch_id,
+                    payload,
+                    elapsed_seconds=args.elapsed_seconds,
+                    model=args.model,
+                    retries=args.retries,
+                )
+                applied.append(batch_id)
+            print(f"串行写回 {len(applied)} 批: " + (", ".join(applied) or "无"))
+            if missing:
+                print(
+                    f"还缺 {len(missing)} 批的结果文件: "
+                    + ", ".join(missing)
+                )
             return 0
         if not args.batch or args.result is None:
             raise SkillError("请提供 --batch 和 --result，或使用 --from-cache")

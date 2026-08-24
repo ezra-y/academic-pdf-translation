@@ -264,6 +264,32 @@ python3 scripts/apply_translation_batch.py /path/to/job \
 任何一项不满足就整批拒绝，`translation.json` 保持原样。单批失败只重做该批，
 已完成批次不受影响。中断后重新运行编排命令即可从最后一个成功批次继续。
 
+### 并行翻译（批次多时建议）
+
+翻译可以并行，写回必须串行。批数 ≥ 4 时建议拆给多个翻译代理：
+
+```bash
+python3 scripts/plan_translation_batches.py /path/to/job \
+  --model <实际模型标识> --translators 4
+```
+
+`--translators` 上限 5。命令会把连续的批次段分配给每个代理并打印分配表
+（也写进 `translation-plan.json` 的 `assignments`）。然后为每个代理
+启动一个子代理（定义见发布包 `agents/batch-translator.md`，复制到项目
+`.claude/agents/` 即可用；翻译代理用中档模型即可，例如 Sonnet 级），
+任务书写明：作业目录、分给它的批次 ID、结果输出目录。每个代理**只写**
+自己批次的 `<batch_id>.result.json`，绝不碰 `translation.json`。
+
+全部代理完成后，由唯一的写回者串行执行：
+
+```bash
+python3 scripts/apply_translation_batch.py /path/to/job \
+  --results-dir /path/to/results --model <实际模型标识>
+```
+
+逐批校验与单批写回完全相同，一批不过只拒那一批。术语一致性不依赖
+分配方式：术语表在编排时已冻结并钉哈希，写回一关还会校验。
+
 ### 译文真实性检查
 
 写入 `translation.json` 和缓存之前，还要过一遍译文真实性检查。它拦三件事：

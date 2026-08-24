@@ -449,6 +449,37 @@ def plan_translation_batches(*args, **kwargs):
         return _timed_plan_translation_batches(*args, **kwargs)
 
 
+
+#: 并行翻译代理数上限。翻译是并行收益最大的一段；超过 5 个
+#: 术语与文风的协调成本开始超过节省的时间。
+MAX_TRANSLATORS = 5
+
+
+def assign_batches(batch_ids: list[str], translators: int) -> list[dict]:
+    """把批次按原顺序切成连续段，分给 N 个翻译代理。
+
+    连续分配（不是轮转）：每个代理拿到的是相邻页面的连续段落，
+    文风更容易保持一致。术语一致性不靠分配方式——术语表在编排时
+    已冻结并钉哈希，写回一关还会校验。
+    """
+
+    n = max(1, min(MAX_TRANSLATORS, int(translators)))
+    n = min(n, len(batch_ids)) or 1
+    base, extra = divmod(len(batch_ids), n)
+    assignments: list[dict] = []
+    start = 0
+    for index in range(n):
+        size = base + (1 if index < extra else 0)
+        assignments.append(
+            {
+                "translator": index + 1,
+                "batch_ids": batch_ids[start : start + size],
+            }
+        )
+        start += size
+    return assignments
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("job_dir", type=Path)
@@ -463,6 +494,13 @@ def main() -> int:
     parser.add_argument(
         "--model",
         help="实际执行翻译的模型标识；不提供时不会生成可复用的正式缓存",
+    )
+    parser.add_argument(
+        "--translators",
+        type=int,
+        default=None,
+        help="并行翻译代理数（1..5）。翻译可以并行，写回必须串行："
+        "每个代理只写自己批次的结果文件，最后由唯一写回者按序执行",
     )
     parser.add_argument("--status", action="store_true")
     parser.add_argument(
@@ -516,6 +554,25 @@ def main() -> int:
                 max_chars=args.max_chars,
                 model=args.model,
             )
+        if args.translators is not None:
+            if not 1 <= args.translators <= MAX_TRANSLATORS:
+                raise SkillError(
+                    f"--translators 必须在 1..{MAX_TRANSLATORS} 之间；"
+                    "翻译并行、写回串行，超过 5 个协调成本盖过收益"
+                )
+            assignments = assign_batches(
+                [batch["batch_id"] for batch in plan["batches"]],
+                args.translators,
+            )
+            plan["assignments"] = assignments
+            plan_path = args.job_dir / "translation-plan.json"
+            write_json(plan_path, plan)
+            print(f"并行分配（{len(assignments)} 个翻译代理，写回仍须串行）:")
+            for item in assignments:
+                print(
+                    f"  代理 {item['translator']}: "
+                    + ", ".join(item["batch_ids"])
+                )
         pending = [
             batch
             for batch in plan["batches"]
