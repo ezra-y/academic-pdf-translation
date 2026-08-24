@@ -13,6 +13,10 @@ import json  # noqa: E402
 import re  # noqa: E402
 from typing import Any  # noqa: E402
 
+from academic_pdf_translation.render.flowables import (  # noqa: E402
+    DRAWABLE_FIGURE_KEYS,
+    figure_payload_is_drawable,
+)
 from academic_pdf_translation.verify.render_contract import (  # noqa: E402
     complex_view_is_current,
     planning_issues,
@@ -72,11 +76,50 @@ def _walk_strings(value: Any, path: str = "$") -> list[tuple[str, str]]:
     return hits
 
 
+def _vector_payload_issues(
+    complex_content: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """vector-rebuild 载荷必须画得出真实绘图对象。
+
+    画不出来时渲染器会退回把标签排成几行字：候选里一根线都没有，
+    构建、QA 和对账却全绿。静默失败必须变成硬失败，宁可停下也不交。
+    """
+
+    issues: list[dict[str, Any]] = []
+    for item in complex_content.get("items", []):
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("method") or "") != "vector-rebuild":
+            continue
+        payload = item.get("payload")
+        figures = (payload or {}).get("figures") if isinstance(payload, dict) else None
+        undrawable = [
+            index
+            for index, figure in enumerate(figures or [], 1)
+            if not figure_payload_is_drawable(figure)
+        ]
+        if not figures or undrawable:
+            issues.append(
+                {
+                    "code": "VECTOR_REBUILD_PAYLOAD_NOT_DRAWABLE",
+                    "page": item.get("page"),
+                    "figure_indexes": undrawable,
+                    "drawable_keys": list(DRAWABLE_FIGURE_KEYS),
+                    "message": (
+                        "vector-rebuild 载荷里没有可绘制的结构，渲染出来只会是"
+                        "几行标签文字。改用元素管线的保留策略把原图整块留下，"
+                        "或把载荷补成上列任一种结构。"
+                    ),
+                }
+            )
+    return issues
+
+
 def _text_input_issues(
     translation: dict[str, Any],
     complex_content: dict[str, Any],
 ) -> list[dict[str, Any]]:
-    issues: list[dict[str, Any]] = []
+    issues: list[dict[str, Any]] = _vector_payload_issues(complex_content)
     samples = []
     target_text = {
         "units": [

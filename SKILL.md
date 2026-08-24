@@ -93,10 +93,13 @@ python3 scripts/init_job.py \
 
 初始化会自动生成：
 
-- `source_structure.json`：PDF 自带文字顺序、坐标推断顺序、文字块坐标、
-  栏位、图片和矢量图信号；
+- `source_structure.json`：PDF 自带文字顺序、坐标推断顺序、实际阅读顺序、
+  文字块坐标、栏位、图片和矢量图信号；
 - `source_units.json`：按段落或语义区域拆分并冻结的原文单元；
-- `translation.json`：与每个冻结单元一一绑定的待翻译骨架。
+- `source_elements.json` 与 `unit_bindings.json`：原文元素清单，以及每个
+  单元属于哪个元素、担任什么角色；
+- `translation.json`：与每个冻结单元一一绑定的待翻译骨架，每个单元带上
+  它的元素角色。
 
 两种阅读顺序冲突、缺少文本层或存在图表时，只标记需要看图的页，不擅自宣称
 提取顺序正确。不得删除冻结单元，也不得把多个单元重新合成“整页原文加一段
@@ -124,16 +127,61 @@ python3 scripts/set_complex_content.py /path/to/job \
 ```bash
 python3 scripts/set_complex_content.py /path/to/job \
   --page "6,structured-table,structured-table-rebuild,统计表需保持行列关系" \
-  --page "8,figure-with-text,vector-rebuild,模型图需保持标签和箭头关系"
+  --page "8,figure-with-text,image-text-localization,模型图保留原图并叠中文标签"
 ```
 
-命令会同时生成 `complex_content.json` 模板。复杂页翻译前必须把原页结构写成
-机器可检查的载荷：
+存在任一复杂页时，整篇路线最低为 `hybrid-complex-pages`；复杂页多或结构贯穿
+全文时使用 `custom-layout`。具体类型见 [routing.md](references/routing.md)。
+
+登记完复杂页后记录实际选择的路线。进入 `translated` 阶段之前必须有它：
+
+```bash
+python3 scripts/set_complex_content.py /path/to/job \
+  --route standard-auto \
+  --route-reason "全文为标准单栏正文与参考文献，普通正文路线即可完整重建。"
+```
+
+`--route` 可以和 `--none`、`--page` 写在同一条命令里，也可以单独执行。
+
+### 复杂页默认走元素管线
+
+图、表、公式**默认保留原文那一块**，不重画。初始化已经生成
+`source_elements.json` 与 `unit_bindings.json`；接着一条命令给每个元素定
+策略：
+
+```bash
+python3 scripts/build_render_plan.py /path/to/job
+```
+
+计划会把图整块定为保留（`preserve-*`），并把图内标签按坐标叠成中文；
+`figure_inventory.json` 同时由程序派生，不需要手写。保留下来的元素就是
+已渲染的元素，不需要另写省略理由。
+
+自动识别认错了才手工纠正一条：
+
+```bash
+python3 scripts/set_element_override.py /path/to/job \
+  --element p0006-figure-001 \
+  --action retype \
+  --type chart
+```
+
+改完重新运行 `build_render_plan.py`。
+
+### 手写载荷：确认画得出来才用
+
+只有当结构化重建**确实画得出来**，而且比保留原图更有用时，才手工填写
+`complex_content.json` 载荷：
 
 - 表格：表题、行数、列数、单元格和表注；
 - 模型图：图、标签、节点及边/连线；
 - 需要本地化的截图、统计图或 OCR：区域、显示尺寸和承担信息的区域文字；
 - 阅读顺序重建：按顺序排列的原文块 ID。
+
+`vector-rebuild` 的载荷必须用渲染器认识的结构键：`nodes`、`edges`、
+`connectors`、`series`、`panels`、`circles`、`levels`。只给标签文字画不出
+任何图形，导出前总检查会报 `VECTOR_REBUILD_PAYLOAD_NOT_DRAWABLE` 并停下。
+画不出来就别写载荷，让计划把原图整块保留。
 
 填写完成后：
 
@@ -144,9 +192,6 @@ python3 scripts/set_complex_payload.py /path/to/job \
   --source-evidence "已按原尺寸核对全部节点、箭头、标签和数值" \
   --ready
 ```
-
-存在任一复杂页时，整篇路线最低为 `hybrid-complex-pages`；复杂页多或结构贯穿
-全文时使用 `custom-layout`。具体类型见 [routing.md](references/routing.md)。
 
 跨页表格、跨页模型或其他跨页复杂结构必须在同一载荷中列出全部
 `source_pages` 和逐页 `source_bboxes`。生成器按这些坐标替代原始碎片，
@@ -162,6 +207,17 @@ python3 scripts/set_complex_payload.py /path/to/job \
 先确认术语表，再编排批次。`translation.terminology_reviewed` 不是 `true`
 时命令会拒绝正式编排；只想看分批结果用 `--preview`，它不写任何文件。
 
+确认术语表（没有需要锁定的术语时也要执行一次）：
+
+```bash
+python3 scripts/set_terminology.py /path/to/job \
+  --term "meaning in life=人生意义" \
+  --reviewed
+```
+
+术语写成 `原文=译文`；译文与原文相同表示这一条按原文保留。术语表在编排
+批次前锁定，锁定后不在批次之间改动。
+
 ```bash
 python3 scripts/plan_translation_batches.py /path/to/job --model <实际模型标识>
 ```
@@ -173,6 +229,12 @@ python3 scripts/plan_translation_batches.py /path/to/job --model <实际模型�
 每批默认 8～20 个单元、约 8000～12000 字符；标题与其后首段、图表题与相邻
 说明、跨页续句都保证同批。每个批次文件已带好论文标题、摘要摘录、章节目录、
 当前章节标题、已锁定术语，以及上一批结尾和下一批开头的少量上下文。
+
+批次里每个单元还带一个 `element_role`，取自原文元素清单。它决定这条单元
+本来该是什么形态：`reference-entry` 是参考文献题录，`author`、
+`affiliation`、`publication-metadata` 是署名区。这些单元照原样保留原文，
+把 `translation` 留空、填对应的 `keep_source_code` 即可，不要扩写成中文
+解释句。`body`、`heading` 等普通正文单元必须给出译文。
 
 按批次翻译后，只返回本批单元的结果数组：
 
@@ -207,9 +269,13 @@ python3 scripts/apply_translation_batch.py /path/to/job \
 写入 `translation.json` 和缓存之前，还要过一遍译文真实性检查。它拦三件事：
 
 1. **原文原样冒充译文。** 跨语言任务里，标准化后 `translation` 与 `source`
-   相同的单元一律拒绝。
+   相同的单元一律拒绝。整段没有字母的单元除外：坐标轴刻度、页码、纯符号
+   片段在任何语言里都是同一串字符，照抄填进 `translation` 即可，不要改写
+   成中文数字。
 2. **译文不是目标语言。** 普通正文和标题的译文要含合理比例的目标语言字符。
-   单元 0.50、批次 0.70、文档 0.80，三层分别判定。
+   单元 0.50、批次 0.70、文档 0.80，三层分别判定。作者署名、单位、出版
+   元数据、DOI/URL 和参考文献题录不受这一条约束：它们的正确形态本来就是
+   原文，照原样留着即可，不要扩写成中文解释句。
 3. **用自由文本理由整段保留原文。** 保留原文必须填结构化
    `keep_source_code`，`keep_source_reason` 只作补充说明，单独不能豁免。
 
@@ -223,8 +289,9 @@ python3 scripts/apply_translation_batch.py /path/to/job \
 | `formula-or-statistical-symbol` | 公式或统计符号片段，普通词不超过 2 个 |
 | `doi-or-url` | 基本只有 DOI 或 URL 的单元 |
 | `citation` | 基本只有引文标记的单元 |
-| `bibliography-entry` | 单元类型是 reference/bibliography，或 `retained_source.json` 中有覆盖该单元坐标的参考文献区域 |
+| `bibliography-entry` | 单元类型是 reference/bibliography，或批次里的 `element_role` 是 `reference-entry` |
 | `required-original-term` | `translation.terminology` 中登记了 target 与 source 相同的术语 |
+| `publication-front-matter` | 作者署名、单位、出版元数据或 DOI/URL 单元；批次里的 `element_role` 为 `author`、`affiliation`、`publication-metadata` 时同样适用 |
 
 普通正文、摘要、标题和章节标题**不能**整单元保留原文：上面每一个 code 都
 用不上它们。
@@ -275,9 +342,8 @@ python3 scripts/apply_translation_batch.py /path/to/job --from-cache
 要求：
 
 - 保持整篇上下文和统一术语，不按孤立字符或碎 span 翻译；
-- 翻译前确认 `translation.terminology`，即使为空也把
-  `terminology_reviewed` 设为 `true`；术语表在编排批次前锁定，锁定后
-  不在批次之间改动；
+- 翻译前用 `set_terminology.py --reviewed` 确认术语表，术语为空时也要执行
+  一次；术语表在编排批次前锁定，锁定后不在批次之间改动；
 - 不修改 `source_ref`、`source`、`page` 或 `source_bbox`；
 - 每个冻结原文单元必须恰好出现一次，不得遗漏、重复或合并；
 - 跨栏和跨页续句只翻译一次；
@@ -285,12 +351,13 @@ python3 scripts/apply_translation_batch.py /path/to/job --from-cache
   `complete` 只在全部单元通过检查后才会变成 `true`，同时给出
   `validated_translated_units`、`validated_kept_source_units` 和
   `invalid_or_unverified_units`；
-- 参考文献等保留原文区域写入 `retained_source.json`；
+- 参考文献题录按学术惯例默认保留原文，只做断词修复与 URL 合行，不逐条
+  译成中文；保留原文区域写入 `retained_source.json`；
 - 同页存在分栏参考文献时，每个逻辑栏单独登记区域；保留区按左栏到右栏、
   栏内从上到下排版，并排除页眉、页脚和孤立页码；
-- 图表、截图和复杂页状态写入 `figure_inventory.json`，并为每项选择
-  `translate-embedded-text`、`translate-caption-only`、
-  `preserve-original` 或 `omit-nonsemantic`；
+- 图表、截图和复杂页状态由 `build_render_plan.py` 派生进
+  `figure_inventory.json`，不手写：保留下来的图就是渲染出来的图，
+  不需要为它写省略理由；
 - 高风险语句使用 [semantic-review.md](references/semantic-review.md) 的稳定标记。
 
 超过 10 页时，每约 5 页保存一次可恢复检查点：
@@ -438,11 +505,14 @@ python3 scripts/deliver_first_candidate.py /path/to/job --visual-result /path/to
 结果绑定候选文件哈希；候选一换，旧结果自动作废。没有高风险页时
 结论记 `NOT_REQUIRED`，不需要以上两步。
 
-前置：作业需要先有 `source_elements.json` 与 `unit_bindings.json`。
+前置：作业需要先有 `source_elements.json`、`unit_bindings.json` 与
+`render_plan.json`。前两份由初始化生成，第三份由
+`build_render_plan.py` 生成。原文换了或改过元素纠正时重跑：
 
 ```bash
 python3 scripts/analyze_source_elements.py /path/to/job
 python3 scripts/bind_translation_units.py /path/to/job
+python3 scripts/build_render_plan.py /path/to/job
 ```
 
 详见 [references/element-pipeline.md](references/element-pipeline.md)。

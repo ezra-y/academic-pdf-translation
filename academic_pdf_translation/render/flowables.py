@@ -24,6 +24,27 @@ from reportlab.platypus import Flowable, Paragraph
 
 from .font_runs import _edge_label_lines, _markup
 
+#: 载荷里能真的画出东西的键。少了它们，VectorPayloadFlowable 只会把
+#: ``labels`` 排成几行字——一张图都没有，检查却全绿。所以这份名单同时
+#: 是渲染依据和"这份载荷画得出来吗"的判据。
+DRAWABLE_FIGURE_KEYS = (
+    "nodes",
+    "edges",
+    "connectors",
+    "series",
+    "panels",
+    "circles",
+    "levels",
+)
+
+
+def figure_payload_is_drawable(figure: Any) -> bool:
+    """这份图载荷能画出真实绘图对象吗。"""
+
+    if not isinstance(figure, dict):
+        return False
+    return any(figure.get(key) for key in DRAWABLE_FIGURE_KEYS)
+
 
 class VectorFigureError(RuntimeError):
     """矢量图载荷不合法。
@@ -61,18 +82,7 @@ class VectorPayloadFlowable(Flowable):
 
     def wrap(self, available_width: float, available_height: float) -> tuple[float, float]:
         self.width = min(self.width, available_width)
-        has_structured_graph = any(
-            self.figure.get(key)
-            for key in (
-                "nodes",
-                "edges",
-                "connectors",
-                "series",
-                "panels",
-                "circles",
-                "levels",
-            )
-        )
+        has_structured_graph = figure_payload_is_drawable(self.figure)
         if has_structured_graph:
             measured_height = self.maximum_height
         else:

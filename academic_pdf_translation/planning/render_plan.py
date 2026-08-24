@@ -410,6 +410,34 @@ def build_render_plan(
     return plan
 
 
+#: 这些策略会把译文写进图或表里：图内标签叠中文、表格重建、
+#: 保留表区域再附中文翻译键。图表清单的 text_status 只对它们记 translated。
+TEXT_TRANSLATING_STRATEGIES = frozenset(
+    {
+        STRATEGY_VECTOR_OVERLAY,
+        STRATEGY_VECTOR_LEGEND,
+        STRATEGY_TABLE_REBUILD,
+        STRATEGY_TABLE_PRESERVE,
+    }
+)
+
+
+def _inventory_policy(planned: PlannedElement | None) -> str:
+    """一个视觉元素在图表清单里的策略。
+
+    保留原图就是保留原图：它是**已渲染**的元素，不是被省略的元素，
+    也不需要给出"省略理由"。这里让图表清单和渲染合同用同一个口径。
+    """
+
+    if planned is None:
+        return "preserve-original"
+    if planned.status == "omitted":
+        return "omit-nonsemantic"
+    if planned.strategy in TEXT_TRANSLATING_STRATEGIES:
+        return "translate-embedded-text"
+    return "preserve-original"
+
+
 def build_figure_inventory(
     inventory: SourceElementInventory,
     plan: RenderPlan,
@@ -429,21 +457,20 @@ def build_figure_inventory(
         if not element.is_visual:
             continue
         planned = by_id.get(element.id)
+        policy = _inventory_policy(planned)
         items.append(
             {
                 "id": element.id,
                 "page": element.page,
                 "element_type": element.type.value,
+                # 两个字段必须同口径：只有真的往图里写了译文才是
+                # translated，保留原图和省略都是 not-applicable。
                 "text_status": (
-                    "not-applicable"
-                    if planned is None or planned.status == "omitted"
-                    else "translated"
+                    "translated"
+                    if policy == "translate-embedded-text"
+                    else "not-applicable"
                 ),
-                "translation_policy": (
-                    "omit-nonsemantic"
-                    if planned is not None and planned.status == "omitted"
-                    else "preserve-original"
-                ),
+                "translation_policy": policy,
                 "translation_policy_reason": (
                     planned.reason if planned is not None else "尚未安排"
                 ),

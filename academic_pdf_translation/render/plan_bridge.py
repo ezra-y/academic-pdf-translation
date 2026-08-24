@@ -29,9 +29,13 @@ from academic_pdf_translation.planning.mode_policy import (
 SCHEMA_VERSION = "1.0"
 
 #: 渲染计划里所有"保留原文区域"一族的策略。
-#: 前两个是通用降级；后四个是按内容类型定的保留决定——表格网格不可靠、
-#: 公式不重排、矢量图不重画时，计划会选它们。生成器统一按区域保留执行。
-#: 注意不含 preserve-original-image：位图有自己的既有渲染路径。
+#: 前两个是通用降级；其余是按内容类型定的保留决定——表格网格不可靠、
+#: 公式不重排、矢量图不重画、位图原样保留时，计划会选它们。
+#: 生成器统一按区域保留执行。
+#:
+#: ``preserve-original-image`` 也在这里。位图曾经被排除在外，理由是
+#: "它有自己的既有渲染路径"——真实样本证明那条路径并不存在：作者照片
+#: 落到这个策略上，桥接不接、生成器不画，候选里一张图都没有。
 PRESERVATION_STRATEGIES = (
     FALLBACK_PRESERVE_ELEMENT_REGION,
     FALLBACK_PRESERVE_FULL_PAGE,
@@ -39,6 +43,7 @@ PRESERVATION_STRATEGIES = (
     "preserve-formula-region",
     "preserve-geometry-with-label-overlay",
     "preserve-geometry-with-numbered-legend",
+    "preserve-original-image",
 )
 
 #: 生成的条目走这个 kind，方便在产物里一眼认出它来自返修降级。
@@ -376,6 +381,9 @@ def build_preservation_items(
                             "full_page": full_page,
                             "labels": labels,
                             "source_element_id": planned.element_id,
+                            # 位图的 xref。已有条目按 xref 渲染同一张图时，
+                            # 靠它认出"这张已经有人画了"，避免画两遍。
+                            "xref": (element.get("detail") or {}).get("xref"),
                             # 生成器认这个键当图题：它会把图题和图锁成一块，
                             # 并把正文里重复的那一份抑制掉。
                             "translation": caption,
@@ -417,6 +425,13 @@ def _covered_by_existing(
     """
 
     region = (candidate.get("payload") or {}).get("regions", [{}])[0]
+    xref = region.get("xref")
+    if isinstance(xref, int):
+        for item in items:
+            if item.get("status") != "ready":
+                continue
+            if xref in _item_xrefs(item):
+                return True
     box = region.get("bbox")
     if not isinstance(box, list) or len(box) != 4:
         return False

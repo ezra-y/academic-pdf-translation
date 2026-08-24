@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -415,3 +416,126 @@ def test_the_first_candidate_has_fingerprints_for_its_images() -> None:
         assert page >= 1
         assert len(bbox) == 4
         assert len(grid) == 256
+
+
+# --- 位图按区域保留 ---------------------------------------------------------
+
+
+def _noisy_pixmap(width: int, height: int) -> fitz.Pixmap:
+    """造一块有对比度的图。全白的图指纹没有对比度，比不了。"""
+
+    pixmap = fitz.Pixmap(fitz.csGRAY, fitz.IRect(0, 0, width, height), False)
+    pixmap.set_rect(fitz.IRect(0, 0, width, height), (255,))
+    for index in range(0, width, 4):
+        pixmap.set_rect(fitz.IRect(index, 0, index + 2, height), (0,))
+    return pixmap
+
+
+def _photo_job(tmp_path: Path) -> tuple[Any, Any, list[dict]]:
+    """原文有一张照片；候选把那一块按区域重新裁切贴回去。"""
+
+    image_path = tmp_path / "photo.png"
+    _noisy_pixmap(80, 80).save(image_path)
+
+    source = fitz.open()
+    page = source.new_page(width=300, height=400)
+    rect = fitz.Rect(40, 40, 160, 160)
+    page.insert_image(rect, filename=str(image_path))
+
+    candidate = fitz.open()
+    candidate_page = candidate.new_page(width=300, height=400)
+    crop = source[0].get_pixmap(
+        clip=rect, matrix=fitz.Matrix(2.0, 2.0), alpha=False
+    )
+    candidate_page.insert_image(
+        fitz.Rect(30, 200, 150, 320), pixmap=crop
+    )
+
+    xref = source[0].get_images(full=True)[0][0]
+    elements = [
+        {
+            "id": "p0001-image-001",
+            "type": "raster-figure",
+            "page": 1,
+            "bbox": [40, 40, 160, 160],
+            "required": True,
+            "detail": {"xref": xref},
+        }
+    ]
+    return source, candidate, elements
+
+
+def test_a_preserved_photo_is_found_by_pixels_not_bytes(
+    tmp_path: Path,
+) -> None:
+    """按区域保留时图片被重新编码，字节必然变；不能就此判"图丢了"。"""
+
+    source, candidate, elements = _photo_job(tmp_path)
+    mapping = build_mapping(source, candidate, elements)
+    location = mapping.locations[0]
+    assert location.located
+    assert location.method == "region-pixels"
+
+
+def test_a_photo_that_is_really_missing_is_still_reported(
+    tmp_path: Path,
+) -> None:
+    """候选里根本没有那块内容时，仍旧如实报缺失，并说清两条证据都空。"""
+
+    source, _, elements = _photo_job(tmp_path)
+    empty = fitz.open()
+    empty.new_page(width=300, height=400)
+    mapping = build_mapping(source, empty, elements)
+    location = mapping.locations[0]
+    assert not location.located
+    assert location.method == METHOD_NOT_FOUND
+    assert "像素指纹" in location.evidence
+
+
+# --- 元素横跨候选分页 -------------------------------------------------------
+
+
+def _two_page_candidate(first: str, second: str) -> Any:
+    document = fitz.open()
+    for text in (first, second):
+        page = document.new_page(width=300, height=400)
+        page.insert_text((40, 60), text, fontsize=11)
+    return document
+
+
+def test_an_element_split_across_a_page_break_is_still_located() -> None:
+    """摘要的标题留在上一页、正文落到下一页时，从头取的探针哪一页都不在。"""
+
+    source = fitz.open()
+    source.new_page(width=300, height=400)
+    elements = [
+        {
+            "id": "p0001-body-009",
+            "type": "body",
+            "page": 1,
+            "bbox": [40, 40, 260, 120],
+            "required": True,
+            "detail": {},
+        }
+    ]
+    tail = "ABSTRACT-TAIL-TEXT-THAT-IS-LONG-ENOUGH"
+    candidate = _two_page_candidate("Abstract", tail)
+    mapping = build_mapping(
+        source,
+        candidate,
+        elements,
+        element_texts={"p0001-body-009": f"Abstract {tail}"},
+    )
+    location = mapping.locations[0]
+    assert location.located
+    assert location.candidate_pages == [2]
+
+
+def test_text_probes_are_consecutive_windows() -> None:
+    from academic_pdf_translation.verify.candidate_mapping import text_probes
+
+    windows = text_probes("A" * 60)
+    assert windows[0] == "A" * 24
+    assert windows[1] == "A" * 24
+    assert windows[2] == "A" * 12
+    assert text_probes("") == []

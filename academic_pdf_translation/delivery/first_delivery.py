@@ -63,6 +63,7 @@ from academic_pdf_translation.verify.repair import (
     MAX_REPAIR_ROUNDS,
     RepairPlan,
     compare_rounds,
+    fallback_levels_by_element,
     plan_repair,
 )
 from academic_pdf_translation.verify.structural_audit import (
@@ -806,7 +807,12 @@ def run_first_delivery(
         result.status = STATUS_DELIVERED
         return result
 
-    repair = plan_repair(first.mapping, first.audit, round_index=0)
+    repair = plan_repair(
+        first.mapping,
+        first.audit,
+        round_index=0,
+        fallback_levels=fallback_levels_by_element(outcome.render_plan),
+    )
     result.evidence["repair-plan"] = _write_json(
         evidence_dir / "repair-plan.json", repair.as_dict()
     )

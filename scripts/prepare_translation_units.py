@@ -72,7 +72,12 @@ def _timed_build_source_units(
         page_number = int(page["page"])
         page_table = bool(page.get("signals", {}).get("table"))
         page_figure = bool(page.get("signals", {}).get("figure"))
-        ordered_ids = page.get("layout", {}).get("native_order", [])
+        layout = page.get("layout", {})
+        # 阅读顺序以 reading_order 为准：它已经在两种顺序打架时选好了
+        # 看得懂的那一份。老作业没有这个字段，退回自带顺序。
+        ordered_ids = layout.get("reading_order") or layout.get(
+            "native_order", []
+        )
         by_id = {
             int(block["id"]): block
             for block in page.get("blocks", [])
@@ -154,19 +159,46 @@ def _timed_build_source_units(
     }
 
 
+#: 元素角色说这是一条参考文献题录时，单元类型就写 reference。
+#: 题录默认保留原文，排版也按题录那一套走；类型停在 body，
+#: 保留原文这条路在批次写回那一关就走不通。
+REFERENCE_ROLE_KINDS = {"reference-entry": "reference"}
+
+
+def _kind_for(unit: dict[str, Any], element_role: str) -> str:
+    """单元类型：元素角色能定的按角色定，其余沿用扫描时的推断。"""
+
+    return REFERENCE_ROLE_KINDS.get(
+        str(element_role or "").lower(),
+        str(unit["kind_hint"]),
+    )
+
+
 def build_translation_skeleton(
     source_units: dict[str, Any],
     *,
     source_language: str,
     target_language: str,
     source_units_sha256: str,
+    roles_by_unit: dict[str, str] | None = None,
 ) -> dict[str, Any]:
+    """搭出待翻译骨架。
+
+    ``roles_by_unit`` 是 ``unit_bindings.json`` 算出的元素角色。它决定
+    哪些单元本来就该保留原文形态（作者、单位、出版元数据、题录），
+    检查据此免除这些单元的目标语言占比门槛。角色本身作为附加字段写进
+    每个单元；只有题录角色同时改写 ``kind``，因为题录的排版本来就自成
+    一套。作者与署名区的 ``kind`` 不动，排版按原样走。
+    """
+
+    roles = roles_by_unit or {}
     units = [
         {
             "id": unit["id"],
             "source_ref": unit["id"],
             "page": unit["page"],
-            "kind": unit["kind_hint"],
+            "kind": _kind_for(unit, roles.get(str(unit["id"]), "")),
+            "element_role": roles.get(str(unit["id"]), ""),
             "heading_level": unit.get("heading_level"),
             "source": unit["source"],
             "source_bbox": unit["source_bbox"],
@@ -236,11 +268,24 @@ def prepare_translation_units(
         "source_units.json",
     )
     write_json(source_units_path, source_units)
+    # 元素角色沿用初始化时算好的那一份：重建骨架不该把角色丢掉，
+    # 丢了角色，参考文献和署名区就又只能被当普通正文量占比。
+    bindings_path = job_dir / "unit_bindings.json"
+    roles_by_unit: dict[str, str] = {}
+    if bindings_path.is_file():
+        roles_by_unit = {
+            str(binding.get("unit_id") or ""): str(
+                binding.get("element_role") or ""
+            )
+            for binding in load_json(bindings_path).get("bindings") or []
+            if isinstance(binding, dict) and binding.get("unit_id")
+        }
     translation = build_translation_skeleton(
         source_units,
         source_language=str(job["translation"]["source_language"]),
         target_language=str(job["translation"]["target_language"]),
         source_units_sha256=sha256_file(source_units_path),
+        roles_by_unit=roles_by_unit,
     )
     write_json(translation_path, translation)
     return source_units, translation

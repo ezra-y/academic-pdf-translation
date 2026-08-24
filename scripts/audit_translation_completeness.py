@@ -1020,7 +1020,10 @@ def _timed_build_completeness_audit(
                     "method": item.get("method"),
                     "reason": reason,
                 }
-                for item in inventory_by_page.get(page_number, [])
+                for item in (
+                    inventory_by_page.get(page_number, [])
+                    + complex_items_by_page.get(page_number, [])
+                )
                 if (
                     reason := _visual_rebuild_issue(
                         item,

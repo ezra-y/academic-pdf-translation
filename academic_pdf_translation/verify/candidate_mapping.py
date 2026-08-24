@@ -44,6 +44,10 @@ TEXT_PROBE_CHARS = 24
 #: 文字探针的最短长度。「1 引言」这样的章节标题只有三个字，
 #: 门槛定高了它们就会被当成"找不到"。短探针照查，命中多页时如实报不唯一。
 MIN_TEXT_PROBE_CHARS = 2
+#: 一个元素最多试几段探针。元素可以横跨候选的分页：摘要的"摘要"两个字
+#: 留在上一页、正文落到下一页，从头取的那一段探针就哪一页都不在。
+#: 依次往后取，第一段查得到的就算数。
+MAX_TEXT_PROBES = 6
 #: 像素指纹的网格边长。16x16 灰度足以认出"是不是同一块"，
 #: 又对缩放和重新编码不敏感。
 FINGERPRINT_GRID = 16
@@ -371,6 +375,24 @@ def _page_texts(document: Any) -> list[str]:
     ]
 
 
+def text_probes(probe: str) -> list[str]:
+    """把一个元素的文字切成若干段探针。
+
+    元素横跨候选分页时，从头取的那一段会被页边界切断，哪一页都查不到。
+    切成连续几段依次试，能定位就定位——定位不到才是真的没搬过来。
+    """
+
+    cleaned = normalize_text(probe)
+    windows: list[str] = []
+    for start in range(0, len(cleaned), TEXT_PROBE_CHARS):
+        window = cleaned[start : start + TEXT_PROBE_CHARS]
+        if len(window) >= MIN_TEXT_PROBE_CHARS:
+            windows.append(window)
+        if len(windows) >= MAX_TEXT_PROBES:
+            break
+    return windows
+
+
 def locate_by_text(
     page_texts: list[str], probe: str
 ) -> list[int]:
@@ -467,7 +489,10 @@ def locate_element(
         return result
 
     # 1. 位图：按图像字节哈希一一对上，最硬的证据。
+    #    哈希对不上不等于图不在：按区域保留时图片被重新裁切、重新编码，
+    #    字节必然变。所以哈希只在命中时下结论，落空就交给下面的像素指纹。
     digest = source_image_digest(source_document, element)
+    digest_miss = ""
     if digest:
         hits = digests.get(digest, [])
         if hits:
@@ -479,27 +504,32 @@ def locate_element(
             location.confidence = EXACT_CONFIDENCE
             location.evidence = f"图像字节哈希 {digest[:12]} 命中"
             return finish(location)
-        location.method = METHOD_NOT_FOUND
-        location.confidence = 0.0
-        location.evidence = f"图像字节哈希 {digest[:12]} 在候选里找不到"
-        return finish(location)
+        digest_miss = f"图像字节哈希 {digest[:12]} 在候选里找不到"
 
     # 2. 文字元素：按译文（或按策略保留的原文）查。
     probe = normalize_text((element_texts or {}).get(element_id, ""))
     if probe:
-        pages = locate_by_text(page_texts, probe[:TEXT_PROBE_CHARS])
-        if pages:
+        hit: tuple[str, list[int]] | None = None
+        for window in text_probes(probe):
+            pages = locate_by_text(page_texts, window)
+            if not pages:
+                continue
+            if len(pages) == 1:
+                hit = (window, pages)
+                break
+            if hit is None:
+                hit = (window, pages)
+        if hit is not None:
+            window, pages = hit
             location.candidate_pages = pages
             location.candidate_bbox = _bbox_in_candidate(
-                candidate_document, pages[0], probe[:TEXT_PROBE_CHARS]
+                candidate_document, pages[0], window
             )
             location.method = METHOD_TEXT_SEARCH
             location.confidence = (
                 EXACT_CONFIDENCE if len(pages) == 1 else round(1 / len(pages), 2)
             )
-            location.evidence = (
-                f"文字探针 {probe[:TEXT_PROBE_CHARS]!r} 命中 {len(pages)} 页"
-            )
+            location.evidence = f"文字探针 {window!r} 命中 {len(pages)} 页"
             return finish(location)
 
     # 3. 保留下来的原文区域：候选里是一张图片，没有文字层也没有绘图对象，
@@ -554,7 +584,11 @@ def locate_element(
         return finish(location)
 
     usable_probe = len(probe) >= MIN_TEXT_PROBE_CHARS
-    if usable_probe or anchors:
+    if digest_miss:
+        location.method = METHOD_NOT_FOUND
+        location.confidence = 0.0
+        location.evidence = f"{digest_miss}，区域像素指纹也没有对上"
+    elif usable_probe or anchors:
         location.method = METHOD_NOT_FOUND
         location.evidence = "文字探针与锚点都没有命中任何一页"
     elif probe or (element_texts or {}).get(element_id, "").strip():

@@ -179,17 +179,38 @@ def validate_action(action: str) -> None:
         raise RepairError(f"返修动作 {action!r} 不在允许清单里")
 
 
+def fallback_levels_by_element(
+    render_plan: dict[str, Any] | None,
+) -> dict[str, list[str]]:
+    """从渲染计划取出每个元素的降级链。"""
+
+    levels: dict[str, list[str]] = {}
+    for entry in (render_plan or {}).get("elements", []):
+        if not isinstance(entry, dict):
+            continue
+        element_id = str(entry.get("element_id") or "")
+        chain = entry.get("fallback_levels")
+        if element_id and isinstance(chain, list):
+            levels[element_id] = [str(value) for value in chain]
+    return levels
+
+
 def plan_repair(
     mapping: CandidateMapping,
     audit: StructuralAudit,
     *,
     round_index: int = 0,
     max_rounds: int = MAX_REPAIR_ROUNDS,
+    fallback_levels: dict[str, list[str]] | None = None,
 ) -> RepairPlan:
     """从核查结果算出这一轮该修什么。
 
     ``round_index`` 是**已经修过的轮数**。它达到上限就直接拒绝——
     不是少修几条，是一条都不修，把问题原样交给人。
+
+    ``fallback_levels`` 是每个元素的降级链。发一个链上没有的动作，
+    重算渲染计划时必然被拒，整轮返修白跑一遍还把候选卡在 BLOCKED。
+    落不进计划的动作一律改成交给人。
     """
 
     if round_index >= max_rounds:
@@ -207,6 +228,24 @@ def plan_repair(
         if key in seen:
             return
         seen.add(key)
+        # 只有降级类动作要落进渲染计划；图题绑定和重排不走降级链。
+        chain = (fallback_levels or {}).get(element_id)
+        if (
+            action in {ACTION_PRESERVE_REGION, ACTION_PRESERVE_FULL_PAGE}
+            and chain is not None
+            and action not in chain
+        ):
+            manual.append(
+                ManualItem(
+                    element_id=element_id,
+                    signal=signal,
+                    reason=(
+                        f"{reason}；但 {action} 不在它的降级链 {chain} 里，"
+                        "机器落不进渲染计划，交给人"
+                    ),
+                )
+            )
+            return
         actions.append(
             RepairAction(
                 element_id=element_id,

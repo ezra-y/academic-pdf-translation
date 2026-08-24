@@ -130,11 +130,83 @@ def _source_block_for_unit(
     return best[1] if best is not None else None
 
 
+#: 首页署名区：题名、作者、单位、出版元数据。它们排在一起，题名领头。
+FRONT_MATTER_ROLES = (
+    "document-title",
+    "author",
+    "affiliation",
+    "publication-metadata",
+)
+
+
+def _unit_role(unit: dict[str, Any]) -> str:
+    return str(unit.get("_element_role") or "").lower()
+
+
+def _front_matter_ordered(
+    page_units: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """题名排在署名区最前面。
+
+    期刊排版把版权栏和顶端的生产代码条印在题名之上，按坐标读出来的顺序
+    就是"一串出版代码，然后才是题名"。读者要的是先看见题名，出版元数据
+    紧随其后。这里只动题名之前的出版元数据，正文一条不碰。
+    """
+
+    roles = [_unit_role(unit) for unit in page_units]
+    if "document-title" not in roles:
+        return page_units
+    title_index = roles.index("document-title")
+    moved = [
+        index
+        for index in range(title_index)
+        if roles[index] == "publication-metadata"
+    ]
+    if not moved:
+        return page_units
+    end = title_index + 1
+    while end < len(page_units) and roles[end] in FRONT_MATTER_ROLES:
+        end += 1
+    moved_set = set(moved)
+    head = [
+        unit
+        for index, unit in enumerate(page_units[:end])
+        if index not in moved_set
+    ]
+    return (
+        head
+        + [page_units[index] for index in moved]
+        + page_units[end:]
+    )
+
+
+def _footnotes_last(
+    page_units: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """脚注排到本页正文之后。
+
+    脚注在原文里印在页底，按坐标读出来却常夹在两段正文中间——通讯作者
+    地址插在两个论点之间，读者的句子就被劈成两半。译本重新分页，"页底"
+    这个位置没法照搬，但"正文读完再读注"这个次序照搬得了。
+    """
+
+    footnotes = [
+        unit for unit in page_units if _unit_role(unit) == "footnote"
+    ]
+    if not footnotes or len(footnotes) == len(page_units):
+        return page_units
+    body = [unit for unit in page_units if _unit_role(unit) != "footnote"]
+    # 第一条脚注前画一条短分隔线：读者据此知道下面不再是正文。
+    footnotes = [{**footnotes[0], "_footnote_zone_start": True}] + footnotes[1:]
+    return body + footnotes
+
+
 def _ordered_page_units(
     page_units: list[dict[str, Any]],
     page_complex: list[dict[str, Any]],
     source_structure_page: dict[str, Any] | None,
 ) -> list[dict[str, Any]]:
+    page_units = _footnotes_last(_front_matter_ordered(page_units))
     if not page_units or not isinstance(source_structure_page, dict):
         return page_units
     ordered_block_ids: list[int] = []

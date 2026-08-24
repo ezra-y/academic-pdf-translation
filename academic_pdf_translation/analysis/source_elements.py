@@ -107,6 +107,42 @@ def _inside_any(box: BBox | None, containers: list[BBox]) -> bool:
     )
 
 
+def _document_title_candidate(
+    text_blocks: list[dict[str, Any]],
+    page: dict[str, Any],
+    *,
+    is_first_page: bool,
+) -> int | None:
+    """首页题名的候选块：题名区里位置最高、又不是出版标识戳的那一块。
+
+    "PDF 里的第一个文字块"不等于"读者看到的第一行"。期刊排版把版权栏、
+    转载声明、顶端的生产代码条排在题名前面，PDF 里的块顺序也常和阅读
+    顺序对不上。按位置挑，并且先排除出版标识戳，题名才落得回它该在的地方。
+    """
+
+    if not is_first_page:
+        return None
+    height = float(page.get("height") or 0) or 1.0
+    limit = height * text_role_detector.TITLE_ZONE_RATIO
+    best: tuple[float, float, int] | None = None
+    for block in text_blocks:
+        text = str(block.get("text") or "").strip()
+        if not text or block.get("page_furniture"):
+            continue
+        if text_role_detector.is_publication_stamp(text):
+            continue
+        box = normalize_bbox(block.get("bbox"))
+        if box is None:
+            continue
+        if best is None or box[1] < best[0]:
+            best = (box[1], box[3], int(block.get("id", -1)))
+    if best is None or best[1] > limit:
+        # 最上面那一块都不在题名区里，说明这页的题名不在文字层里
+        # （常见于题名被并进表格或图片）。这时不硬指一块当题名。
+        return None
+    return best[2]
+
+
 def _page_elements(
     page: dict[str, Any],
     *,
@@ -243,6 +279,11 @@ def _page_elements(
         for block in page.get("blocks") or []
         if int(block.get("id", -1)) not in consumed
     ]
+    title_candidate_id = _document_title_candidate(
+        text_blocks,
+        page,
+        is_first_page=is_first_page,
+    )
     first_text_seen = False
     for block in text_blocks:
         block_id = int(block.get("id", -1))
@@ -320,7 +361,11 @@ def _page_elements(
             page,
             inside_visual=inside_visual,
             is_first_page=is_first_page,
-            is_first_text_block=not first_text_seen,
+            is_first_text_block=(
+                block_id == title_candidate_id
+                if title_candidate_id is not None
+                else not first_text_seen
+            ),
         )
         first_text_seen = True
 

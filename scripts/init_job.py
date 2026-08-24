@@ -11,6 +11,12 @@ import argparse  # noqa: E402
 import shutil  # noqa: E402
 from pathlib import Path  # noqa: E402
 
+from academic_pdf_translation.analysis.source_elements import (  # noqa: E402
+    analyze_job_elements,
+)
+from academic_pdf_translation.analysis.unit_binding import (  # noqa: E402
+    bind_units,
+)
 from academic_pdf_translation.contracts.enums import (  # noqa: E402
     QUALITY_MODE_TO_REVIEW_MODE,
     QualityMode,
@@ -21,6 +27,7 @@ import perf_trace  # noqa: E402
 from _common import (  # noqa: E402
     SCHEMA_VERSION,
     SkillError,
+    import_fitz,
     load_json,
     resolve_language_profile,
     sha256_file,
@@ -133,6 +140,27 @@ def _existing_workspace_job(
             "标准工作区中存在多份相同原文作业，请先合并:\n" + paths
         )
     return matches[0] if matches else None
+
+
+def _bind_element_roles(
+    job_dir: Path, source_units: dict
+) -> dict[str, str]:
+    """算出每个翻译单元绑定到的原文元素角色，并把清单与绑定表落盘。
+
+    角色是后面几关共用的事实：作者、单位、出版元数据和题录本来就该保留
+    原文形态，目标语言占比检查按角色免除这些单元；渲染计划与交付前核查
+    也直接读这两份文件。初始化时一次算好，后续步骤不必再各自补算。
+    """
+
+    fitz = import_fitz()
+    inventory = analyze_job_elements(
+        job_dir, pymupdf_version=getattr(fitz, "VersionBind", "0")
+    )
+    report = bind_units(source_units.get("units", []), inventory)
+    write_json(job_dir / "unit_bindings.json", report.as_dict())
+    return {
+        binding.unit_id: binding.element_role for binding in report.bindings
+    }
 
 
 def _timed_initialize_job(
@@ -319,6 +347,7 @@ def _timed_initialize_job(
     source_units = build_source_units(structure)
     source_units_path = job_dir / files["source_units"]
     write_json(source_units_path, source_units)
+    roles_by_unit = _bind_element_roles(job_dir, source_units)
     write_json(
         job_dir / files["translation"],
         build_translation_skeleton(
@@ -326,6 +355,7 @@ def _timed_initialize_job(
             source_language=source_language,
             target_language=canonical_language,
             source_units_sha256=sha256_file(source_units_path),
+            roles_by_unit=roles_by_unit,
         ),
     )
     write_json(

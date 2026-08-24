@@ -336,6 +336,10 @@ def _timed_plan_translation_batches(
                     "id": str(unit.get("id") or ""),
                     "page": _unit_page(unit),
                     "kind": _kind(unit),
+                    # 元素角色随批次一起下发：写回时的真实性检查按它免除
+                    # 作者、单位、出版元数据和题录的目标语言占比门槛。
+                    # 批次文件里没有它，这些单元在写回那一关就无处可查。
+                    "element_role": str(unit.get("element_role") or ""),
                     "heading_level": unit.get("heading_level"),
                     "source": _source(unit),
                     # 坐标必须随批次一起给出：写回时要用它核对

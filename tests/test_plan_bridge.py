@@ -73,10 +73,22 @@ def _element(**overrides) -> dict:
 # --- 只翻保留级 -------------------------------------------------------------
 
 
-def test_non_preservation_strategies_are_left_alone() -> None:
-    """位图与普通正文走生成器既有路径，这里不替它决定。"""
+def test_raster_preservation_is_bridged() -> None:
+    """位图保留也要翻成条目：不翻，生成器就一张图都不画。"""
 
-    for strategy in ("preserve-original-image", "translate-and-reflow"):
+    result = build_preservation_items(
+        _plan("preserve-original-image"),
+        [_element(type="raster-figure")],
+    )
+    assert len(result.items) == 1
+    assert result.items[0]["source_element_id"] == "e1"
+    assert result.skipped == []
+
+
+def test_non_preservation_strategies_are_left_alone() -> None:
+    """普通正文走生成器既有路径，这里不替它决定。"""
+
+    for strategy in ("translate-and-reflow",):
         result = build_preservation_items(_plan(strategy), [_element()])
         assert result.items == []
         assert result.skipped == []
