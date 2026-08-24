@@ -27,9 +27,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import argparse  # noqa: E402
 import json  # noqa: E402
 import re  # noqa: E402
-import subprocess  # noqa: E402
 import tempfile  # noqa: E402
 import zipfile  # noqa: E402
+
+from check_bundle import BundleCheckError, check_bundle  # noqa: E402
 
 #: 包里出现任何一条即失败。
 FORBIDDEN_PATTERNS = (
@@ -197,7 +198,7 @@ def check_archive(archive_path: Path) -> list[str]:
         except (KeyError, UnicodeDecodeError):
             problems.append("包里缺少 pyproject.toml")
 
-    # 解压后跑一次打包完整性检查：装完能不能用，只有真跑才知道。
+    # 解压后用当前仓库里的可信检查器读取发布包，不执行发布包中的代码。
     with tempfile.TemporaryDirectory() as tmp:
         target = Path(tmp)
         with zipfile.ZipFile(archive_path) as archive:
@@ -208,16 +209,10 @@ def check_archive(archive_path: Path) -> list[str]:
         else:
             # 刚解压、还没人跑过任何脚本：此时出现的缓存只可能来自打包。
             problems.extend(_extracted_cache_problems(roots[0]))
-            result = subprocess.run(
-                [sys.executable, "scripts/check_bundle.py"],
-                cwd=roots[0],
-                capture_output=True,
-                text=True,
-                timeout=300,
-            )
-            if result.returncode != 0:
-                tail = (result.stdout + result.stderr).strip()[-400:]
-                problems.append(f"解压后 check_bundle 失败: {tail}")
+            try:
+                check_bundle(roots[0])
+            except (BundleCheckError, OSError, ValueError) as exc:
+                problems.append(f"解压后 check_bundle 失败: {str(exc)[-400:]}")
     return problems
 
 

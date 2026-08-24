@@ -28,7 +28,7 @@ from package_release import (  # noqa: E402
 )
 
 ROOT = Path(__file__).resolve().parent.parent
-VERSION = "1.2.0-rc.1"
+VERSION = "1.2.1"
 
 
 @pytest.fixture(scope="module")

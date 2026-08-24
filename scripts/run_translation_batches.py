@@ -13,17 +13,14 @@
 - 合并严格按冻结单元 ID，不按完成顺序；
 - 结束时比较计划批次、已验证批次和实际单元数量，对不上就失败。
 
-翻译能力由调用方提供：Python 侧传入 ``translate(batch) -> results``；
-命令行侧用 ``--command``，把批次 JSON 从标准输入喂给外部命令，
-再从标准输出读回结果 JSON。
+翻译能力由受信任的 Python 调用方传入：
+``translate(batch) -> results``。命令行只提供账目核对，不接受外部命令。
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-import shlex
-import subprocess
 import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
@@ -42,39 +39,6 @@ MAX_CONCURRENT_BATCHES = 2
 DEFAULT_MAX_RETRIES = 2
 
 Translator = Callable[[dict[str, Any]], list[dict[str, Any]]]
-
-
-def command_translator(
-    command: str,
-    *,
-    timeout_seconds: float = 900.0,
-) -> Translator:
-    """把外部命令包成翻译器：批次 JSON 进标准输入，结果 JSON 出标准输出。"""
-
-    argv = shlex.split(command)
-    if not argv:
-        raise SkillError("--command 不能为空")
-
-    def translate(batch: dict[str, Any]) -> list[dict[str, Any]]:
-        completed = subprocess.run(
-            argv,
-            input=json.dumps(batch, ensure_ascii=False),
-            capture_output=True,
-            text=True,
-            timeout=timeout_seconds,
-            check=False,
-        )
-        if completed.returncode != 0:
-            raise SkillError(
-                f"翻译命令退出码 {completed.returncode}: "
-                + (completed.stderr or "").strip()[:800]
-            )
-        try:
-            return json.loads(completed.stdout)
-        except json.JSONDecodeError as exc:
-            raise SkillError(f"翻译命令输出不是合法 JSON: {exc}") from exc
-
-    return translate
 
 
 def _pending_entries(plan: dict[str, Any]) -> list[dict[str, Any]]:
@@ -179,22 +143,6 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("job_dir", type=Path)
     parser.add_argument(
-        "--command",
-        help="翻译命令；批次 JSON 走标准输入，结果 JSON 走标准输出",
-    )
-    parser.add_argument("--model", help="实际执行翻译的模型标识")
-    parser.add_argument(
-        "--max-retries",
-        type=int,
-        default=DEFAULT_MAX_RETRIES,
-    )
-    parser.add_argument(
-        "--concurrency",
-        type=int,
-        default=MAX_CONCURRENT_BATCHES,
-    )
-    parser.add_argument("--no-cache", action="store_true")
-    parser.add_argument(
         "--verify-only",
         action="store_true",
         help="只核对账目：计划批次、已验证批次与实际单元数量",
@@ -210,20 +158,9 @@ def main() -> int:
                 )
             )
             return 0
-        if not args.command:
-            raise SkillError("请提供 --command，或改用 --verify-only")
-        if not 0 <= args.max_retries <= 5:
-            raise SkillError("--max-retries 必须位于 0..5")
-        report = run_translation_batches(
-            args.job_dir,
-            command_translator(args.command),
-            model=args.model,
-            max_retries=args.max_retries,
-            use_cache=not args.no_cache,
-            max_concurrency=args.concurrency,
+        raise SkillError(
+            "命令行只支持 --verify-only；翻译执行由受信任的 Python 调用方提供"
         )
-        print(json.dumps(report, ensure_ascii=False, indent=2))
-        return 0
     except SkillError as exc:
         print(f"错误: {exc}")
         return 1

@@ -1,6 +1,6 @@
 {
   "name": "academic-pdf-translation",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Translate academic PDFs into readable, searchable PDFs while preserving document structure and research meaning.",
   "author": {
     "name": "Ezra-Y",

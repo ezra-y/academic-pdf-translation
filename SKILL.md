@@ -322,25 +322,16 @@ python3 scripts/apply_translation_batch.py /path/to/job \
 普通正文、摘要、标题和章节标题**不能**整单元保留原文：上面每一个 code 都
 用不上它们。
 
-### 自动执行整篇批次
+### 批次核账
 
-`scripts/run_translation_batches.py` 按计划逐批调用翻译能力，最多 2 批并发，
-每批成功后立即原子写回，单批失败只重试该批，结束时强制核账：
-
-```bash
-python3 scripts/run_translation_batches.py /path/to/job \
-  --command "<读批次 JSON、输出结果 JSON 的命令>" \
-  --model <实际模型标识>
-```
-
-只核账不执行：
+翻译由当前智能体或已分配的翻译代理完成，不把论文内容交给任意外部命令。
+全部结果串行写回后运行：
 
 ```bash
 python3 scripts/run_translation_batches.py /path/to/job --verify-only
 ```
 
-核账比较计划批次、已验证批次和实际单元数量。少执行一批时命令直接失败，
-不依赖执行者自己汇报。
+核账比较计划批次、已验证批次和实际单元数量。少执行一批时命令直接失败。
 
 同一批原文、目标语言、术语表、提示版本和模型都没变时，可直接从缓存写回：
 
