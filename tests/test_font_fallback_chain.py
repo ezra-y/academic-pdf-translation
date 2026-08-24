@@ -130,9 +130,9 @@ def test_stale_macos_path_is_reselected_on_linux(tmp_path: Path) -> None:
 
     job = json.loads((job_dir / "job.json").read_text(encoding="utf-8"))
     job.setdefault("quality", {})["selected_fonts"] = [
-        "/Users/someone/Library/Fonts/gone.ttc",
-        "/Users/someone/Library/Fonts/gone-bd.ttc",
-        "/Users/someone/Library/Fonts/gone.ttc",
+        "/Users/example/Library/Fonts/gone.ttc",
+        "/Users/example/Library/Fonts/gone-bd.ttc",
+        "/Users/example/Library/Fonts/gone.ttc",
     ]
     (job_dir / "job.json").write_text(
         json.dumps(job, ensure_ascii=False, indent=2), encoding="utf-8"
