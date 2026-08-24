@@ -358,7 +358,6 @@ def _check_version_sync(root: Path) -> str:
 def check_bundle(root: Path | None = None) -> dict[str, int | str]:
     skill_root = (root or _skill_dir()).resolve()
     required = [
-        skill_root / ".gitignore",
         skill_root / "LICENSE",
         skill_root / "README.md",
         skill_root / "README_EN.md",
@@ -368,27 +367,33 @@ def check_bundle(root: Path | None = None) -> dict[str, int | str]:
         skill_root / "assets" / "job.schema.json",
         skill_root / "assets" / "language-profiles.json",
         skill_root / "assets" / "workspace.schema.json",
-        skill_root
-        / "assets"
-        / "examples"
-        / "comparison-japanese-to-english-jglue.png",
-        skill_root
-        / "assets"
-        / "examples"
-        / "comparison-localized-screenshot.png",
-        skill_root
-        / "assets"
-        / "examples"
-        / "comparison-quadrant-model.png",
-        skill_root
-        / "assets"
-        / "examples"
-        / "comparison-structured-table.png",
         skill_root / "references" / "workspace.md",
-        skill_root / "Workspace" / ".gitignore",
         skill_root / "Workspace" / "README.md",
         skill_root / "requirements.txt",
     ]
+    if (skill_root / ".git").exists():
+        required.extend(
+            [
+                skill_root / ".gitignore",
+                skill_root
+                / "assets"
+                / "examples"
+                / "comparison-japanese-to-english-jglue.png",
+                skill_root
+                / "assets"
+                / "examples"
+                / "comparison-localized-screenshot.png",
+                skill_root
+                / "assets"
+                / "examples"
+                / "comparison-quadrant-model.png",
+                skill_root
+                / "assets"
+                / "examples"
+                / "comparison-structured-table.png",
+                skill_root / "Workspace" / ".gitignore",
+            ]
+        )
     missing = [str(path.relative_to(skill_root)) for path in required if not path.is_file()]
     if missing:
         raise BundleCheckError(f"Skill 缺少必要文件: {', '.join(missing)}")

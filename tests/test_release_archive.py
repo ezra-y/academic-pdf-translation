@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 import sys
 import zipfile
@@ -18,6 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 import pytest  # noqa: E402
 
+from check_bundle import check_bundle  # noqa: E402
 from check_release_archive import check_archive  # noqa: E402
 from package_release import (  # noqa: E402
     ALLOWED_DIRS,
@@ -178,3 +180,18 @@ def test_bundle_check_passes_on_a_used_install(tmp_path: Path) -> None:
         timeout=300,
     )
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_bundle_check_allows_runtime_install_without_git_assets(
+    archive: Path,
+    tmp_path: Path,
+) -> None:
+    """运行包不带 Git 文件和 README 图片时，自检仍检查真实运行内容。"""
+
+    with zipfile.ZipFile(archive) as handle:
+        handle.extractall(tmp_path)
+    install = tmp_path / f"academic-pdf-translation-{VERSION}"
+    (install / ".gitignore").unlink(missing_ok=True)
+    (install / "Workspace" / ".gitignore").unlink(missing_ok=True)
+    shutil.rmtree(install / "assets" / "examples", ignore_errors=True)
+    assert check_bundle(install)["status"] == "PASS"
